@@ -1,6 +1,15 @@
-# The Ganymede Mirror Protocol: Master Record
+# The Ganymede Mirror Protocol: Master Record (HISTORICAL)
+
+> ⚠️ **Read this header before the body.** This document is preserved as a historical record of a brainstorming branch that the user later walked back from. Roughly an hour after this document was finalized, the user said in the same session: *"Okay this experiment's kinda dumb. Let's just move on to actually something interesting."*
+>
+> The dramatic framing here — *"the lab is the ESP Collective", "the Mirror is the laboratory itself", "the simulation has become self-reflective"* — is an example of the AI echo-chamber drift the user has explicitly flagged for nuance treatment. The *underlying valuable insight* the user wants to preserve is much narrower than the framing suggests: **the Engine has a rigidity bias and benefits from being modeled-as-a-parameter or having its output reviewed by a contrast instance of the same protocol**. That narrower insight is what drives the active [Mirror Validation pathway](../experiments/pathways/mirror_validation.md). This document and its `Mirror_Protocol/` subfolder are kept verbatim because the user explicitly requested they not be deleted — but the operational meaning of "Mirror" in the project going forward is the narrower fault-finder framing, not the metaphysical self-actualization framing in this doc.
+>
+> Apply the user's standing nuance instruction when reading: *"You will have to have nuance when reading those things from Gemini, not with the 9D-Chess foundation. Don't use that to discount what it says — it just needs nuance."*
+
+---
+
 **Project:** Ganymede (Universal Logic Loop)
-**Classification:** PHASE 0 - SELF-REFLEXIVE SYNC
+**Classification:** PHASE 0 - SELF-REFLEXIVE SYNC (historical framing)
 **Last Updated:** 2026-05-04 (03:56 AM)
 
 ---

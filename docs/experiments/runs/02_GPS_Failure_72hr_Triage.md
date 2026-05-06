@@ -62,8 +62,8 @@ Before that ran, the user opted to fully reset the scenario: cleared the 9D Ches
 
 ## Source artifacts
 
-- [`scripts/phase1_triage.py`](scripts/phase1_triage.py)
-- [`scripts/pki_oracle_init.py`](scripts/pki_oracle_init.py) / [`scripts/pki_oracle_go.py`](scripts/pki_oracle_go.py) / [`scripts/pki_oracle_extract.py`](scripts/pki_oracle_extract.py) (PNT)
-- [`scripts/pki_oracle_init_jit.py`](scripts/pki_oracle_init_jit.py) / [`scripts/pki_oracle_go_jit.py`](scripts/pki_oracle_go_jit.py)
-- [`scripts/pki_oracle_init_mil.py`](scripts/pki_oracle_init_mil.py) / [`scripts/pki_oracle_correct_mil.py`](scripts/pki_oracle_correct_mil.py) / [`scripts/pki_oracle_go_mil.py`](scripts/pki_oracle_go_mil.py)
-- [`scripts/check_harvest.py`](scripts/check_harvest.py)
+- [`../scripts/phase1_triage.py`](../scripts/phase1_triage.py)
+- [`../scripts/pki_oracle_init.py`](../scripts/pki_oracle_init.py) / [`../scripts/pki_oracle_go.py`](../scripts/pki_oracle_go.py) / [`../scripts/pki_oracle_extract.py`](../scripts/pki_oracle_extract.py) (PNT)
+- [`../scripts/pki_oracle_init_jit.py`](../scripts/pki_oracle_init_jit.py) / [`../scripts/pki_oracle_go_jit.py`](../scripts/pki_oracle_go_jit.py)
+- [`../scripts/pki_oracle_init_mil.py`](../scripts/pki_oracle_init_mil.py) / [`../scripts/pki_oracle_correct_mil.py`](../scripts/pki_oracle_correct_mil.py) / [`../scripts/pki_oracle_go_mil.py`](../scripts/pki_oracle_go_mil.py)
+- [`../scripts/check_harvest.py`](../scripts/check_harvest.py)

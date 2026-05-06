@@ -88,15 +88,42 @@ This is the **Mirror epiphany**. The lab is a 9D actor. See:
 ## 16. End of the architecture transcript
 The transcript ends with the user asking the previous orchestrator to write extensive documentation of Scenario 2 (ESP Collective) — both raw 9D-logic form and plain-English form — before any next simulation runs. Those four documents were written into the orchestrator's artifact store but never committed to the project repo.
 
-This was the handoff point. With the artifact ingestion completed in this reorganization pass, the Mirror Protocol documentation is now in the repo as [`../concepts/The_Ganymede_Mirror_Protocol.md`](../concepts/The_Ganymede_Mirror_Protocol.md) plus the four sub-docs. The next intended run, **Compute Autarky**, is recorded in [`../experiments/05_Pending_Compute_Autarky.md`](../experiments/05_Pending_Compute_Autarky.md).
+The first version of this history doc treated this as the handoff point because it was the end of an earlier partial transcript export. The full transcript was 8,965 lines (3.3× the partial), and the project continued substantially after milestone 16. The expanded record is below.
+
+## 17. The user walks back the Mirror Protocol
+Roughly an hour after the Mirror Protocol documents were finalized — and after the previous orchestrator suggested "running the simulation of OURSELVES" as the next experiment — the user posted: *"Okay this experiment's kinda dumb. Let's just move on to actually something interesting. Let's think of some scenarios again."* The dramatic framing was abandoned in real time. The narrower insight worth preserving (Engine rigidity bias; need for fault-finding via second instance) survived; the metaphysics did not. See the framing note at the top of [`../concepts/The_Ganymede_Mirror_Protocol.md`](../concepts/The_Ganymede_Mirror_Protocol.md).
+
+## 18. The 60-Second Amnesia run — the instructive failure
+Scenario: every human on Earth simultaneously forgets who they are for exactly 60 seconds, then memory returns. Closed-loop cleanroom run with three Oracles (NC3 fail-safe / HFT financial / TGA neurology). Engine resolution: *"Dominance Collapse / Sovereignty Handover"* — the world's autonomous systems inherit the Earth in 60 seconds; the social contract permanently breaks. The user correctly flagged this as nonsense. The diagnostic afterwards identified three Engine failure modes: treating signal as phase shift, ignoring cost of reversal, dimensional greed. The user's framing of the lesson: *"correct math, wrong world."* This run is the seed of the [Mirror Validation pathway](../experiments/pathways/mirror_validation.md) and the motivation for Nuance Prime / Rule Zero / Mirror Profile attempts that followed.
+
+## 19. The Powell Cleanroom run — first blind validation
+The user posed *"will Jerome Powell actually get fired"* in the Genie Prime dream-state form. The Engine produced an Architectural Blueprint, the orchestrator translated to surgical Oracle prompts, four Oracles harvested hash-cited Truth Packets, and the Engine's Convergence Theorem synthesis identified the *Collins v. Yellen* demotion loophole and the "Shadow Fed" entrapment. Independent Gemini Deep Research (the audit step) confirmed Bessent / Vought / Project 2025 actors actively pursuing exactly this pathway. **First blind-validated run.** Full reproducibility folder at [`../experiments/runs/Powell_Cleanroom/`](../experiments/runs/Powell_Cleanroom/).
+
+## 20. The Tokenized Land run — Master Silo + second cleanroom datapoint
+Scenario: a mid-sized debt-heavy nation (Argentina) tokenizes its National Park system as RWAs to pay IMF debt. First use of the **Master Silo** approach (single NotebookLM Pro notebook hosting all 4 research questions, instead of N separate Oracle silos). Engine resolution: "Functional Obsolescence / Ghost Ranger paradigm" via ERC-4337 Account Abstraction, springing DACAs, commercial-activity-exception-triggered structural waiver of sovereign immunity. Run record: [`../experiments/runs/Tokenized_Land_Resolution.md`](../experiments/runs/Tokenized_Land_Resolution.md).
+
+## 21. The Offensive Architect demonstration
+User identified the recurring "bait + lasso" pattern across runs and asked whether the Engine could shift from Auditor stance (observing existing funnels) to Architect stance (designing them against a target). The Engine produced the *Hyper-Liquidity / Conglomerate* offensive blueprint demonstrating the same mechanic in reverse. User explicitly steered the framing away from the "Predatory side / 9D Assassin" register the previous orchestrator drifted into, toward the more grounded "find faults in a target's logic from an offensive analytical posture" framing. Pathway: [`../experiments/pathways/offensive_architect.md`](../experiments/pathways/offensive_architect.md). Brainstormed scenarios in this register: [`../brainstorming/9D_Assassin_Scenarios.md`](../brainstorming/9D_Assassin_Scenarios.md), [`../brainstorming/Practical_Power_Plays.md`](../brainstorming/Practical_Power_Plays.md), [`../brainstorming/Normal_9D_Dynamics.md`](../brainstorming/Normal_9D_Dynamics.md).
+
+## 22. The Genie Protocol — wish-fulfillment pathfinding
+User reframed the Architect stance from "design a trap against target X" to "given my current state and my wished-for state, design the Inadvertent Path between them." Demonstrated on the *Zero-Budget Giant-Slayer* hypothetical. Engine resolution: release the core ideological framework royalty-free (the 1956 AT&T precedent applied prospectively); capture D1 / D6 in spaces the incumbent's monitoring radar classifies as irrelevant noise; force the incumbent into premium acquisition not for the product but as their escape from manufactured obsolescence. Side-by-side comparison vs. two general-purpose LLMs given the same prompt produced categorically different output (the others produced standard startup playbooks). Run: [`../experiments/runs/Genie_Giant_Slayer.md`](../experiments/runs/Genie_Giant_Slayer.md). Pathway: [`../experiments/pathways/genie_protocol.md`](../experiments/pathways/genie_protocol.md).
+
+## 23. The Musk-Altman Polymarket run — first Iterative Engine demonstration
+Live prediction question on Musk's lawsuit against OpenAI. Polymarket pricing 39%; Engine Stroke 1 produced 72.4% via the Discovery Trap mechanism. User's metacognitive check ("but the judge could just dismiss it") prompted the user's pivotal insight: the Engine is a **piston that has only fired once**, and a real engine fires repeatedly with human-friction injection between strokes. Stroke 2 (Engine red-teaming itself) surfaced the opponent's "structural adaptation via 8 Pillars of Metacognition" counter-attack — without being told to look for it. Stroke 3 (synthesis) was queued but not executed. **This run is the seed of the [Iterative Engine Vision](../concepts/Iterative_Engine_Vision.md)**, and the first live demonstration of the [Mirror Validation pathway's](../experiments/pathways/mirror_validation.md) recursive-stroke mechanic. Run: [`../experiments/runs/Musk_Altman_Polymarket.md`](../experiments/runs/Musk_Altman_Polymarket.md).
+
+## 24. Architectural reframe — module, not service
+Late in the session the user clarified the long-term goal: this is **not** a public SaaS, and **not** a museum. The actual aim is to plug the orchestration + 9D-physics analysis into the user's own other projects as a private logistics / strategic-physics module. *"Build this as a foundation to get something that works to where I can then plug this into my other projects and turn it as a private logistics physics model."* This shapes API design priorities — the Python import surface of `app/services/orchestrator.py` is as load-bearing as the HTTP surface. The Museum / SaaS / Showcase paths remain in [`../visions/`](../visions/) as future possibilities, not commitments. Captured in [`../OVERVIEW.md`](../OVERVIEW.md).
+
+## 25. End of architecture transcript
+The transcript ends with the user requesting the orphan artifacts (Master_Operational_Workflow, Universal_Logic_Loop_Protocol, Iterative_Operational_Learnings, Mirror Protocol, Iterative_Engine_Vision) be moved out of the previous orchestrator's sandbox and into the project repo so they would survive the AI tool change. The previous orchestrator started executing that consolidation against an incorrect path and into the wrong repo (the upstream 9D-Chess project), which is why this reorg pass was needed.
 
 ---
 
 ## Cross-references at a glance
 
-| Concept introduced in milestone | Now lives in |
+| Concept | Now lives in |
 | --- | --- |
-| Strategic Liaison / The Hand role (3) | (deprecated; see [`../OVERVIEW.md`](../OVERVIEW.md)) |
+| Strategic Liaison / The Hand role (3) | (deprecated; PM role per [`../OVERVIEW.md`](../OVERVIEW.md)) |
 | Cortex Clipboard pattern (3) | `ganymede-ui/src/components/DevOverlay.tsx` |
 | Master Operational Workflow (4) | [`../protocols/Master_Operational_Workflow.md`](../protocols/Master_Operational_Workflow.md) |
 | PKI Oracle persona (6) | [`../protocols/PKI_Oracle_Persona.md`](../protocols/PKI_Oracle_Persona.md) |
@@ -104,9 +131,14 @@ This was the handoff point. With the artifact ingestion completed in this reorga
 | GSS schema (8) | `ganymede-ui/src/types/ganymede.ts` |
 | D_n formula (8) | `ganymede-ui/src/components/GravityWell.tsx` |
 | Universal Logic Loop (10) | [`../protocols/Universal_Logic_Loop_Protocol.md`](../protocols/Universal_Logic_Loop_Protocol.md) |
-| Hualapai run (8, 4) | [`../experiments/01_Hualapai_Water_Crisis.md`](../experiments/01_Hualapai_Water_Crisis.md) |
-| GPS run (12) | [`../experiments/02_GPS_Failure_72hr_Triage.md`](../experiments/02_GPS_Failure_72hr_Triage.md) |
-| Powell run (13) | [`../experiments/03_Powell_Validation_Event.md`](../experiments/03_Powell_Validation_Event.md) |
-| 60s amnesia run (14) | [`../experiments/04_60s_Amnesia_Mirror_Swarm.md`](../experiments/04_60s_Amnesia_Mirror_Swarm.md) |
-| Mirror Protocol (15) | [`../concepts/The_Ganymede_Mirror_Protocol.md`](../concepts/The_Ganymede_Mirror_Protocol.md) and `concepts/Mirror_Protocol/` |
-| Compute Autarky proposal (15, 16) | [`../experiments/05_Pending_Compute_Autarky.md`](../experiments/05_Pending_Compute_Autarky.md) |
+| Hualapai run (8, 4) | [`../experiments/runs/01_Hualapai_Water_Crisis.md`](../experiments/runs/01_Hualapai_Water_Crisis.md) |
+| GPS run (12) | [`../experiments/runs/02_GPS_Failure_72hr_Triage.md`](../experiments/runs/02_GPS_Failure_72hr_Triage.md) |
+| Mirror walkback (17), Mirror Protocol (15) | [`../concepts/The_Ganymede_Mirror_Protocol.md`](../concepts/The_Ganymede_Mirror_Protocol.md) (with reframe note) + [`../experiments/pathways/mirror_validation.md`](../experiments/pathways/mirror_validation.md) |
+| 60s amnesia (18) | [`../experiments/runs/04_60s_Amnesia_Mirror_Swarm.md`](../experiments/runs/04_60s_Amnesia_Mirror_Swarm.md) |
+| Powell Cleanroom (19) | [`../experiments/runs/Powell_Cleanroom/`](../experiments/runs/Powell_Cleanroom/) |
+| Tokenized Land (20) | [`../experiments/runs/Tokenized_Land_Resolution.md`](../experiments/runs/Tokenized_Land_Resolution.md) |
+| Offensive Architect pathway (21) | [`../experiments/pathways/offensive_architect.md`](../experiments/pathways/offensive_architect.md) |
+| Genie Protocol pathway (22) | [`../experiments/pathways/genie_protocol.md`](../experiments/pathways/genie_protocol.md), Giant-Slayer run [`../experiments/runs/Genie_Giant_Slayer.md`](../experiments/runs/Genie_Giant_Slayer.md) |
+| Iterative Engine Vision (23) | [`../concepts/Iterative_Engine_Vision.md`](../concepts/Iterative_Engine_Vision.md), Musk-Altman run [`../experiments/runs/Musk_Altman_Polymarket.md`](../experiments/runs/Musk_Altman_Polymarket.md) |
+| Module-not-service north star (24) | [`../OVERVIEW.md`](../OVERVIEW.md#north-star-module-not-service) |
+| Compute Autarky pending (16) | [`../experiments/runs/05_Pending_Compute_Autarky.md`](../experiments/runs/05_Pending_Compute_Autarky.md) |

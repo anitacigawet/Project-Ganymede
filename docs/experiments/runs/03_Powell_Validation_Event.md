@@ -1,10 +1,10 @@
-# Experiment 03 — The Powell Validation Event
+# Experiment 03 — The Powell Validation Event (high-level summary)
+
+> **📁 Full reproducible run folder: [`Powell_Cleanroom/`](Powell_Cleanroom/)** — Genie Prime, Architectural Blueprint, Oracle prompts, 4 Truth Packets, synthesis prompt, Engine resolution, and blind-validation audit. **That folder supersedes this file** for any reproducibility / methodology purpose. This file is preserved as the original high-level run summary.
 
 **Date:** 2026-05-04
-**Status:** ✅ Complete (referenced in [`learnings/Iterative_Operational_Learnings.md`](../learnings/Iterative_Operational_Learnings.md) as a milestone). This run took place in artifact-tracking but doesn't appear in the architecture transcript — the artifact log is the primary record.
+**Status:** ✅ Complete and blind-validated.
 **Significance:** First **blind validation** of the 9D Chess Engine. The Engine independently surfaced a strategic-legal pathway, then deep research into real-world planning confirmed actors were preparing exactly that move. The framework predicted before it confirmed.
-
-> ⚠️ **Reconstruction note.** This page is reconstructed from the operational learnings log and the financial / psychological scratch scripts (`pki_oracle_*_finance.py`, `pki_oracle_*_psych.py`, `powell_final_resolution.py`). The full chat session for this run is not in the available transcript; some procedural detail is inferred from the script inventory. Treat the headline finding as authoritative; treat the procedural detail as best-reconstruction. If the user has the original session log, it should replace the procedural description here.
 
 ## Scenario
 
@@ -44,7 +44,8 @@ Either during this run or shortly after, the orchestrator settled on a prompt-en
 
 ## Source artifacts
 
-- [`scripts/pki_oracle_init_finance.py`](scripts/pki_oracle_init_finance.py) / [`scripts/pki_oracle_go_finance.py`](scripts/pki_oracle_go_finance.py)
-- [`scripts/pki_oracle_init_psych.py`](scripts/pki_oracle_init_psych.py) / [`scripts/pki_oracle_go_psych.py`](scripts/pki_oracle_go_psych.py)
-- [`scripts/powell_final_resolution.py`](scripts/powell_final_resolution.py)
-- `learnings/Iterative_Operational_Learnings.md` (the milestone entry)
+- **Canonical reproducibility folder:** [`Powell_Cleanroom/`](Powell_Cleanroom/)
+- [`../scripts/pki_oracle_init_finance.py`](../scripts/pki_oracle_init_finance.py) / [`../scripts/pki_oracle_go_finance.py`](../scripts/pki_oracle_go_finance.py)
+- [`../scripts/pki_oracle_init_psych.py`](../scripts/pki_oracle_init_psych.py) / [`../scripts/pki_oracle_go_psych.py`](../scripts/pki_oracle_go_psych.py)
+- [`../scripts/powell_final_resolution.py`](../scripts/powell_final_resolution.py)
+- `../../learnings/Iterative_Operational_Learnings.md` (the milestone entry)

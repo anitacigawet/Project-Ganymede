@@ -1,22 +1,27 @@
 # Project Ganymede
 
-A strategic-physics observatory: feed in a real-world scenario, get back a 9-dimensional analysis grounded in authenticated sources, and watch the resulting strategic landscape render as a warping 3D topology.
+A working laboratory for running real scenarios through a 9-dimensional strategic-physics framework. The 9D Chess Engine (a single hard-coded NotebookLM treated as a closed strategic-physics engine) is fed authenticated, hash-cited Truth Packets harvested by ephemeral PKI Authentication Oracle notebooks, and resolves scenarios via the Convergence Theorem. An optional GSS visualization layer renders selected resolutions as a warping 3D topology.
 
 The project is composed of two halves:
 
-- **`ganymede-backend/`** — FastAPI service that orchestrates a hard-coded **9D Chess Engine** (a protected NotebookLM acting as the strategic logic core) and a swarm of ephemeral **PKI Authentication Oracles** (NotebookLMs spun up per subject, persona-locked into a zero-hallucination, hash-citing research role).
-- **`ganymede-ui/`** — Next.js + React Three Fiber frontend that consumes the **Ganymede Strategic Schema (GSS)** and renders the live topology.
+- **`ganymede-backend/`** — FastAPI service exposing the four-phase Universal Logic Loop as discrete primitives. Orchestrates the 9D Chess Engine and the PKI Oracle swarm.
+- **`ganymede-ui/`** — Next.js + React Three Fiber frontend hosting the GSS visualization and the Cortex Clipboard. Multi-page experimental playground; each page can host a different experiment.
+
+**Long-term goal:** plug the orchestration + 9D-physics module into the user's other projects as a private analysis library. *Not* a public SaaS; *not* a museum-as-product.
 
 ## Where to start
 
 | You want to… | Open |
 | --- | --- |
 | Understand what this project is in 5 minutes | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) |
-| Look up a term (Umpire, Oracle, GSS, ROEM, SDS, etc.) | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
+| See the strongest single piece of evidence the framework is real | [`docs/experiments/runs/Powell_Cleanroom/`](docs/experiments/runs/Powell_Cleanroom/) |
+| Read the four active research pathways | [`docs/experiments/pathways/`](docs/experiments/pathways/) |
+| See past run records | [`docs/experiments/runs/`](docs/experiments/runs/) |
+| Look up a term (Umpire, Oracle, GSS, Genie Prime, Iterative Engine, etc.) | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) |
+| Browse preserved-but-not-committed-to ideas | [`docs/brainstorming/`](docs/brainstorming/) |
 | Read the conceptual foundation | [`docs/concepts/`](docs/concepts/) |
 | See the operational protocols | [`docs/protocols/`](docs/protocols/) |
-| Read run-records of past experiments | [`docs/experiments/`](docs/experiments/) |
-| See potential productization paths | [`docs/visions/`](docs/visions/) |
+| See potential productization paths (not the current direction) | [`docs/visions/`](docs/visions/) |
 | Trace how the system evolved | [`docs/history/Architecture_History.md`](docs/history/Architecture_History.md) |
 
 ## Running it locally
@@ -50,4 +55,6 @@ npm run dev          # http://localhost:3000 (or 3001 if 3000 is taken)
 
 ## Status
 
-Operational baseline reached on the Hualapai water-crisis run. See [`docs/OVERVIEW.md`](docs/OVERVIEW.md) for the current state-of-build (what's wired, what's still designed-not-built) and [`docs/experiments/`](docs/experiments/) for completed and pending runs.
+Two confirmed blind validations of the prediction methodology (Powell, Tokenized Land), one partial (Musk-Altman Stroke 1+2; Stroke 3 pending), one demonstration of the Genie pathfinding pathway (Giant-Slayer), and one instructive failure (60-second Amnesia) that motivated the Mirror Validation pathway. The GSS visualization pipeline is functional end-to-end on the Hualapai canonical sample.
+
+The project is past operational baseline and into methodology-tightening. Next planned work: pre-registered live prediction with timestamped outputs, Mirror Validation full standup (contrast notebook), and Iterative Engine three-stroke completion on a real scenario. See [`docs/OVERVIEW.md`](docs/OVERVIEW.md) for the current state-of-build and [`docs/experiments/`](docs/experiments/) for the run library.
