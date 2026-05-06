@@ -27,7 +27,23 @@ The unstated tension: **the Engine is a NotebookLM with a custom prompt**, not a
 
 **What might discriminate (a) from (b).** Scenarios where the structural-waiver template is *implausible* — pure information goods, pre-modern social conflicts, individual psychology, biological systems, scenarios with no contractual or legal substrate. If the Engine still reaches for "they perceive a win that contains a structural waiver of their immunity," that's evidence for (b). If it reaches for genuinely different structural templates that fit the new domain, that's evidence for (a).
 
-**Status.** Logged. Not actively being investigated. Not blocking any current work. Worth designing a deliberate stress-test scenario at some point.
+**Status.** Logged and **explicitly pinned** by the user — not blocking any current work, and not actively being investigated yet. The pin is intentional: pursuing this question now (before the project has more validated runs) risks treating "the model is wrong" and "the substrate is wrong" as the same answer.
+
+### The user's framing of the pin (preserved for when this is revisited)
+
+> *"In the event that we do deduce that there is some pattern that it's attracted to by running that simulation in the notebook, the idea and the concept does not mean it's flawed. It simply means that using the notebook as the actual simulation for that is just not feasible and it will have to do some other closed home-brewed AI system built with the 9D Chess theory and all that to simulate it."*
+
+There are at least three possible diagnoses for the pattern attractor, and they have very different implications:
+
+1. **The substrate is the problem.** NotebookLM's behavior — its prompt-grounded RAG, its specific base model, its Studio-output bias — is what's producing the pattern attraction. The 9D framework itself is fine; we are running it on the wrong vehicle. *Fix: build a home-brewed runtime (fine-tuned model, custom orchestration, deterministic agent stack) that implements the 9D framework directly.*
+2. **Our usage is the problem.** The Genie Prime / Dream State priming, the Surgical Middleman translation, the synthesis prompt — some part of the *operator's* methodology is leaking the attractor in. *Fix: re-run the same scenario with a substantially different invocation pattern and see if the attractor persists.*
+3. **The framework itself has the bias.** The 9D framework as documented (in the upstream 9D-Chess repo) actually does converge on this template across the kinds of scenarios we've been running. *Fix: revisit the framework axioms with the upstream theoretical material, identify whether the convergence is principled or accidental.*
+
+The user's stated preference: don't act on any of these until we have substantially more runs to argue from. **When this question is revisited, the next-action assumption is (1) — build a home-brewed runtime — pending an in-depth re-read of the 9D-Chess foundation documentation.**
+
+The user has explicitly licensed Claude (the project manager going forward) to make this assessment when the time comes: *"You can actually analyze the documentation of it in depth and then make your own assessment so if you think maybe you could come up with your own home-brew solution or we could build an AI thing — I'm not sure."*
+
+Cross-reference: the upstream theoretical project at [github.com/anitacigawet/9D-Chess](https://github.com/anitacigawet/9D-Chess) is where that re-read would start.
 
 ---
 

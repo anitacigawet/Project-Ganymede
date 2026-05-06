@@ -96,7 +96,9 @@ The meta-methodology underlying all four is the **Iterative Engine Vision** ([`c
 - **Gallery exhibits** — 10 hard-coded titles in `GalleryPanel.tsx`, no payloads. Currently this is the placeholder content on the Hualapai-style topology page.
 - **Scenario archive / persistence** — every GSS payload and every run is currently transient. No persistence layer yet.
 - **Mirror Validation, end-to-end** — the contrast-notebook setup (a second 9D notebook used as fault-finder against the first) has been specified but not stood up.
-- **Pre-registered prediction methodology** — the Cleanroom pathway has demonstrated the technique but not yet locked in pre-registration discipline (timestamped predictions before validation runs). The next pre-registered run is the methodological priority.
+- **Pre-registered prediction methodology** — the Cleanroom pathway has demonstrated the technique but not yet locked in pre-registration discipline (timestamped predictions before validation runs).
+- **Module integration surface** — design proposed in [`integration/`](integration/), including a concrete validation case for the user's PrisonBreak project. Adds session abstraction, WebSocket event stream, multi-stroke Iterative Engine, and pre-harvested Truth Packet ingestion to the existing orchestrator. Not yet built.
+- **Genie autonomous-scouting variant** — the next iteration of the Genie pathway: Engine maps the chessboard dynamically by issuing one research request at a time and deciding what it needs next based on what it has learned. Specified in [`experiments/pathways/genie_protocol.md`](experiments/pathways/genie_protocol.md#variant-autonomous-scouting-next-iteration-of-this-pathway), not yet built.
 
 ## Hard guardrails
 

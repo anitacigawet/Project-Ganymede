@@ -24,3 +24,11 @@ The user's standing instruction on tone: *"You will have to have nuance when rea
 When the project is looking for a new scenario to test a pathway against, this folder is the menu. Most of these ideas have not been *run* — they exist as scenario seeds. Pick one, frame it as a Wish or as a Cleanroom scenario, and run the appropriate pathway against it.
 
 When you find an idea here genuinely worth promoting, copy/move it to the appropriate non-brainstorming folder and update its status. Brainstorming should remain the bench, not the field.
+
+## A note on the user's standing instruction for these scenarios
+
+The user has explicitly told the project that the specific real-world targets occasionally referenced in the active pathway docs (Save Mohave water rights, Amazon FBA decisions, etc.) **are illustrative examples, not real candidate runs**. The user's framing: *"these are just examples of potential applications I could use for that … those are just kind of like things that I brainstormed with the AI. Those are not actually things I wanted to create."*
+
+The real test direction the user wants to push the Genie pathway toward is the **autonomous-scouting variant** documented in [`../experiments/pathways/genie_protocol.md`](../experiments/pathways/genie_protocol.md#variant-autonomous-scouting-next-iteration-of-this-pathway) — where the Engine maps an arbitrary wish-shaped scenario into a chessboard *autonomously*, by deciding what to research dynamically rather than receiving a pre-curated list of subjects.
+
+Treat the named-target examples in the pathway docs (Save Mohave, FBA, etc.) as *test fodder* for that autonomous-scouting variant once it's built — not as concrete project commitments.

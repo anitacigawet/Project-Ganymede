@@ -63,11 +63,53 @@ Genie's Phase 2 output (Strategic Lasso + Incomprehensible Move) is structurally
 
 In practice the Genie often *implicitly* designs an offensive funnel against the obstacle. The Giant-Slayer run is the clearest case: the path to "50% market share + premium acquisition" runs straight through hollowing out the incumbent. The user's Genie reframing is what makes this a tool for *one's own goals* rather than abstract strategic warfare.
 
-## Open work
+## Variant: Autonomous Scouting (next iteration of this pathway)
 
-- **Run the Genie on a real wish.** All Genie demonstrations have been on hypothetical wishes. The natural next test is one of the user's own real-world projects — Save Mohave water rights, an Amazon FBA decision, a specific module-integration goal in another of the user's projects.
-- **Wish-spec discipline.** The Genie's output quality scales with the precision of the (current state, wished-for state) pair. A vague wish ("I want to be successful") produces vague paths; a specific wish ("from $X revenue to $Y revenue against incumbent Z by date W") produces specific paths. Need a checklist for what makes a "well-specified wish" before invoking the Genie.
-- **Iterative variant.** Run Stroke 2 on the Genie's output: *"You are the obstacle in the path. Detect the funnel. How do you escape?"* Produces a stress-tested wish-path.
+The user's stated next direction for this pathway is to push the Engine toward more *autonomous* chessboard mapping. The current Genie pattern is:
+
+1. User states (current_state, wished_for_state).
+2. Engine produces a fixed Architectural Blueprint listing N specific Truth Packets it needs.
+3. Orchestrator translates → Oracle harvests → synthesis.
+
+The autonomous-scouting variant collapses step 2 into a recursive, dynamic process:
+
+1. User states (current_state, wished_for_state).
+2. Engine *opens an exploration loop*. It doesn't decide all required research up front — it issues research requests one at a time as it maps the chessboard.
+3. After each Truth Packet returns, the Engine decides whether the resolution is now solvable, or whether it needs another targeted query (a new entity, a deeper drill on an existing one, a related domain it hadn't surfaced yet).
+4. The loop continues until the Engine declares "RESOLUTION COMPLETE" or hits a runaway-prevention cap (e.g. "no more than N total Truth Packets per session without manual approval").
+5. Then the Engine fires Phase 2 (Manifestation) using the dynamically-assembled Truth Packet stack as its complete factual context.
+
+The user's framing: *"the genie on real wish is a good thing I'd like to expand on … not aligned for a specific prompt or all that, just to kind of autonomously build and map a scenario on its own to then go using the knowledge things to fetch out certain things that it knows it needs whether it's information on an entity or group or a specific surgical query that it needs the knowledge thing to send. It would basically go on a scouting mission in the information domain to map out the chessboard it would need to do its calculation."*
+
+### Why this matters
+
+The current Genie pathway is essentially an Architect-stance Cleanroom run with a wish-shaped scenario. The autonomous-scouting variant is *qualitatively different* — the Engine is not just answering a query, it is conducting an investigation. It decides what it needs to know based on what it has learned so far, the way a researcher would.
+
+This is the first pathway the project has where the Engine's *own decisions about what to research* are part of the experimental result, not just its decisions about what those facts mean.
+
+### Implementation requirements
+
+This variant requires changes the current orchestrator doesn't yet implement:
+
+- **A scouting loop** in `app/services/orchestrator.py` that alternates between Engine queries ("what do you need next?") and Oracle invocations ("here's what you asked for"), persisting the running Truth Packet stack between rounds.
+- **Per-round caller approval.** The runaway-prevention guardrail still applies — every new Oracle is one explicit approval. In the autonomous-scouting loop, this manifests as the Engine proposing a scout target and the loop pausing for caller OK before the Oracle is created.
+- **A termination protocol.** The Engine has to be primed to recognize "I have enough" rather than running indefinitely. Phase-4 Resolution Check from the Universal Logic Loop is the building block here; the autonomous-scouting variant runs Resolution Check after every harvest, not just at the end.
+- **Runaway cap.** A hard upper bound on Oracle creations per session before manual reaffirmation is required (suggested default: 5).
+
+### Open: closed-information-environment vs. live-research
+
+A subtle ambiguity in the user's framing: *"to then do its own sandbox simulation in a closed information environment and close and sanitize information environment."* Two possible readings:
+
+1. **The whole simulation runs in a closed system** — once the autonomous scouting completes, the Engine seals the Truth Packet stack and runs the Phase 2 Manifestation in isolation, no further external lookups.
+2. **The scouting itself uses a closed pool** — the Oracles can only research from a pre-approved set of source domains, not the open web.
+
+(1) is what the architecture transcript suggests and is consistent with the existing Cleanroom methodology. (2) would be a stronger constraint — useful for confidentiality-sensitive runs (e.g. legal-strategy or business-strategy work where you don't want the Engine pulling in random web sources). Worth deciding before this variant runs.
+
+## Standard open work (carried from the original Genie pattern)
+
+- **Run the Genie on a real wish.** All Genie demonstrations have been on hypothetical wishes. The natural next test is one of the user's own real-world projects.
+- **Wish-spec discipline.** The Genie's output quality scales with the precision of the (current_state, wished_for_state) pair. A vague wish ("I want to be successful") produces vague paths; a specific wish ("from $X revenue to $Y revenue against incumbent Z by date W") produces specific paths. Need a checklist for what makes a "well-specified wish."
+- **Iterative variant.** Run Stroke 2 on the Genie's output: *"You are the obstacle in the path. Detect the funnel. How do you escape?"* Produces a stress-tested wish-path. Compose with Iterative Engine (Stroke 1 = current Genie pattern, Stroke 2 = obstacle's perspective, Stroke 3 = synthesis).
 
 ## Source artifacts
 
