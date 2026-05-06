@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtualenvs
+venv/
+venv_*/
+.venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Node / Next.js (also handled by ganymede-ui/.gitignore)
+node_modules/
+.next/
+next-env.d.ts
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / scratch output
+*.log
+ganymede-backend/scratch/output/
+ganymede-backend/scratch/*.tmp
