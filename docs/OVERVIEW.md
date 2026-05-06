@@ -54,7 +54,7 @@ Project Ganymede is a working laboratory for running real scenarios through a 9-
 - **`AnalystStream.tsx`** — exists as a static dummy chat component but isn't imported anywhere in `page.tsx`. The whole left-panel "Analyst" experience from the original blueprint is effectively missing from the live app — `GalleryPanel` is shown there instead.
 - **Gallery exhibits** — 10 hard-coded titles in `GalleryPanel.tsx`, no payloads, not connected to anything backend-side.
 - **Scenario archive** — every GSS payload is currently transient. There is no persistence layer yet.
-- **Universal Logic Loop, end-to-end** — all the orchestration logic (triage → swarm spin-up → harvest → recursive dialogue) currently lives in 36 ad-hoc scripts under `ganymede-backend/scratch/`, not in `app/`. The protocol is documented in [`protocols/Universal_Logic_Loop_Protocol.md`](protocols/Universal_Logic_Loop_Protocol.md) but not yet productized as a service.
+- **Universal Logic Loop, end-to-end (productized).** The four-phase loop is now exposed as discrete FastAPI endpoints: `POST /api/triage`, `POST /api/oracle`, `POST /api/oracle/{id}/go`, `POST /api/oracle/{id}/harvest` (or `/api/swarm/harvest`), `POST /api/synthesize`, `POST /api/resolution-check`. Implementation in `ganymede-backend/app/services/orchestrator.py`. The 36 ad-hoc scripts that previously lived in `ganymede-backend/scratch/` are archived as historical receipts at [`experiments/scripts/`](experiments/scripts/). Protocol spec: [`protocols/Universal_Logic_Loop_Protocol.md`](protocols/Universal_Logic_Loop_Protocol.md).
 
 ## Hard guardrails
 

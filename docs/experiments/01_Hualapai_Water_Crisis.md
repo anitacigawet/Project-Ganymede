@@ -80,7 +80,7 @@ The final paste of the Hualapai GSS object into the Cortex Clipboard rendered co
 
 ## Source artifacts
 
-- `ganymede-backend/scratch/hualapai_harvest.py`
+- [`scripts/hualapai_harvest.py`](scripts/hualapai_harvest.py)
 - `ganymede-backend/test_swarm_logic.py`
 - `ganymede-backend/test_compiler.py`
 - `ganymede-ui/src/types/ganymede.ts` (the schema)

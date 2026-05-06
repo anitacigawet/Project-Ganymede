@@ -44,7 +44,7 @@ Either during this run or shortly after, the orchestrator settled on a prompt-en
 
 ## Source artifacts
 
-- `ganymede-backend/scratch/pki_oracle_init_finance.py` / `pki_oracle_go_finance.py`
-- `ganymede-backend/scratch/pki_oracle_init_psych.py` / `pki_oracle_go_psych.py`
-- `ganymede-backend/scratch/powell_final_resolution.py`
+- [`scripts/pki_oracle_init_finance.py`](scripts/pki_oracle_init_finance.py) / [`scripts/pki_oracle_go_finance.py`](scripts/pki_oracle_go_finance.py)
+- [`scripts/pki_oracle_init_psych.py`](scripts/pki_oracle_init_psych.py) / [`scripts/pki_oracle_go_psych.py`](scripts/pki_oracle_go_psych.py)
+- [`scripts/powell_final_resolution.py`](scripts/powell_final_resolution.py)
 - `learnings/Iterative_Operational_Learnings.md` (the milestone entry)
