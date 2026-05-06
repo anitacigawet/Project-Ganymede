@@ -67,18 +67,20 @@ This shapes the API design priorities:
 - No multi-tenant concerns. No public-user UX concerns. No marketing surface.
 - The Museum / SaaS / Showcase paths are preserved in [`visions/`](visions/) as future possibilities, not commitments.
 
-## Active research pathways
+## The four silos (canonical project organization)
 
-These are the four hypothesis lines the project is actively iterating on. Full pathway docs in [`experiments/pathways/`](experiments/pathways/):
+The project's actual structure, per the user's framing, is four research silos. Pathways and runs and brainstorming all live *inside* these silos — they are techniques, not silos themselves.
 
-| Pathway | What it tests | Status |
-| --- | --- | --- |
-| [Prediction Cleanroom](experiments/pathways/prediction_cleanroom.md) | Can the Engine, in Dream-State + closed-loop with no Gemini contamination, predict non-obvious strategic outcomes that reality later confirms? | ✅ Two confirmed blind validations (Powell, Musk-Altman partial). |
-| [Mirror Validation](experiments/pathways/mirror_validation.md) | Can a second 9D-protocol instance (or the Engine red-teaming itself) catch the Engine's "correct math, infeasible reality" rigidity errors? | 🟡 Diagnosed (Amnesia run) and methodology proposed; first live demo in Musk-Altman Stroke 2. |
-| [Offensive Architect](experiments/pathways/offensive_architect.md) | Stance shift — Engine *designs* the funnel against a target instead of auditing one. | ✅ Concept demonstrated (Conglomerate scenarios). |
-| [Genie Protocol](experiments/pathways/genie_protocol.md) | Wish-fulfillment pathfinding — given (current state, wished-for state), Engine designs the *Inadvertent Path*. | ✅ One full demonstration (Zero-Budget Giant-Slayer). |
+| # | Silo | What it does | Active technique(s) | Status |
+| --- | --- | --- | --- | --- |
+| 1 | **Predictor** | Use the Engine as a closed-loop forecaster. Given a falsifiable scenario, it identifies non-obvious strategic outcomes that reality later confirms. *The user's standing description: "the boring one."* | [Prediction Cleanroom](experiments/pathways/prediction_cleanroom.md) | ✅ Two confirmed blind validations (Powell, Musk-Altman partial). |
+| 2 | **Envisioner** | Use the Engine to design strategy given a wish-shape (current state → wished-for state). Mirror Validation operates as the auditor instance against the Envisioner's output. *The user's description: "the more interesting one but requires more priming with the mere thing in the secondary notebook as an auditor and all that."* | [Genie Protocol](experiments/pathways/genie_protocol.md) (with [Offensive Architect](experiments/pathways/offensive_architect.md) as a stance variant) + [Mirror Validation](experiments/pathways/mirror_validation.md) | 🟡 Genie demonstrated (Giant-Slayer); Mirror Validation specified but not stood up. |
+| 3 | **Methodology** | The deep look at what the framework actually is, including conflicts and limits. Pattern attractor question, locus-of-intelligence question, reproducibility question. *Could yield a home-brewed runtime if NotebookLM turns out to be the wrong substrate.* | [`experiments/methodology_questions.md`](experiments/methodology_questions.md) | 🟡 Logged, pinned, not actively pursued. |
+| 4 | **Pluggable** | The integration layer. Ganymede as a private analysis module other projects can call. *PrisonBreak is the first concrete validation case.* | [`integration/`](integration/) | 🟡 Design proposed; not yet built. |
 
-The meta-methodology underlying all four is the **Iterative Engine Vision** ([`concepts/Iterative_Engine_Vision.md`](concepts/Iterative_Engine_Vision.md)): the Engine is a piston, not a one-shot oracle. Single-pass output is idealistic; multi-stroke firing with human or contrast-notebook friction injection between strokes is what produces strategy that survives reality.
+The meta-methodology underlying silos 1 and 2 is the **Iterative Engine Vision** ([`concepts/Iterative_Engine_Vision.md`](concepts/Iterative_Engine_Vision.md)): the Engine is a piston, not a one-shot oracle. Single-pass output is idealistic; multi-stroke firing with human or contrast-notebook friction injection between strokes is what produces strategy that survives reality.
+
+> Note on terminology: "pathway" and "silo" are not synonyms. A *silo* is one of these four research areas. A *pathway* is one technique used inside a silo. The Genie Protocol pathway lives inside the Envisioner silo; the Mirror Validation pathway also lives there as the auditor. Brainstorming items (autonomous-scouting Genie, "9D Assassin" scenarios, etc.) are sub-items inside whichever silo they belong to, never their own silo.
 
 ## State of build
 

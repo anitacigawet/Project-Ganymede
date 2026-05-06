@@ -63,9 +63,11 @@ Genie's Phase 2 output (Strategic Lasso + Incomprehensible Move) is structurally
 
 In practice the Genie often *implicitly* designs an offensive funnel against the obstacle. The Giant-Slayer run is the clearest case: the path to "50% market share + premium acquisition" runs straight through hollowing out the incumbent. The user's Genie reframing is what makes this a tool for *one's own goals* rather than abstract strategic warfare.
 
-## Variant: Autonomous Scouting (next iteration of this pathway)
+## Variant: Autonomous Scouting (brainstorming-tier, not committed work)
 
-The user's stated next direction for this pathway is to push the Engine toward more *autonomous* chessboard mapping. The current Genie pattern is:
+> ⚠️ **Status note.** The user's later clarification was: *"the autonomous scouting genie code … you have to understand that that's not an actual thing; that's just one of those experiment brainstorming things."* This section is preserved as a thought experiment — it is *not* a roadmap item. Building this would be a sizable code project on top of the existing orchestrator (scouting loop, runaway cap, etc.) and the user has not authorized that build. Treat this section the same way you'd treat the brainstorming/ folder: an idea worth recording, not a commitment to implement.
+
+The user's stated direction for this *as a thought experiment* was to push the Engine toward more *autonomous* chessboard mapping. The current Genie pattern is:
 
 1. User states (current_state, wished_for_state).
 2. Engine produces a fixed Architectural Blueprint listing N specific Truth Packets it needs.
