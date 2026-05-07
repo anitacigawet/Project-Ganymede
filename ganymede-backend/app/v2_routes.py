@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.contracts import (
@@ -34,6 +34,7 @@ from app.contracts import (
     Pathway,
     Scenario,
     SessionEvent,
+    SessionEventType,
     StrokeResult,
     TruthPacket,
 )
@@ -302,10 +303,78 @@ async def complete_session(session_id: str) -> CompleteResponse:
 async def get_events(session_id: str) -> EventsResponse:
     """Get all events emitted on the session so far, in chronological order.
 
-    Phase 4 will add a WebSocket variant that pushes new events as they're
-    emitted, eliminating the need to poll. For Phase 3, polling works
-    fine — every events response includes the cumulative timeline, so a
-    consumer can dedupe by ``emitted_at``.
+    For polling-style consumers. Real-time push is at the WS endpoint
+    below — preferred for UI consumers that want stroke-by-stroke
+    rendering as the work happens.
     """
     session = _require_session(session_id)
     return EventsResponse(session_id=session.id, events=session.events)
+
+
+# ---------------------------------------------------------------------------
+# WebSocket event stream
+#
+# Real-time push of SessionEvents to a connected consumer. The connection
+# starts by replaying every event the session has emitted so far (so the
+# consumer's UI can render the full timeline up to "now"), then streams
+# every subsequent event as it's emitted, and closes cleanly on the first
+# terminal event (SESSION_COMPLETE or ERROR).
+# ---------------------------------------------------------------------------
+
+# WebSocket close codes used here:
+#   1000  Normal closure (terminal event reached)
+#   1008  Policy violation (session not found)
+_WS_NORMAL = 1000
+_WS_NOT_FOUND = 1008
+
+
+@router.websocket("/sessions/{session_id}/events/stream")
+async def stream_events(websocket: WebSocket, session_id: str) -> None:
+    """Real-time SessionEvent stream for one Session.
+
+    Wire format: each message is a JSON object matching the
+    :class:`SessionEvent` schema (``type``, ``stroke_number``,
+    ``payload``, ``emitted_at``). The server closes the connection
+    after sending the terminal event (SESSION_COMPLETE or ERROR).
+
+    If the consumer disconnects mid-stream, the server's subscriber is
+    cleaned up automatically (no leak).
+    """
+    session = registry().get(session_id)
+    if session is None:
+        # Accept then close with a policy code so the client gets a
+        # structured signal rather than an opaque connection failure.
+        await websocket.accept()
+        await websocket.close(code=_WS_NOT_FOUND, reason="session not found")
+        return
+
+    await websocket.accept()
+    queue = await session.subscribe()
+    try:
+        while True:
+            event = await queue.get()
+            await websocket.send_json(event.model_dump(mode="json"))
+            if event.type in (
+                SessionEventType.SESSION_COMPLETE,
+                SessionEventType.ERROR,
+            ):
+                # Drain any remaining events the emitter may have queued
+                # immediately after the terminal one (defensive — there
+                # shouldn't be any, but a misbehaving emitter shouldn't
+                # leave us stuck).
+                while not queue.empty():
+                    extra = queue.get_nowait()
+                    await websocket.send_json(extra.model_dump(mode="json"))
+                break
+    except WebSocketDisconnect:
+        # Consumer dropped; nothing to send.
+        pass
+    finally:
+        await session.unsubscribe(queue)
+        try:
+            await websocket.close(code=_WS_NORMAL)
+        except Exception:
+            # If the socket is already closed (consumer disconnected, or
+            # we sent a terminal event and the client closed first),
+            # close() may raise. Safe to ignore.
+            pass

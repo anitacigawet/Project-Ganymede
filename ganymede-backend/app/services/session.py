@@ -85,6 +85,12 @@ class Session:
         # they return snapshots.
         self._lock = asyncio.Lock()
 
+        # Subscriber queues for live event streaming (WebSocket consumers
+        # added in Phase 4). Each subscriber receives every event the
+        # session emits, including the SESSION_CREATED below since
+        # subscribe() drains history first.
+        self._subscribers: list[asyncio.Queue[SessionEvent]] = []
+
         # Emit the create event synchronously at construction time. We
         # deliberately don't await here — the constructor is sync.
         self._events.append(
@@ -103,29 +109,50 @@ class Session:
 
     # --------------------------------------------------------------- mutators
 
+    def _emit_locked(
+        self,
+        event_type: SessionEventType,
+        payload: Optional[dict[str, Any]] = None,
+        stroke_number: Optional[int] = None,
+    ) -> SessionEvent:
+        """Append an event + notify subscribers, assuming the lock is already held.
+
+        Internal helper. Public callers use :meth:`emit`. Other Session
+        methods (:meth:`complete`, :meth:`fail`) use this when they're
+        already inside ``async with self._lock`` to avoid deadlocking on
+        re-acquisition.
+        """
+        event = SessionEvent(
+            type=event_type,
+            stroke_number=stroke_number,
+            payload=payload or {},
+            emitted_at=utcnow(),
+        )
+        self._events.append(event)
+        logger.debug(
+            "Session %s emit %s (stroke=%s)",
+            self.id, event_type.value, stroke_number,
+        )
+        # Notify live subscribers. ``put_nowait`` because subscriber
+        # queues are unbounded; if a subscriber's loop is too slow to
+        # drain, that's a subscriber-side bug, not something the
+        # emitter should block on.
+        for q in self._subscribers:
+            q.put_nowait(event)
+        return event
+
     async def emit(
         self,
         event_type: SessionEventType,
         payload: Optional[dict[str, Any]] = None,
         stroke_number: Optional[int] = None,
     ) -> SessionEvent:
-        """Append a new event to the session timeline.
+        """Append a new event to the session timeline and notify subscribers.
 
         Returns the appended event so callers can log it or correlate.
         """
         async with self._lock:
-            event = SessionEvent(
-                type=event_type,
-                stroke_number=stroke_number,
-                payload=payload or {},
-                emitted_at=utcnow(),
-            )
-            self._events.append(event)
-            logger.debug(
-                "Session %s emit %s (stroke=%s)",
-                self.id, event_type.value, stroke_number,
-            )
-            return event
+            return self._emit_locked(event_type, payload, stroke_number)
 
     async def record_stroke(self, stroke: StrokeResult) -> None:
         """Record a completed StrokeResult on the session.
@@ -171,13 +198,10 @@ class Session:
             )
             self.status = "complete"
             self.completed_at = now
-            self._events.append(
-                SessionEvent(
-                    type=SessionEventType.SESSION_COMPLETE,
-                    stroke_number=None,
-                    payload={"final_text_len": len(final_text)},
-                    emitted_at=now,
-                )
+            self._emit_locked(
+                SessionEventType.SESSION_COMPLETE,
+                payload={"final_text_len": len(final_text)},
+                stroke_number=None,
             )
             return self._final
 
@@ -189,13 +213,10 @@ class Session:
             self.status = "error"
             self.error_message = message
             self.completed_at = utcnow()
-            self._events.append(
-                SessionEvent(
-                    type=SessionEventType.ERROR,
-                    stroke_number=None,
-                    payload={"message": message, "exc_type": exc_type},
-                    emitted_at=self.completed_at,
-                )
+            self._emit_locked(
+                SessionEventType.ERROR,
+                payload={"message": message, "exc_type": exc_type},
+                stroke_number=None,
             )
 
     # ---------------------------------------------------------------- readers
@@ -204,6 +225,44 @@ class Session:
     def events(self) -> list[SessionEvent]:
         """Snapshot of events emitted so far. Returns a copy."""
         return list(self._events)
+
+    # -------------------------------------------------- subscriber lifecycle
+
+    async def subscribe(self) -> asyncio.Queue[SessionEvent]:
+        """Register a new event subscriber and return its queue.
+
+        The queue is pre-populated with all events the session has emitted
+        so far (chronological order), then receives every subsequent
+        event in real time as it's emitted.
+
+        The caller is responsible for invoking :meth:`unsubscribe` when
+        done — typically in a ``finally`` block of a WebSocket handler.
+        Never abandon a subscriber; an abandoned subscriber accumulates
+        events indefinitely and leaks memory.
+        """
+        q: asyncio.Queue[SessionEvent] = asyncio.Queue()
+        async with self._lock:
+            for event in self._events:
+                q.put_nowait(event)
+            self._subscribers.append(q)
+        logger.debug("Session %s: subscriber registered (now %d active)",
+                     self.id, len(self._subscribers))
+        return q
+
+    async def unsubscribe(self, q: asyncio.Queue[SessionEvent]) -> None:
+        """Remove a previously-registered subscriber. Idempotent."""
+        async with self._lock:
+            try:
+                self._subscribers.remove(q)
+                logger.debug("Session %s: subscriber removed (now %d active)",
+                             self.id, len(self._subscribers))
+            except ValueError:
+                pass  # already removed
+
+    @property
+    def subscriber_count(self) -> int:
+        """How many live subscribers are currently attached. For ops/tests."""
+        return len(self._subscribers)
 
     @property
     def strokes(self) -> list[StrokeResult]:
