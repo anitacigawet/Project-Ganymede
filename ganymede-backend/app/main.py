@@ -14,9 +14,11 @@ See:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.services.notebooklm_service import NotebookLMService
@@ -29,12 +31,43 @@ app = FastAPI(
     title="Project Ganymede Backend",
     description=(
         "Universal Logic Loop primitives over the 9D Chess Engine and the "
-        "PKI Authentication Oracle swarm. See the docs/ tree for protocol."
+        "PKI Authentication Oracle swarm. The /api/v2/* surface is the "
+        "module contract for external consumers (PrisonBreak, etc.); the "
+        "/api/* primitive endpoints are operator-facing. See the docs/ tree."
     ),
+)
+
+# CORS — by default permits localhost origins on common dev ports so a
+# consuming project (e.g. PrisonBreak on :3000 or :3001) can call the
+# Ganymede backend on :8000 without browser-side CORS errors during local
+# integration. Override by setting GANYMEDE_CORS_ORIGINS as a
+# comma-separated list (e.g. "https://my-prod-consumer.example.com").
+_DEFAULT_CORS = (
+    "http://localhost:3000,http://localhost:3001,http://localhost:3007,"
+    "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3007"
+)
+_cors_origins = [
+    o.strip()
+    for o in os.getenv("GANYMEDE_CORS_ORIGINS", _DEFAULT_CORS).split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 notebooklm_svc = NotebookLMService()
 orchestrator = GanymedeOrchestrator(notebooklm_svc)
+
+# Wire the v2 module routes (session-aware HTTP API for external consumers).
+# Imported here (not at module top) to avoid a circular import — v2_routes
+# imports ``orchestrator`` from this module.
+from app.v2_routes import router as v2_router  # noqa: E402
+
+app.include_router(v2_router)
 
 
 # ---------------------------------------------------------------------------
