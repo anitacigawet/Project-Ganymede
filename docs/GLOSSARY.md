@@ -4,6 +4,11 @@ The vocabulary of the project, in one place. Several terms have been refined thr
 
 ---
 
+### Project Ganymede (the sandbox)
+A simulation sandbox for running real scenarios through the 9D strategic-physics framework. Named for Jupiter's largest moon. The name encodes the project's shape: a self-contained body (the sandbox) with its own gravitational center (the **9D Chess Engine**), holding ephemeral knowledge silos (the **PKI Oracles**) in orbit. Outside consumers dock with the sandbox via the [pluggable module surface](integration/module_design.md); inside, the sandbox is closed-loop and gated. *Not* a "physics engine" in the LLM-product sense (we tried that framing — it was misleading); *not* a "laboratory" (too generic). It's a sandbox: bounded, simulated, with internal physics that the consumer doesn't have to understand to use.
+
+> **Naming note.** The 9D-Chess foundation upstream is its own thing with its own framing — not affected by this terminology choice. "Sandbox" is exclusively a Project-Ganymede description.
+
 ### 9D Chess Engine (the Umpire)
 A specific NotebookLM treated as the project's strategic logic core. Read-only. Queried via `NotebookLMService.query_chess_engine`. Configuration applied via `configure_chess_engine`. Currently `0a7d2672-009e-4995-9477-68c9b2fd9e54` (canonical). Earlier validated runs (Powell, Tokenized Land, Genie Giant-Slayer, Musk-Altman) used `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`, preserved as `LEGACY_ENGINE_ID` for traceability.
 

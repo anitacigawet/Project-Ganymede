@@ -2,7 +2,17 @@
 
 ## What this is
 
-Project Ganymede is a working laboratory for running real scenarios through a 9-dimensional strategic-physics framework, end-to-end. The 9D Chess Engine (a single hard-coded NotebookLM) is treated as a closed strategic-physics engine; ephemeral PKI Authentication Oracle notebooks act as research extenders that feed the Engine authenticated, hash-cited Truth Packets; the Engine then resolves scenarios via the Convergence Theorem.
+Project Ganymede is a **simulation sandbox** for running real scenarios through the 9D strategic-physics framework, end-to-end.
+
+The name is the metaphor: **Ganymede is Jupiter's largest moon — a self-contained body with its own internal structure (a metallic core, a saltwater ocean, a magnetic field) inside the gravitational well of a much larger system.** This project mirrors that shape:
+
+- The **9D Chess Engine** is the gravitational center — a single hard-coded NotebookLM that holds the strategic-physics framework as its source corpus and runs the Convergence Theorem against any scenario sent into the sandbox.
+- **PKI Authentication Oracle notebooks** orbit as knowledge silos — ephemeral, persona-locked NotebookLMs spun up per research subject, each producing hash-cited Truth Packets that feed back into the Engine's gravitational well.
+- The **Mirror Auditor** is a second 9D-Chess instance carrying the same source corpus but a fault-finder persona — used in the [Mirror Validation pathway](experiments/pathways/mirror_validation.md) to stress-test the Engine's output against rigidity errors.
+- The **GSS visualization layer** renders the resulting strategic landscape in 3D, when the consumer wants a visual frame on the resolution.
+- The **Pluggable module surface** lets external projects dock with the sandbox — supplying their own pre-harvested Truth Packets and receiving structured resolutions, without ever needing to understand the orbital mechanics underneath.
+
+The sandbox is closed-loop. Everything inside it talks only through explicit, gated entry points. Nothing leaks; nothing leaks in.
 
 ```
    user scenario (Dream-State framed)

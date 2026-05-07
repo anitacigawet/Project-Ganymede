@@ -1,6 +1,8 @@
 # Project Ganymede
 
-A working laboratory for running real scenarios through a 9-dimensional strategic-physics framework. The 9D Chess Engine (a single hard-coded NotebookLM treated as a closed strategic-physics engine) is fed authenticated, hash-cited Truth Packets harvested by ephemeral PKI Authentication Oracle notebooks, and resolves scenarios via the Convergence Theorem. An optional GSS visualization layer renders selected resolutions as a warping 3D topology.
+A **simulation sandbox** for running real scenarios through the 9D strategic-physics framework. Named for Jupiter's largest moon — a self-contained body with its own gravitational field. The project mirrors that shape: the **9D Chess Engine** sits at the gravitational center, ephemeral **PKI Authentication Oracle** notebooks orbit as knowledge silos in the sandbox, and an optional **GSS visualization layer** renders the resulting strategic landscape in 3D.
+
+The Engine is fed authenticated, hash-cited Truth Packets — either harvested by Oracles inside the sandbox or supplied pre-harvested by an external consumer — and resolves scenarios via the Convergence Theorem. The sandbox is closed-loop: nothing inside it talks to the outside world except through explicit, gated entry points.
 
 The project is composed of two halves:
 
