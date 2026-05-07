@@ -1,0 +1,583 @@
+# Consuming the Ganymede v2 API
+
+This is the doc to read first if you're building a consumer that wants to use Ganymede's strategic-analysis engine. It assumes no prior knowledge of the project's research framework — concepts are introduced inline. After reading, you should be able to write a working consumer in any language that can speak HTTP and JSON.
+
+If you're new to the project itself (rather than just the API), [`OVERVIEW.md`](../OVERVIEW.md) explains the broader research goal first; this doc is strictly the integration surface.
+
+## TL;DR
+
+- Ganymede runs as an HTTP service (FastAPI). Default URL: `http://127.0.0.1:8000`.
+- The API is **session-based**: you create a session, drive one or more "strokes" against it, and finalize.
+- A *stroke* is one Engine invocation. Single-pass = one stroke; iterative = three strokes (synthesis → audit → re-synthesis).
+- Inputs: a *Scenario* (what to reason about) + *Truth Packets* (your already-harvested research findings, source-cited).
+- Outputs: structured *StrokeResults* with the canonical strategic shapes (Strategic Lasso, Incomprehensible Move, Final Resolution).
+- Real-time progress is available over WebSocket; polling also works.
+- Cooldown discipline is built in. You don't manage rate limits — the backend does.
+
+```
+Consumer                                Ganymede
+   │                                       │
+   │  POST /api/v2/sessions                │
+   │     (scenario, pathway, iterative?)   │
+   │ ────────────────────────────────────► │
+   │                                       │
+   │ ◄──────── { session_id, state } ───── │
+   │                                       │
+   │  POST /api/v2/sessions/{id}/iterate   │
+   │     (truth_packets[])                 │
+   │ ────────────────────────────────────► │
+   │  WS  /api/v2/sessions/{id}/events     │
+   │ ────────────────────────────────────► │
+   │ ◄──── stroke_started, stroke_started, │
+   │       synthesis_complete, ...         │
+   │                                       │
+   │ ◄──────── { strokes[], state } ────── │
+   │                                       │
+   │  POST /api/v2/sessions/{id}/complete  │
+   │ ────────────────────────────────────► │
+   │ ◄──── { final_resolution } ────────── │
+```
+
+## Concepts
+
+### What Ganymede is, mechanically
+
+Two things, glued together:
+
+1. **A persona-locked NotebookLM** (the "9D Chess Engine") — a notebook configured with a fixed strategic-physics persona and a curated source corpus. Querying it returns reasoning expressed in the project's strategic vocabulary (Strategic Lasso, Incomprehensible Move, etc).
+2. **A second persona-locked NotebookLM** (the "Mirror Auditor") — same source corpus, but configured for fault-finding rather than synthesis. It enumerates rigidity errors, pattern-matching, confidence-evidence gaps, and dimensional greeds in a piece of analysis.
+
+Ganymede's API is a session-based HTTP wrapper around these two notebooks. It manages cooldowns, threading, multi-stroke orchestration, and event emission so consumers don't have to.
+
+You don't talk to NotebookLM directly. You hand Ganymede a Scenario + Truth Packets and Ganymede drives the notebook calls.
+
+### Pathways
+
+Every session picks one *pathway* at creation time. The pathway determines which prompt template wraps your scenario before it hits the Engine.
+
+| Pathway | Use when | Scenario fields | Engine output shape |
+| --- | --- | --- | --- |
+| `cleanroom` | You have a falsifiable question with a known resolution date ("will X happen by Y") | `question` | Probability + reasoning, with Strategic Lasso and Incomprehensible Move |
+| `genie` | You have a current state and a wished-for state, and you want a path between them | `current_state`, `wished_for_state` | Inadvertent Path: a strategic move sequence with Lasso + Incomprehensible Move |
+| `offensive` | Architect-stance variant of Genie. You're designing a strategic funnel against a target | `target`, `objective_state` | Same shape as Genie, with the framing flipped |
+| `mirror_audit` | You have a piece of analysis (typically Stroke 1 from another session) and want it stress-tested for faults | `prior_resolution` | Audit findings: rigidity / pattern-matching / confidence-evidence-gaps / dimensional-greeds |
+
+Most consumers want `cleanroom` or `genie`. `mirror_audit` is normally driven internally by the Iterative Engine (Stroke 2) rather than called directly.
+
+The four pathways share the same code path under the hood — only the prompt framing differs. There's no engine-level distinction; pathway choice is a prompt selector.
+
+### Truth Packets
+
+A *Truth Packet* is a research finding the consumer wants the Engine to reason over. It has three fields:
+
+```json
+{
+  "subject": "Eyewitness Misidentification (severity 4)",
+  "content": "Witness identification varies between police statement and trial testimony. Trial transcript p.42 line 11 vs. police report 2024-03-12 §3. Brady v. Maryland may apply.",
+  "source_label": "PrisonBreak case 7c91a3, error #14"
+}
+```
+
+- **`subject`** — short label. Rendered as a header in the synthesis prompt.
+- **`content`** — the body of the finding. The orchestrator never modifies this text (Zero-Degradation rule). Hash-citing facts in your content is encouraged but not enforced — the Engine's reasoning quality scales with the source-grounding of your packets.
+- **`source_label`** — human-readable provenance. Not sent to the Engine; for your own audit trail.
+
+Truth Packets are the consumer's job. Ganymede does **not** harvest them for you in v1 — see ["What's not in v1"](#whats-not-in-v1) below for why and what's planned. If your project has a closed-RAG layer (NotebookLM, vector search, document-grounded chat, anything that produces source-cited findings), use it to produce the packets and ship them to Ganymede.
+
+### Sessions and strokes
+
+A *session* is one in-progress experimental run. It holds:
+
+- The scenario you're reasoning about
+- The chosen pathway
+- A sequential list of *strokes* (one per Engine invocation)
+- An event timeline (creation, stroke starts/completes, terminal events)
+- Subscriber queues for live event streaming
+- A final resolution once completed
+
+A *stroke* is one Engine call. Most consumer flows are either:
+
+- **Single-pass** — one synthesis stroke. Fast (minutes, mostly cooldown). Cheaper. Good for "first look."
+- **Iterative** — three strokes:
+  - Stroke 1: synthesis on your truth packets
+  - Stroke 2: Mirror Auditor critique of Stroke 1
+  - Stroke 3: re-synthesis with the audit findings injected as friction
+  - Slower (3× the cooldowns + 3× the Engine response time), but produces decision-grade output. The Stroke 1 result is plausible-sounding but operationally fragile; Stroke 3 is what survived a stress test.
+
+Once a session is created with `iterative: true, max_strokes: 3`, you drive the loop with one call to `/iterate` and Ganymede orchestrates all three strokes. You don't have to call audit and re-synthesize separately (though you can — the API exposes those primitives too).
+
+### Final Resolution
+
+When you `POST /complete` on a session, Ganymede returns a `FinalResolution`:
+
+```json
+{
+  "session_id": "...",
+  "pathway": "genie",
+  "iterative": true,
+  "strokes": [ /* StrokeResult[] — ordered Stroke 1, 2, 3 */ ],
+  "final_text": "<the canonical answer text>",
+  "started_at": "2026-05-06T18:00:00Z",
+  "completed_at": "2026-05-06T18:14:32Z",
+  "total_engine_calls": 3
+}
+```
+
+`final_text` is a convenience: for iterative runs it's the Stroke 3 final resolution; for single-pass runs it's the only stroke's resolution. `strokes` carries the full per-stroke history including audit findings if Stroke 2 ran.
+
+`/complete` is idempotent. You can call it multiple times and get the same FinalResolution.
+
+## Lifecycle of a typical run
+
+```
+1. CREATE     POST /api/v2/sessions
+              Body: { scenario, pathway, iterative, max_strokes }
+              → 201 { session_id, state }
+
+2. SUBSCRIBE  WS /api/v2/sessions/{id}/events/stream
+              (optional — for live progress; you can also poll /events)
+              ← session_created event replayed immediately, then live events
+
+3. DRIVE      POST /api/v2/sessions/{id}/synthesize     (single-pass)
+              OR
+              POST /api/v2/sessions/{id}/iterate         (iterative)
+              Body: { truth_packets, [framing] }
+              → 200 { stroke } | { strokes }
+              (blocks for the duration of the engine call(s);
+               WS subscribers see stroke events as they fire)
+
+4. FINALIZE   POST /api/v2/sessions/{id}/complete
+              → 200 { final_resolution, state }
+
+5. (optional) GET /api/v2/sessions/{id}/events
+              → all events ever emitted on the session, chronological
+```
+
+The HTTP calls are blocking — `/iterate` returns when all three strokes are done. For UI-style consumers that want stroke-by-stroke progress as it happens, run `/iterate` in a background task while a separate task forwards events from the WebSocket to your frontend.
+
+## API reference
+
+All endpoints are under `/api/v2/`. Default base URL: `http://127.0.0.1:8000`.
+
+### `GET /api/v2/health`
+
+Liveness check + cooldown stats + active session count. Hit this before kicking off a multi-stroke run to confirm the gate isn't already saturated.
+
+```json
+{
+  "status": "healthy",
+  "cooldown": {
+    "calls_last_hour": 4,
+    "calls_last_24h": 17,
+    "hourly_cap": 20,
+    "daily_cap": 100,
+    "api_cooldown_sec": 8.0,
+    "session_cooldown_sec": 60.0
+  },
+  "active_sessions": 1
+}
+```
+
+### `POST /api/v2/sessions`
+
+Create a session. Returns 201 on success.
+
+Request:
+```json
+{
+  "scenario": {
+    "current_state": "...",
+    "wished_for_state": "...",
+    "dream_state": true,
+    "extra_context": null
+  },
+  "pathway": "genie",
+  "iterative": true,
+  "max_strokes": 3
+}
+```
+
+Response:
+```json
+{
+  "session_id": "8194413e-...",
+  "state": {
+    "session_id": "8194413e-...",
+    "status": "running",
+    "pathway": "genie",
+    "iterative": true,
+    "max_strokes": 3,
+    "strokes_so_far": 0,
+    "error_message": null,
+    "has_final_resolution": false
+  }
+}
+```
+
+Errors:
+- `422` — scenario doesn't satisfy the chosen pathway's contract (e.g. genie pathway with no `current_state`/`wished_for_state`).
+- `422` — `iterative=true` with `max_strokes < 2`.
+
+### `GET /api/v2/sessions/{id}`
+
+Get the session's current state. Returns 404 if not found.
+
+### `POST /api/v2/sessions/{id}/synthesize`
+
+Run one synthesis stroke. The session's strokes list grows by 1.
+
+Request:
+```json
+{
+  "truth_packets": [ /* TruthPacket[] — at least 1 required */ ],
+  "framing": null
+}
+```
+
+`framing` is an optional string that fully replaces the synthesis prompt template for this call. Most consumers leave it null and use the pathway's default. Only override if you've reviewed `app/services/orchestrator.py:SYNTHESIS_TEMPLATE` and have a specific reason.
+
+Response:
+```json
+{
+  "stroke": { /* StrokeResult */ },
+  "state": { /* updated SessionStateResponse */ }
+}
+```
+
+Errors:
+- `404` — session not found
+- `409` — session is not in `running` state (already completed or errored)
+- `422` — pathway/contract mismatch, e.g. trying to synthesize on a `mirror_audit` pathway session
+- `500` — orchestrator failure (session is also transitioned to `error` state internally)
+
+### `POST /api/v2/sessions/{id}/iterate`
+
+Drive the full Iterative Engine multi-stroke loop in one HTTP call. Convenience over making N separate `/synthesize` and `/audit` calls. The session must have been created with `iterative: true`.
+
+Request:
+```json
+{
+  "truth_packets": [ /* TruthPacket[] */ ],
+  "max_strokes": null
+}
+```
+
+`max_strokes` defaults to the session's own max_strokes. Pass a smaller value (e.g. 2) to stop after the audit stroke without re-synthesis.
+
+Response:
+```json
+{
+  "strokes": [ /* StrokeResult[] — ordered, length = max_strokes */ ],
+  "state": { /* updated SessionStateResponse */ }
+}
+```
+
+The HTTP call blocks for the full loop duration (potentially several minutes). Stroke events fire on the session as each stroke completes — WS subscribers see them in real time.
+
+Errors:
+- `404` — session not found
+- `409` — session not running
+- `422` — non-iterative session, or `max_strokes` out of range
+
+### `POST /api/v2/sessions/{id}/complete`
+
+Finalize the session. Returns the FinalResolution. Idempotent.
+
+Errors:
+- `404` — session not found
+- `409` — session has no strokes, or session is in error state
+
+### `GET /api/v2/sessions/{id}/events`
+
+All events emitted on the session so far, chronological. For polling-style consumers; prefer the WS variant for real-time push.
+
+```json
+{
+  "session_id": "...",
+  "events": [
+    {
+      "type": "session_created",
+      "stroke_number": null,
+      "payload": { "session_id": "...", "pathway": "genie", "iterative": true, "max_strokes": 3 },
+      "emitted_at": "2026-05-06T18:00:00Z"
+    },
+    {
+      "type": "stroke_started",
+      "stroke_number": 1,
+      "payload": { "pathway": "genie" },
+      "emitted_at": "2026-05-06T18:00:01Z"
+    },
+    /* ... */
+  ]
+}
+```
+
+### `WS /api/v2/sessions/{id}/events/stream`
+
+Real-time event stream. On connect, all past events are replayed immediately (so a late subscriber sees the full timeline up to "now"); subsequent events stream live.
+
+Each message is a JSON-serialized `SessionEvent`. The server closes the connection cleanly after sending a terminal event (`session_complete` or `error`).
+
+Close codes:
+- `1000` — normal (terminal event reached or consumer disconnected)
+- `1008` — policy violation (session not found)
+
+The full set of event types:
+
+| Type | When it fires | Payload |
+| --- | --- | --- |
+| `session_created` | At session construction | session_id, pathway, iterative, max_strokes |
+| `stroke_started` | Before each stroke begins | pathway |
+| `synthesis_complete` | After each synthesis call returns | the StrokeResult |
+| `stroke_completed` | After each stroke is recorded | stroke_number, type |
+| `session_complete` | Terminal — session.complete() called | final_text_len |
+| `error` | Terminal — session.fail() called | message, exc_type |
+| `oracle_request` | Reserved for future Oracle-creation flow (not emitted in v1) | subject, surgical_prompt |
+| `oracle_created`, `oracle_harvested`, `blueprint_ready` | Reserved for future Oracle flow | — |
+
+## Code examples
+
+### curl
+
+```bash
+# Create a session
+SESSION=$(curl -s -X POST http://127.0.0.1:8000/api/v2/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario": {
+      "current_state": "We are at point A.",
+      "wished_for_state": "Reach point B without alerting the gatekeeper."
+    },
+    "pathway": "genie",
+    "iterative": false,
+    "max_strokes": 1
+  }' | jq -r .session_id)
+echo "Session: $SESSION"
+
+# Synthesize one stroke
+curl -s -X POST "http://127.0.0.1:8000/api/v2/sessions/$SESSION/synthesize" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "truth_packets": [
+      {
+        "subject": "Gatekeeper schedule",
+        "content": "Gatekeeper rotates posts every 4 hours; current rotation began at 14:00.",
+        "source_label": "Field observation"
+      }
+    ]
+  }' | jq
+
+# Finalize
+curl -s -X POST "http://127.0.0.1:8000/api/v2/sessions/$SESSION/complete" | jq
+```
+
+### Python (synchronous, with `httpx` or `requests`)
+
+```python
+import httpx
+
+BASE = "http://127.0.0.1:8000"
+
+def run_single_pass(scenario: dict, packets: list[dict]) -> dict:
+    with httpx.Client(base_url=BASE, timeout=600.0) as client:
+        # Create
+        r = client.post("/api/v2/sessions", json={
+            "scenario": scenario,
+            "pathway": "genie",
+            "iterative": False,
+            "max_strokes": 1,
+        })
+        r.raise_for_status()
+        sid = r.json()["session_id"]
+
+        # Synthesize
+        r = client.post(f"/api/v2/sessions/{sid}/synthesize",
+                        json={"truth_packets": packets})
+        r.raise_for_status()
+        stroke = r.json()["stroke"]
+
+        # Complete
+        r = client.post(f"/api/v2/sessions/{sid}/complete")
+        r.raise_for_status()
+        return r.json()["final_resolution"]
+
+
+resolution = run_single_pass(
+    scenario={
+        "current_state": "We are at point A.",
+        "wished_for_state": "Reach point B without alerting the gatekeeper.",
+    },
+    packets=[
+        {"subject": "Gatekeeper schedule",
+         "content": "Gatekeeper rotates posts every 4 hours; current rotation began at 14:00.",
+         "source_label": "Field observation"},
+    ],
+)
+print(resolution["final_text"])
+```
+
+### Python (async, with WebSocket event streaming)
+
+```python
+import asyncio
+import json
+import httpx
+import websockets
+
+BASE = "http://127.0.0.1:8000"
+WS_BASE = "ws://127.0.0.1:8000"
+
+async def run_iterative_with_progress(scenario, packets, on_event):
+    async with httpx.AsyncClient(base_url=BASE, timeout=900.0) as client:
+        # Create iterative session
+        r = await client.post("/api/v2/sessions", json={
+            "scenario": scenario,
+            "pathway": "genie",
+            "iterative": True,
+            "max_strokes": 3,
+        })
+        r.raise_for_status()
+        sid = r.json()["session_id"]
+
+        # Subscribe via WS while /iterate runs in parallel
+        async def stream_events():
+            async with websockets.connect(f"{WS_BASE}/api/v2/sessions/{sid}/events/stream") as ws:
+                async for msg in ws:
+                    event = json.loads(msg)
+                    on_event(event)
+                    if event["type"] in ("session_complete", "error"):
+                        break
+
+        async def drive_iterate():
+            r = await client.post(
+                f"/api/v2/sessions/{sid}/iterate",
+                json={"truth_packets": packets},
+            )
+            r.raise_for_status()
+            return r.json()["strokes"]
+
+        _, strokes = await asyncio.gather(stream_events(), drive_iterate())
+
+        # Finalize
+        r = await client.post(f"/api/v2/sessions/{sid}/complete")
+        r.raise_for_status()
+        return r.json()["final_resolution"]
+
+
+def print_event(event):
+    print(f"  [{event['type']}] stroke={event.get('stroke_number')}")
+
+
+resolution = asyncio.run(run_iterative_with_progress(
+    scenario={
+        "current_state": "...",
+        "wished_for_state": "...",
+    },
+    packets=[ /* ... */ ],
+    on_event=print_event,
+))
+```
+
+### TypeScript (Node, fetch + ws)
+
+```typescript
+const BASE = "http://127.0.0.1:8000";
+
+async function runSinglePass(scenario: object, packets: object[]) {
+  // Create
+  const create = await fetch(`${BASE}/api/v2/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      scenario,
+      pathway: "genie",
+      iterative: false,
+      max_strokes: 1,
+    }),
+  }).then(r => r.json());
+  const sid = create.session_id;
+
+  // Synthesize
+  await fetch(`${BASE}/api/v2/sessions/${sid}/synthesize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ truth_packets: packets }),
+  }).then(r => r.json());
+
+  // Complete
+  return fetch(`${BASE}/api/v2/sessions/${sid}/complete`, {
+    method: "POST",
+  }).then(r => r.json());
+}
+```
+
+For event streaming in TypeScript, see `examples/prisonbreak_consumer.md` — PrisonBreak's runner uses 2-second polling against `/events` instead of WS, which is simpler and avoids a websocket library dependency.
+
+## Operational guarantees
+
+### Cooldown discipline
+
+Ganymede enforces a hard 8-second floor between any two NotebookLM API calls (configurable via `GANYMEDE_NOTEBOOKLM_COOLDOWN`). This is non-negotiable — the unofficial NotebookLM API has invisible rate-limit triggers and the gate is what keeps the project's account un-flagged. See [`../protocols/Account_Safety.md`](../protocols/Account_Safety.md) for the full rationale.
+
+For consumers, this means:
+- **You don't manage rate limits.** The backend enforces them transparently.
+- **A 3-stroke iterative run takes at minimum ~24s of cooldown** (3 calls × 8s) on top of the actual NotebookLM response times. Don't expect sub-second responses.
+- **Hitting `/iterate` in a tight loop will block, not 429.** Each call waits its turn against the gate.
+- **Inter-session cooldowns** (60s by default) are advisory; consumers can call `/health` to see current cooldown stats and decide whether to defer a new run.
+
+### Session persistence (or lack of)
+
+Sessions are **in-memory** in v1. If the Ganymede backend restarts mid-session, all session state is lost. Consumers that need persistence should:
+
+- Persist their own `(consumer_session_id, ganymede_session_id)` mapping in their own DB
+- On Ganymede restart, treat any in-flight session as failed and start a fresh one
+- Frozen `FinalResolution` payloads should be persisted on the consumer side as soon as `/complete` returns
+
+This is deliberate. Persistence within Ganymede would create cross-consumer state that complicates multi-tenancy. Per [`module_design.md`](module_design.md), each consumer carries its own Ganymede instance OR shares the process and accepts in-memory ephemerality.
+
+### Concurrency
+
+A single Ganymede instance is single-tenant. The cooldown gate is process-global; multiple sessions running concurrently against the same backend will serialize at the NotebookLM call layer regardless. If a consumer needs more parallelism, run multiple Ganymede instances on separate ports (each with its own NotebookLM session — non-trivial; not the v1 supported shape).
+
+## What's not in v1
+
+These are deliberate non-goals for the current API surface, not bugs:
+
+- **Oracle creation through the API.** The PKI Oracle harvest path (where Ganymede spins up new persona-locked notebooks to research subjects on demand) exists in the orchestrator but is not exposed in v2. Consumers ship pre-harvested Truth Packets instead. This is the right answer for any consumer that already has its own grounded RAG layer (PrisonBreak, Polymarket-Validator, etc). When/if the Oracle approval gate gets a v2 surface, the event-stream types `oracle_request`, `oracle_created`, `oracle_harvested` are reserved for it.
+- **Persistence.** As noted above. Consumer-side problem.
+- **Authentication.** None. The backend listens on `127.0.0.1:8000` and trusts every caller. Don't bind to `0.0.0.0` without putting auth in front of it.
+- **Multi-tenancy.** Out of scope. One Ganymede instance, one NotebookLM session, one Engine notebook.
+- **Mirror Validation as a standalone pathway runnable through the API.** It's currently driven internally by `/iterate` (Stroke 2). If a consumer wants to audit a specific external piece of analysis (no preceding Stroke 1 from the same session), use the `mirror_audit` pathway with `prior_resolution` in the Scenario.
+
+## Where to look in the source
+
+If the doc above leaves a question unanswered, the source is the canonical reference:
+
+| Question | File |
+| --- | --- |
+| Exact request/response shapes | `ganymede-backend/app/v2_routes.py` |
+| The Pydantic v2 contracts | `ganymede-backend/app/contracts.py` |
+| What each pathway's prompt looks like | `ganymede-backend/app/services/orchestrator.py` (templates near the top) |
+| Cooldown gate implementation | `ganymede-backend/app/services/notebooklm_service.py` (`_CooldownGate`) |
+| Engine + Auditor personas | `docs/protocols/Engine_Persona.md`, `docs/protocols/Mirror_Auditor_Persona.md` |
+| The high-level architecture story | `docs/OVERVIEW.md` |
+
+## Examples
+
+Consumers built against this API:
+
+- [`examples/prisonbreak_consumer.md`](examples/prisonbreak_consumer.md) — PrisonBreak's case-grounded strategic-simulation integration (Genie pathway, errors-as-truth-packets, socket.io progress streaming). The first concrete consumer; useful as a reference for "how does this look in a real codebase."
+
+When more consumers exist, they'll be filed in `examples/`.
+
+## Mocked-mode for development
+
+If you're iterating on a consumer's UI or wiring and don't want to burn live NotebookLM quota, use `ganymede-backend/start_mocked.py` instead of plain `uvicorn`. It boots the same v2 API but monkey-patches `query_chess_engine` and `query_mirror_auditor` to return canned responses with simulated latency. Useful for end-to-end consumer testing without needing a working NotebookLM session.
+
+```powershell
+cd ganymede-backend
+.\venv_312\Scripts\activate
+python start_mocked.py
+```
+
+The mock returns plausible-shaped Stroke-1 / Stroke-2 / Stroke-3 outputs so iterative runs and event ordering work realistically.

@@ -1,205 +1,160 @@
-# Ganymede Module — Integration Design
+# Ganymede Module — Architecture & Design Decisions
 
-**Status:** Design proposal. Nothing built against this yet. Awaiting user review.
+**Status:** Built and shipped. The v2 API is live in `ganymede-backend/app/v2_routes.py`. PrisonBreak is the first concrete consumer (see [`examples/prisonbreak_consumer.md`](examples/prisonbreak_consumer.md)).
+
+This doc explains *why* the integration surface looks the way it does. If you're building a consumer, start with [`consuming_the_v2_api.md`](consuming_the_v2_api.md) — that's the hands-on guide. This doc is the architectural commentary.
+
+## The headline shape — open primitive, not opinionated wrapper
+
+Ganymede is designed as an **open primitive**, not a per-domain SDK. The v2 API exposes raw access to the strategic-physics framework: any consumer composes its own scenarios, picks its pathway, ships its own pre-harvested Truth Packets, and decides its own UI (or no UI).
+
+This is deliberate. Each consuming project knows its domain better than Ganymede possibly could. PrisonBreak knows what a "case" is and how to map case errors into Truth Packets; a Polymarket validator knows what a market's resolution criteria look like and how to harvest the underlying real-world question. Ganymede doesn't try to anticipate either. It hands the consumer a clean API and gets out of the way.
+
+```
+                     ┌─────────────────────────────┐
+                     │ 9D Chess Engine (NotebookLM)│
+                     │ Mirror Auditor   (NotebookLM)│
+                     └───────────────┬─────────────┘
+                                     │
+                            cooldown gate
+                                     │
+                     ┌───────────────▼─────────────┐
+                     │  GanymedeOrchestrator       │
+                     │  (Python, single instance)  │
+                     └───────────────┬─────────────┘
+                                     │
+                     ┌───────────────▼─────────────┐
+                     │  v2 API (FastAPI)           │
+                     │  /api/v2/sessions/...       │
+                     │  WS /events/stream          │
+                     └─────┬───────────────────┬───┘
+                           │                   │
+            ┌──────────────┘                   └────────────┐
+            │                                               │
+            ▼                                               ▼
+    PrisonBreak's                              Polymarket-Validator's
+    SimulatePanel                              market-runner CLI
+    (genie pathway,                            (cleanroom pathway,
+     case → packets,                            market → packets,
+     React UI)                                  no UI, scored runs)
+            ▲                                               ▲
+            │                                               │
+   each consumer owns its own scenario shape, packet construction, and presentation
+```
+
+Consumers can also optionally build *opinionated wrappers* on top of the open API for their own users — PrisonBreak ships one, where clicking "War-Game This Case" runs a fixed scenario with case errors mapped to packets. That's a preset built *on the open primitive*, not a replacement for it.
 
 ## What a consumer needs from Ganymede
 
-Any project that wants to use Ganymede as a strategic-analysis module needs to be able to:
+Every consumer, regardless of domain, needs the same set of capabilities:
 
-1. **Send a scenario.** Either a wish-shape (current_state, wished_for_state) or a question-shape ("will X happen", "what's the best move on Y") plus optional pre-existing context (documents, prior analysis findings, Truth Packets the consumer has already harvested itself).
-2. **Receive a session handle.** A reference the consumer can use to track the run, subscribe to updates, and approve oracle creations.
-3. **Receive structured progress.** Stroke-by-stroke output for Iterative Engine runs; per-Oracle harvest events; per-stroke synthesis results. Strongly typed, not free-text.
-4. **Approve every Oracle creation.** The runaway-prevention guardrail (every PKI Oracle creation requires explicit caller intent) means the consumer is in the loop on each new notebook. The module needs an approve/reject mechanism — likely a callback URL or a long-poll handle.
-5. **Receive a final structured resolution.** Strategic Lasso, Incomprehensible Move, Resolution text, plus per-stroke history if Iterative Engine was used. Citations preserved.
+1. **Send a scenario.** Any of the four scenario shapes (Cleanroom question, Genie current/wished, Offensive target/objective, Mirror Audit prior_resolution) plus optional pre-existing context.
+2. **Receive a session handle.** Track the run, subscribe to updates, drive strokes against it.
+3. **Receive structured progress.** Stroke-by-stroke output; per-stroke synthesis results. Strongly typed, not free-text.
+4. **Drive the strokes.** Single-pass synthesis or full Iterative Engine multi-stroke loop. Optionally drill into individual primitives (synthesize, audit) if needed.
+5. **Receive a final structured resolution.** Strategic Lasso, Incomprehensible Move, Resolution text, plus per-stroke history if Iterative Engine was used.
 
-## Two integration shapes (a consumer should be able to pick either)
+The v2 API maps cleanly to these:
 
-### Shape 1: HTTP API + WebSocket
+| Need | Endpoint |
+| --- | --- |
+| Send a scenario, get a session handle | `POST /api/v2/sessions` |
+| Receive structured progress | `GET /api/v2/sessions/{id}/events` (poll) or `WS /api/v2/sessions/{id}/events/stream` (push) |
+| Drive strokes (single-pass) | `POST /api/v2/sessions/{id}/synthesize` |
+| Drive strokes (full iterative loop) | `POST /api/v2/sessions/{id}/iterate` |
+| Receive a final structured resolution | `POST /api/v2/sessions/{id}/complete` |
 
-For consumers that aren't Python (TypeScript / Node / any other language). Already partially implemented in `ganymede-backend/app/main.py`; needs extension to support multi-stroke sessions.
+See [`consuming_the_v2_api.md`](consuming_the_v2_api.md) for the request/response shapes, code examples, and operational guarantees.
 
-```
-POST /api/sessions                  → start a run; returns { session_id }
-GET  /api/sessions/{id}             → poll status / fetch full state
-WS   /api/sessions/{id}/events      → stream stroke / oracle / harvest / synthesis events
-POST /api/sessions/{id}/approve     → approve a pending Oracle creation
-POST /api/sessions/{id}/reject      → reject a pending Oracle creation
-POST /api/sessions/{id}/inject      → (Iterative Engine) inject friction between strokes
-DELETE /api/sessions/{id}           → cancel an in-flight session
-```
+## Why HTTP, not direct Python import
 
-### Shape 2: Python library import
+Ganymede is Python (FastAPI + Pydantic v2 + the `notebooklm-py` wrapper). One reasonable design would have been to expose `GanymedeOrchestrator` as a Python library that consumers import directly. The v2 API was chosen instead, for three reasons:
 
-For Python consumers that want zero network hop. The same `GanymedeOrchestrator` class that backs the HTTP API, exposed as a public Python interface.
+1. **Most consumers aren't Python.** PrisonBreak is TypeScript; Polymarket-Validator could be anything. An HTTP boundary lets consumers be in their native stack.
+2. **Process isolation for the cooldown gate.** The gate is process-global. If consumers imported Ganymede directly, every consumer would have its own gate instance and the discipline would fragment. With one Ganymede process serving all consumers, the gate stays canonical.
+3. **NotebookLM session is single-tenant.** One Playwright browser, one set of session cookies, one auth flow. A separate process is the natural place for that singleton.
 
-```python
-from ganymede import GanymedeOrchestrator, Session
+Direct Python import is technically possible — `GanymedeOrchestrator` is public — but not recommended. The v2 API is the supported integration shape.
 
-session = await GanymedeOrchestrator.start(
-    scenario=Scenario(current_state=..., wished_for_state=...),
-    pathway="genie",                        # or "cleanroom" / "offensive" / "mirror_validation"
-    iterative=True,                          # multi-stroke
-    max_oracles=5,                           # runaway prevention
-    on_oracle_request=approve_callback,      # caller decides each new Oracle
-    context_truth_packets=[...],             # optional pre-harvested facts
-)
+## The four pathways
 
-async for event in session.events():
-    handle(event)
+The four pathways (`cleanroom`, `genie`, `offensive`, `mirror_audit`) all run through the same code path. The pathway value selects a prompt template at synthesis time; nothing else differs at the engine level. Adding a fifth pathway is a single-file change (a new template + a new enum value).
 
-resolution = await session.result()
-```
+| Pathway | Confirmed runs |
+| --- | --- |
+| `cleanroom` | Powell (blind-validated), Tokenized Land, Musk-Altman |
+| `genie` | Giant-Slayer |
+| `offensive` | None yet — same code path as `genie` |
+| `mirror_audit` | Used internally by `/iterate` (Stroke 2); Amnesia validation |
 
-Both shapes wrap the same core. The HTTP shape is just the WS-aware wrapper around the same code.
+If a consumer needs a domain-specific framing that doesn't fit any of the four, they can either (a) pass a `framing` override to `/synthesize` to fully replace the prompt template for that one call, or (b) propose adding a new pathway. Most consumers don't need either — `cleanroom` and `genie` cover the prediction and pathfinding cases that nearly every strategic question maps to.
 
-## The core types
+## What's built vs. what's deferred
 
-```python
-@dataclass
-class Scenario:
-    """What the consumer wants the Engine to reason about."""
-    # For Cleanroom / prediction-shape:
-    question: Optional[str] = None
+### Built and shipped (v1)
 
-    # For Genie / Architect-shape:
-    current_state: Optional[str] = None
-    wished_for_state: Optional[str] = None
+- Session abstraction with status tracking, event timeline, in-memory subscriber queues
+- HTTP API for create/state/synthesize/iterate/complete/events
+- WebSocket event stream with replay-on-connect + live push
+- Iterative Engine (Stroke 1 → Mirror Auditor → Stroke 3) as a single `/iterate` call
+- Pre-harvested Truth Packet path (consumers ship their own findings, no Oracle creation)
+- Cooldown gate enforcing 8s API floor + 60s session floor + 20/hr + 100/day caps
+- Pathway selection (`cleanroom` / `genie` / `offensive` / `mirror_audit`) driving prompt template
+- All four scenario shapes with Pydantic v2 contracts and JSON Schema export
 
-    # Common framing controls:
-    dream_state: bool = True            # apply Genie Prime priming
-    pathway: Pathway = Pathway.CLEANROOM
+### Deliberately deferred (v1.5+)
 
+- **Oracle creation through the API.** The orchestrator can spin up persona-locked PKI Oracle notebooks on demand, but the v2 surface doesn't expose this — consumers ship pre-harvested Truth Packets instead. Reasons: (a) the Oracle creation path requires a manual UI Import click in the NotebookLM web app per Oracle, which defeats automation; (b) every consumer that's been targeted so far already has its own grounded RAG layer (PrisonBreak has NotebookLM, future consumers will likely have similar); (c) the event-stream types `oracle_request`, `oracle_created`, `oracle_harvested` are reserved so the Oracle flow can land in v1.5 without a breaking change.
+- **Persistence.** Sessions are in-memory. A backend restart loses session state. Consumers persist their own `(consumer_id, ganymede_session_id)` mappings if they need durability. Persistence inside Ganymede would create cross-consumer shared state and complicate the single-tenant model.
+- **Authentication.** None. The backend listens on `127.0.0.1` and trusts every caller. Don't bind to `0.0.0.0` without an auth proxy.
+- **Multi-tenancy.** Out of scope. One Ganymede process, one NotebookLM session, one Engine notebook. Consumers needing parallelism run separate Ganymede instances on separate ports — not currently a supported configuration.
 
-@dataclass
-class TruthPacket:
-    """A research finding the consumer wants to feed in pre-harvested."""
-    subject: str                        # e.g. "Document Findings", "Prior Analysis"
-    content: str                        # raw text, hash-cited
-    source_label: str                   # human-readable provenance
+## The Import-click problem (resolved by skipping it)
 
+Earlier design notes flagged the Import-click problem: every PKI Oracle's Deep Research output requires a manual UI click in the NotebookLM web app before the result can be queried programmatically. The `notebooklm-py` wrapper does not expose a programmatic Import.
 
-@dataclass
-class StrokeResult:
-    stroke_number: int                  # 1, 2, 3
-    architectural_blueprint: Optional[str]
-    truth_packets: list[TruthPacket]
-    resolution_text: str
-    strategic_lasso: Optional[str]
-    incomprehensible_move: Optional[str]
+This was a major friction point for any consumer wanting full Oracle creation. The v1 solution is to skip Oracle creation entirely — consumers ship pre-harvested Truth Packets via `/synthesize` or `/iterate`. PrisonBreak does this; Polymarket-Validator will too. The Import-click problem becomes something the consumer's own RAG layer handles in its own way (or doesn't have, if the consumer uses something other than NotebookLM as its retrieval substrate).
 
+If a future consumer genuinely needs Ganymede to drive Oracle creation, the path forward is browser automation via Playwright (already a dep through `notebooklm-py`) — but that's a v1.5+ decision, not a v1 problem.
 
-@dataclass
-class SessionEvent:
-    """Streamed to the consumer as the run progresses."""
-    type: Literal[
-        "stroke_started",
-        "blueprint_ready",
-        "oracle_request",       # consumer must approve before Oracle is created
-        "oracle_created",
-        "oracle_harvested",
-        "synthesis_complete",
-        "stroke_completed",
-        "session_complete",
-        "error",
-    ]
-    stroke_number: int
-    payload: dict
+## How Ganymede deploys
 
+The supported deployment is one HTTP service per consumer environment, on `localhost:8000`:
 
-@dataclass
-class FinalResolution:
-    pathway: Pathway
-    strokes: list[StrokeResult]         # 1 entry for single-pass; 3 for full Iterative
-    final_resolution: str
-    citations: list[str]
-    blind_validation_audit: Optional[str]   # if validation step was requested
+```powershell
+cd ganymede-backend
+.\venv_312\Scripts\activate
+$env:PYTHONPATH = "."
+uvicorn app.main:app --port 8000
 ```
 
-## Lifecycle of a typical session
+Consumer applications discover Ganymede via the `GANYMEDE_BASE_URL` env var (defaults to `http://127.0.0.1:8000`).
 
-```
-1. consumer        → POST /api/sessions { scenario, pathway, iterative, max_oracles }
-                  ← 201 { session_id, status: "running" }
+For development without burning NotebookLM quota, `ganymede-backend/start_mocked.py` boots the same API with the engine calls patched to return canned responses. Consumers can iterate end-to-end against the mocked backend without needing live NotebookLM auth.
 
-2. ganymede        sends Genie Prime to 9D Chess Engine
-                  emits event { type: "stroke_started", stroke: 1 }
-                  emits event { type: "blueprint_ready", payload: { blueprint } }
+## Why the open-primitive shape is the right call
 
-3. ganymede        parses blueprint, identifies first Oracle target
-                  emits event { type: "oracle_request", payload: { subject, surgical_prompt } }
-                  PAUSES execution
+A few principles fall out of having shipped the integration twice (once in concept, once for real with PrisonBreak) that should generalize:
 
-4. consumer        receives event, shows confirmation UI
-                  POSTs /api/sessions/{id}/approve
+- **Consumer domain knowledge is irreplaceable.** PrisonBreak knows that "EM Finding (severity 4)" is a TruthPacket subject worth keeping intact; Ganymede couldn't have guessed that. The right boundary is "consumer constructs the packets, Ganymede synthesizes."
+- **Pre-harvested Truth Packets are the *common* integration shape, not the exotic one.** Any consumer that already has its own document-grounded retrieval will not want Ganymede creating fresh notebooks for it. The "synthesize-from-pre-harvested" path being a first-class API endpoint (rather than an edge case bolted onto an Oracle-creation flow) is the load-bearing decision.
+- **Pathway selection is a prompt-template selector, not architectural.** Cleanroom / Genie / Offensive / Mirror_Audit share 99% of the code. Treating them as a runtime enum that picks the framing keeps the surface small.
+- **WebSocket streaming is the right transport for multi-stroke runs.** Each stroke takes minutes; a 10-minute "loading…" with no signal is unacceptable. WS subscribers see strokes as they land.
+- **Cooldown discipline must be the backend's problem, not the consumer's.** Asking each consumer to implement the 8s gate would fragment it. Putting it in `_CooldownGate` at the lowest layer of the orchestrator means consumers get correct behavior for free.
 
-5. ganymede        creates Oracle, sends prompt
-                  emits event { type: "oracle_created", payload: { id, name } }
-                  waits for user-side Import click on NotebookLM
-                  ⚠ this is currently manual; see "Open: the Import-click problem" below
+## Open questions
 
-6. ganymede        harvests Truth Packet
-                  emits event { type: "oracle_harvested", payload: { subject, truth_packet } }
+These are not blockers but are worth thinking about before the next consumer:
 
-7. (loop 3-6 for each Oracle the blueprint requested)
+1. **Multi-consumer concurrency.** A single Ganymede process serializes all NotebookLM calls. If two consumers fire `/iterate` simultaneously, the second one waits ~24s+ behind the first. Acceptable for v1; might want fairness scheduling in v1.5 if multi-consumer usage gets dense.
+2. **Authentication.** Currently relies on the localhost binding. Any deployment that crosses a network boundary will need a token or a reverse proxy.
+3. **Run history.** Sessions are in-memory; once `/complete` returns, the only durable record is whatever the consumer wrote down. A future "GET /api/v2/runs" that returns a history of recent FinalResolutions could be useful for operators auditing the engine across consumers, but adds the persistence concern.
+4. **Mirror Validation as a fully standalone pathway.** Currently `mirror_audit` works for one-off audits (you pass `prior_resolution` in the Scenario), and `/iterate` drives Stroke 2 internally. There's no surface for "run a full Mirror Validation pathway with N audit cycles" — if the project's Mirror Validation methodology grows beyond a single audit step, the API needs an extension.
+5. **The `framing` override on `/synthesize`.** Lets a consumer fully replace the synthesis prompt for one call. Powerful but invites prompt-engineering drift if consumers start writing their own templates rather than picking from the four pathways. Should this be locked down per-consumer, or trust consumers to use it judiciously? Currently trust-based.
 
-8. ganymede        runs synthesis on assembled Truth Packet stack
-                  emits event { type: "synthesis_complete", payload: { stroke_result } }
-                  emits event { type: "stroke_completed", stroke: 1 }
+## Reading order if you're new to this folder
 
-9. if iterative:
-   ganymede        emits event { type: "stroke_started", stroke: 2 }
-                  fires the meta-prompt asking Engine to red-team itself
-                  ...
-                  (or consumer can POST /api/sessions/{id}/inject with an explicit friction
-                   payload to override the default red-team prompt)
-
-10. ganymede       emits event { type: "session_complete", payload: { final_resolution } }
-                  marks session as done
-
-11. consumer       GETs /api/sessions/{id} for the persisted final state
-                  stores it locally, displays it
-```
-
-## What's not yet implemented (gap analysis vs. the existing backend)
-
-The current `app/services/orchestrator.py` exposes the right primitives but is single-call (`triage`, `create_oracle`, `send_go`, `harvest`, `synthesize`, `resolution_check`). It does not yet have:
-
-- **A session abstraction.** Right now every endpoint is one HTTP call; there is no concept of an in-progress run that the consumer can subscribe to. Need a `Session` class that holds state across calls.
-- **An event stream.** No WebSocket support. The current FastAPI app is synchronous request/response. Need to add `socketio` or FastAPI's native `WebSocket` support and route events through it.
-- **Iterative Engine in code.** Currently a documented methodology; needs to be a `run_multi_stroke()` method on the Session that wires Stroke 1 → friction-injection → Stroke 2 → synthesis prompt → Stroke 3.
-- **Oracle approval gate.** Currently `create_oracle()` just runs synchronously. For a session-based API, this needs to become a pause/resume around the consumer's approval.
-- **Pathway selection.** The pathway-specific framings (Cleanroom prompts vs. Genie prompts vs. Architect prompts) are documented but not encoded as `Pathway` enum values that drive prompt selection.
-- **Pre-harvested Truth Packet ingestion.** Right now `synthesize()` takes Truth Packets the orchestrator harvested. For consumers like PrisonBreak that already have NotebookLM-harvested findings, the API needs to accept those as Truth Packets without going back through Oracle creation.
-
-This is roughly a 1–2 week build, depending on how clean we want the WebSocket layer.
-
-## Open: the Import-click problem
-
-The single biggest friction point in the current methodology — see [`../learnings/Iterative_Operational_Learnings.md`](../learnings/Iterative_Operational_Learnings.md) — is that every PKI Oracle's Deep Research session requires a manual UI Import click in the NotebookLM web app before its findings can be queried. The Python `notebooklm-py` wrapper does not expose a programmatic Import.
-
-For consumers like PrisonBreak that want to embed Ganymede as a black-box module, this manual step is a problem. Three possible solutions:
-
-1. **Browser automation in the bridge.** Use Playwright (already a dep) to drive the Import click. Risk: increased fragility against NotebookLM UI changes.
-2. **Skip Oracle deep research; use only pre-harvested Truth Packets.** Consumers like PrisonBreak already have NotebookLM-grounded findings; they can pass those in as Truth Packets and skip the Oracle creation path entirely. This is probably the right answer for the PrisonBreak case specifically — see [`prisonbreak_consumer.md`](prisonbreak_consumer.md).
-3. **Module surfaces a "click these buttons" instruction in the event stream.** If a session needs new Oracles, the event stream emits an `oracle_pending_import` event with a notebook URL; the consuming UI shows the user a "click Import in this notebook" message; the consumer POSTs `/oracle/{id}/import_done` once they've clicked.
-
-(2) is the path of least resistance for the first integration. (3) is the right answer for sessions that genuinely need new Oracle research, and is acceptable as long as the consumer's UI surfaces it cleanly.
-
-## Open: where Ganymede runs
-
-Two deployment shapes:
-
-- **Co-located Python process.** Consumer spawns Ganymede as a subprocess (the way PrisonBreak spawns its NotebookLM bridge) or runs it inline in a Python consumer.
-- **HTTP service on a known port.** Consumer talks to `localhost:8000` — Ganymede running as a separate process.
-
-The HTTP shape is more flexible but requires the consumer to manage the lifecycle. The subprocess shape is more zero-config but couples the consumer to Python being available. Reasonable to support both.
-
-## Open questions for the user
-
-1. **Pathway scope for v1.** Do we ship the module with all four pathways enabled (Cleanroom / Mirror / Offensive / Genie), or with just one or two? The simplest v1 is **Cleanroom + Genie**, since those are the two with confirmed runs. Mirror Validation requires the contrast notebook (not yet stood up) and Offensive shares 99% of code with Genie (just a different prompt).
-
-2. **Pre-harvested Truth Packets vs. Oracle creation.** For the PrisonBreak case specifically, the cleanest integration is "PrisonBreak does its own NotebookLM analysis, ships Truth Packets to Ganymede, Ganymede synthesizes — no new Oracles created." Should the v1 module expose an "import-only" path that skips the Oracle creation flow entirely? My recommendation: yes, ship that path first, since it eliminates the Import-click problem.
-
-3. **Persistence.** Sessions could be in-memory (lost on restart) or persisted (SQLite, the way PrisonBreak persists case state). Module should probably default to in-memory but expose a hook for consumers that want to persist their own way.
-
-4. **Multi-tenancy.** The current backend is single-user (one NotebookLM auth, one Engine notebook). The module pattern doesn't change that — each consumer carries its own Ganymede instance. Cross-consumer isolation is the consumer's job. Confirm this is the model going forward.
+1. [`consuming_the_v2_api.md`](consuming_the_v2_api.md) — hands-on consumer guide. Probably 80% of what you need.
+2. This doc — the *why* behind the API shape.
+3. [`examples/prisonbreak_consumer.md`](examples/prisonbreak_consumer.md) — concrete reference consumer.
+4. [`../OVERVIEW.md`](../OVERVIEW.md) — broader project context if you want to understand the framework being exposed.
