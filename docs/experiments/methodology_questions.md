@@ -66,18 +66,15 @@ Cross-reference: the upstream theoretical project at [github.com/anitacigawet/9D
 
 ## Q3: The Engine's locus of intelligence
 
-**Observation.** The 9D Chess Engine is one specific NotebookLM (`5967ce5d-f9eb-4f4e-b3e1-620f643d8390`) with one custom prompt the user authored offline. The custom prompt is *not* in this repo. We have no copy of it. We treat the Engine as a black box.
+**Observation.** The 9D Chess Engine is one specific NotebookLM with one custom prompt the user authored offline. We have treated the (prompt × base model × source corpus) combination as a black box.
 
-**The questions this raises.**
-- If Google deletes that notebook, can the project be reconstituted? Currently: no, not without recovering the prompt.
-- Is the framework portable? If we instantiated the same prompt on a different base model (Claude, GPT, etc.), would we get the same quality of output? We don't know.
-- Is the Engine's apparent reasoning a property of (the prompt × the base model), or of the prompt alone? If we can't separate these, we can't make reliable claims about what the framework adds.
+**Status update (2026-05).** Two of the three failure modes from the original observation have been mitigated:
 
-**Mitigations.**
-- Export the Engine's custom prompt and commit it to the repo (or to a private-but-redundant location). The user authored it; the user has it.
-- Optionally instantiate a mirror Engine on a different base model to compare outputs on the same Genie Prime + scenario. This is a controlled-experiment variant of the Mirror Validation pathway.
+- ✅ **Prompt-loss risk closed.** The persona text is now committed at [`../protocols/Engine_Persona.md`](../protocols/Engine_Persona.md). The persona itself is small — *"You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. Respond with supreme order and precision."* — most of the Engine's strategic-physics capability comes from the source corpus + the Genie Prime priming, not from this persona.
+- ✅ **Two-instance access acquired.** The user has provided access to two 9D-Chess notebooks with the same source corpus: canonical Engine `0a7d2672-009e-4995-9477-68c9b2fd9e54` and Mirror Auditor `756e3683-f651-4381-b560-b13711b84ce6`. This is what unblocks the Mirror Validation pathway and gives the project its first lever on the locus-of-intelligence question — we can now run the same scenario against both notebooks under identical source corpus but different personas, isolating the persona's contribution.
+- 🟡 **Cross-base-model experiment still open.** We can't instantiate a "mirror Engine" on a different base LLM (Claude, GPT) because NotebookLM is fronted by Google's model and we don't control that. The cross-base-model experiment requires either (a) a self-hosted runtime on a different base model with the same source corpus loaded, or (b) waiting for NotebookLM to support model selection. Same constraint as the Pattern Attractor question (Q1) — both questions point toward an eventual home-brewed runtime if NotebookLM-as-substrate has limits.
 
-**Status.** Logged. Not blocking, but trivially fixable for the export-the-prompt step. The cross-base-model experiment is a longer-term ambition.
+**Status.** Mostly mitigated. Cross-base-model experiment remains a long-term ambition gated on (a) accumulating more validated runs to argue for the investment, and (b) the upstream 9D-Chess foundation re-read flagged in Q1's status section.
 
 ---
 

@@ -1,6 +1,8 @@
 # 9D Chess Engine — Persona
 
-The custom system instruction configured on the 9D Chess Engine notebook (`5967ce5d-f9eb-4f4e-b3e1-620f643d8390`). Authored by the user offline before this repo existed; preserved here as a single-point-of-failure mitigation.
+The custom system instruction configured on the canonical 9D Chess Engine notebook (`0a7d2672-009e-4995-9477-68c9b2fd9e54`). Authored by the user offline; preserved here as a single-point-of-failure mitigation. Companion doc: [`Mirror_Auditor_Persona.md`](Mirror_Auditor_Persona.md) for the contrast / fault-finding instance used in the Mirror Validation pathway.
+
+> **Note on the Engine ID change.** Earlier validated runs (Powell, Tokenized Land, Genie Giant-Slayer, Musk-Altman) were performed against an older Engine notebook with ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`. The canonical Engine has since migrated to the ID above; the source corpus (the upstream 9D-Chess foundation documents) is identical between the two. The legacy ID is preserved in `NotebookLMService.LEGACY_ENGINE_ID` for traceability against historical run artifacts.
 
 ## The persona (verbatim)
 

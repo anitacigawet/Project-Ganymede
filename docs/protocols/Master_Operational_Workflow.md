@@ -47,9 +47,11 @@ This document codifies the high-fidelity data flow protocol for Project Ganymede
 
 ## 9D Chess Engine Guardrails
 - **Immutable Logic:** The 9D Chess Engine is a hard-coded, pre-optimized asset.
-- **Protected ID:** `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`
-- **Query Only:** I will never create, rename, delete, or modify the configuration of the 9D Chess notebook.
-- **Role:** It serves as our final physics engine, queried only after the PKI Oracle provides the Truth Packet.
+- **Canonical ID:** `0a7d2672-009e-4995-9477-68c9b2fd9e54` (current canonical Engine).
+- **Mirror Auditor ID:** `756e3683-f651-4381-b560-b13711b84ce6` (second 9D-Chess instance, same source corpus, configured for fault-finding — see [`Mirror_Auditor_Persona.md`](Mirror_Auditor_Persona.md)).
+- **Legacy ID:** `5967ce5d-f9eb-4f4e-b3e1-620f643d8390` — Engine notebook used for the earlier validated runs (Powell, Tokenized Land, Genie Giant-Slayer, Musk-Altman). Preserved in code for traceability against historical run artifacts. Not actively queried.
+- **Query Only:** Never create, rename, delete, or otherwise modify the configuration of either the canonical Engine or the Mirror Auditor outside of the explicit `configure_chess_engine` / `configure_mirror_auditor` methods, which apply known-good persona templates from `docs/protocols/`.
+- **Role:** Canonical Engine serves as the strategic-physics generator (Cleanroom and Genie pathways). Mirror Auditor serves as the fault-finder for Mirror Validation. Both are queried only after the PKI Oracle swarm provides Truth Packets.
 
 ## Workflow Refinements (Internalized)
 - **Non-Redundancy:** Gemini should not "re-interpret" the scenario; it should only "render" the Umpire's specific visualization strategy into code.

@@ -5,7 +5,10 @@ The vocabulary of the project, in one place. Several terms have been refined thr
 ---
 
 ### 9D Chess Engine (the Umpire)
-A single, hard-coded NotebookLM with ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`. Treated as the project's strategic logic core. Read-only. Pre-configured outside this codebase. Queried via `NotebookLMService.query_chess_engine`. Never modified.
+A specific NotebookLM treated as the project's strategic logic core. Read-only. Queried via `NotebookLMService.query_chess_engine`. Configuration applied via `configure_chess_engine`. Currently `0a7d2672-009e-4995-9477-68c9b2fd9e54` (canonical). Earlier validated runs (Powell, Tokenized Land, Genie Giant-Slayer, Musk-Altman) used `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`, preserved as `LEGACY_ENGINE_ID` for traceability.
+
+### Mirror Auditor
+A second NotebookLM (`756e3683-f651-4381-b560-b13711b84ce6`) with the *same source corpus* as the canonical Engine but a *different persona* — configured to audit, not produce, strategic resolutions. The contrast instance for the [Mirror Validation pathway](experiments/pathways/mirror_validation.md). See [`protocols/Mirror_Auditor_Persona.md`](protocols/Mirror_Auditor_Persona.md). Queried via `NotebookLMService.query_mirror_auditor`.
 
 ### PKI Authentication Oracle
 An ephemeral NotebookLM created per research subject and locked into a strict persona via `configure_pki_oracle`. The persona enforces:

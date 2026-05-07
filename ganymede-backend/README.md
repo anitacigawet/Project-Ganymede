@@ -53,7 +53,7 @@ OpenAPI docs: <http://localhost:8000/docs>
 
 ## Hard guardrails (enforced in code)
 
-1. **The 9D Chess Engine is read-only.** ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390` is hardcoded as `CHESS_ENGINE_ID` in `notebooklm_service.py`. Only `query_chess_engine` is allowed against it.
+1. **The 9D Chess Engine and Mirror Auditor are read-only.** Canonical Engine `0a7d2672-009e-4995-9477-68c9b2fd9e54` and Mirror Auditor `756e3683-f651-4381-b560-b13711b84ce6` are hardcoded as `CHESS_ENGINE_ID` and `MIRROR_AUDITOR_ID` in `notebooklm_service.py`. Only `query_chess_engine` / `query_mirror_auditor` (read-only) and `configure_chess_engine` / `configure_mirror_auditor` (idempotent persona application from `docs/protocols/`) are allowed against them. Earlier validated runs used Engine ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`, preserved as `LEGACY_ENGINE_ID` for traceability.
 2. **No auto-batching of oracle creation.** `POST /api/oracle` creates exactly one notebook. To create N oracles, the caller calls the endpoint N times.
 
 See `docs/OVERVIEW.md` for the full guardrail list and `docs/protocols/` for the protocols.

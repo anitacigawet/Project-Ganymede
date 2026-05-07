@@ -117,6 +117,15 @@ Late in the session the user clarified the long-term goal: this is **not** a pub
 ## 25. End of architecture transcript
 The transcript ends with the user requesting the orphan artifacts (Master_Operational_Workflow, Universal_Logic_Loop_Protocol, Iterative_Operational_Learnings, Mirror Protocol, Iterative_Engine_Vision) be moved out of the previous orchestrator's sandbox and into the project repo so they would survive the AI tool change. The previous orchestrator started executing that consolidation against an incorrect path and into the wrong repo (the upstream 9D-Chess project), which is why this reorg pass was needed.
 
+## 26. Four-silo restructuring (2026-05)
+The user clarified the project's actual organizational structure: four research silos, not four pathways. **Silo 1: Predictor** (Cleanroom). **Silo 2: Envisioner** (Genie + Mirror Validation as auditor — Offensive Architect is now correctly framed as a stance variant of Genie inside this silo, not its own silo). **Silo 3: Methodology** (the deep look at framework limits). **Silo 4: Pluggable** (module integration; PrisonBreak as first concrete validation case). Pathways and runs and brainstorming are sub-items inside silos. Captured in [`../OVERVIEW.md`](../OVERVIEW.md#the-four-silos-canonical-project-organization).
+
+## 27. Engine persona committed; module integration design landed
+The user provided the canonical Engine's custom prompt: *"You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. Respond with supreme order and precision."* Now committed at [`../protocols/Engine_Persona.md`](../protocols/Engine_Persona.md), closing the prompt-loss single-point-of-failure that Methodology Q3 flagged. Module integration design landed in [`../integration/`](../integration/) — `module_design.md` for the general API, `prisonbreak_consumer.md` for the validation case (PrisonBreak's `SimulatePanel.tsx` is the existing hook point, explicitly waiting for the 9D Chess plug-in interface).
+
+## 28. Two-notebook architecture; Mirror Validation unblocked (2026-05)
+The user provided access to **two** 9D-Chess notebooks with the same source corpus: canonical Engine `0a7d2672-009e-4995-9477-68c9b2fd9e54` (clean / no chat history) and a secondary instance `756e3683-f651-4381-b560-b13711b84ce6` (previously experimental). The codebase migrated `CHESS_ENGINE_ID` to the new canonical (preserving the legacy `5967ce5d-f9eb-4f4e-b3e1-620f643d8390` as `LEGACY_ENGINE_ID` for traceability against historical runs) and added `MIRROR_AUDITOR_ID`, `query_mirror_auditor`, `configure_chess_engine`, `configure_mirror_auditor`. The Mirror Auditor persona was drafted at [`../protocols/Mirror_Auditor_Persona.md`](../protocols/Mirror_Auditor_Persona.md) — explicit fault-finder, no counter-strategy, no 9D jargon. Pending: user OK on the proposed persona text + first audit run on the known-wrong Amnesia Stroke-1 output, which will be the end-to-end validation of the [Mirror Validation pathway](../experiments/pathways/mirror_validation.md).
+
 ---
 
 ## Cross-references at a glance
