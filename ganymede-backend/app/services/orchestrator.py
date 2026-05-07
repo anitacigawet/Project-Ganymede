@@ -24,7 +24,16 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Union
 
+from app.contracts import (
+    Pathway,
+    Scenario,
+    StrokeResult,
+    SessionEventType,
+    TruthPacket,
+    utcnow,
+)
 from app.services.notebooklm_service import NotebookLMService
+from app.services.session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -303,3 +312,175 @@ class GanymedeOrchestrator:
         """
         logger.info("Phase 4 resolution_check")
         return await self.svc.query_chess_engine(prompt or RESOLUTION_CHECK)
+
+    # =====================================================================
+    # Session-aware methods (pluggable module surface).
+    #
+    # The primitives above (triage, create_oracle, send_go, harvest,
+    # synthesize, resolution_check) are the low-level building blocks. The
+    # methods below wrap them with Session bookkeeping and return strongly-
+    # typed contracts (StrokeResult, etc.) suitable for module consumers.
+    #
+    # Phase 2 implements the pre-harvested-Truth-Packet synthesis path —
+    # the simplest end-to-end path through the module. Subsequent phases
+    # add session-aware oracle creation, audit strokes, and the multi-
+    # stroke Iterative Engine loop.
+    # =====================================================================
+
+    async def run_synthesis_stroke(
+        self,
+        session: Session,
+        truth_packets: list[TruthPacket],
+        *,
+        framing: Optional[str] = None,
+    ) -> StrokeResult:
+        """Run one synthesis stroke against the canonical Engine using
+        pre-harvested Truth Packets.
+
+        This is the path consumers use when they have their own grounded
+        RAG layer (e.g. PrisonBreak's NotebookLM analysis findings) and
+        want Ganymede to synthesize directly without spinning up new
+        Oracles. Skips Phase-1 triage and Phase-2 oracle creation
+        entirely; goes straight to Phase-3 synthesis.
+
+        The method:
+            1. Determines stroke_number from session.strokes
+            2. Emits STROKE_STARTED on the session
+            3. Builds the synthesis prompt from the session's Scenario
+               and the consumer's TruthPackets
+            4. Invokes the Engine via :meth:`synthesize`
+            5. Constructs a StrokeResult and records it on the session
+            6. Emits SYNTHESIS_COMPLETE and STROKE_COMPLETED
+            7. Returns the StrokeResult
+
+        For iterative multi-stroke runs, the caller invokes this
+        repeatedly (with appropriate friction injection between calls).
+        For single-pass runs, one call is sufficient and the caller then
+        invokes :meth:`Session.complete`.
+
+        Raises if the session is not in 'running' state, or if the
+        scenario fields don't match the session's pathway.
+        """
+        if session.status != "running":
+            raise RuntimeError(
+                f"Session {session.id} is not running (status={session.status})"
+            )
+        if session.pathway not in (Pathway.CLEANROOM, Pathway.GENIE, Pathway.OFFENSIVE):
+            raise ValueError(
+                f"run_synthesis_stroke does not support pathway "
+                f"{session.pathway.value} — use run_audit_stroke for "
+                f"MIRROR_AUDIT (Phase 5)."
+            )
+
+        stroke_number = len(session.strokes) + 1
+        await session.emit(
+            SessionEventType.STROKE_STARTED,
+            payload={"pathway": session.pathway.value, "kind": "synthesis"},
+            stroke_number=stroke_number,
+        )
+
+        # Build the synthesis input. Scenario fields used depend on pathway.
+        scenario_text = scenario_to_synthesis_text(session.scenario, session.pathway)
+        packets_dict = {tp.subject: tp.content for tp in truth_packets}
+
+        started = utcnow()
+        logger.info(
+            "Session %s stroke %d: synthesize against %s with %d packet(s)",
+            session.id, stroke_number, session.pathway.value, len(truth_packets),
+        )
+
+        try:
+            raw = await self.synthesize(
+                scenario_text, packets_dict, framing=framing
+            )
+        except Exception as exc:
+            await session.fail(str(exc), exc_type=type(exc).__name__)
+            raise
+
+        completed = utcnow()
+        stroke = StrokeResult(
+            stroke_number=stroke_number,
+            pathway=session.pathway,
+            raw_response=raw,
+            # Structured-field extraction (strategic_lasso, etc.) is
+            # deliberately deferred — Engine response formatting varies
+            # too much for hardcoded extraction to be reliable. raw_response
+            # is the source of truth; consumers display it directly.
+            final_resolution=raw,
+            started_at=started,
+            completed_at=completed,
+        )
+        await session.record_stroke(stroke)
+        await session.emit(
+            SessionEventType.SYNTHESIS_COMPLETE,
+            payload={"stroke_number": stroke_number, "response_chars": len(raw)},
+            stroke_number=stroke_number,
+        )
+        await session.emit(
+            SessionEventType.STROKE_COMPLETED,
+            payload={"duration_seconds": stroke.duration_seconds},
+            stroke_number=stroke_number,
+        )
+        return stroke
+
+
+# ---------------------------------------------------------------------------
+# Scenario → synthesis-prompt-text helper
+#
+# Different pathways pack their scenario text differently. This is the single
+# source of truth for that mapping; both run_synthesis_stroke and (eventually)
+# the multi-stroke loop use it.
+# ---------------------------------------------------------------------------
+
+def scenario_to_synthesis_text(scenario: Scenario, pathway: Pathway) -> str:
+    """Render the consumer-facing Scenario into the text that gets
+    interpolated as ``{scenario}`` in :data:`SYNTHESIS_TEMPLATE`.
+
+    Pathway-specific:
+        CLEANROOM → ``scenario.question`` (plus extra_context if present)
+        GENIE     → ``current_state`` and ``wished_for_state`` formatted
+        OFFENSIVE → ``target`` and ``objective_state`` formatted
+
+    Raises ``ValueError`` if the pathway's required scenario fields are
+    not populated.
+    """
+    extra = (
+        f"\n\nADDITIONAL CONTEXT:\n{scenario.extra_context.strip()}"
+        if scenario.extra_context
+        else ""
+    )
+
+    if pathway is Pathway.CLEANROOM:
+        if not scenario.question:
+            raise ValueError(
+                "CLEANROOM pathway requires Scenario.question to be set"
+            )
+        return scenario.question.strip() + extra
+
+    if pathway is Pathway.GENIE:
+        if not (scenario.current_state and scenario.wished_for_state):
+            raise ValueError(
+                "GENIE pathway requires Scenario.current_state and "
+                "Scenario.wished_for_state to be set"
+            )
+        return (
+            f"CURRENT STATE: {scenario.current_state.strip()}\n\n"
+            f"WISHED-FOR STATE: {scenario.wished_for_state.strip()}"
+            + extra
+        )
+
+    if pathway is Pathway.OFFENSIVE:
+        if not (scenario.target and scenario.objective_state):
+            raise ValueError(
+                "OFFENSIVE pathway requires Scenario.target and "
+                "Scenario.objective_state to be set"
+            )
+        return (
+            f"TARGET: {scenario.target.strip()}\n\n"
+            f"OBJECTIVE: {scenario.objective_state.strip()}"
+            + extra
+        )
+
+    raise ValueError(
+        f"scenario_to_synthesis_text: unsupported pathway {pathway.value}"
+    )
