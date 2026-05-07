@@ -31,6 +31,8 @@ The two GSS-pipeline runs ([`01_Hualapai_Water_Crisis.md`](01_Hualapai_Water_Cri
 
 The runs above demonstrate the methodology but don't yet meet the bar of formal scientific validation. The Prediction Cleanroom pathway's [open methodology problems](../pathways/prediction_cleanroom.md#open-methodology-problems) section enumerates what the next run needs to add to elevate the evidence — pre-registration timestamps, multi-auditor blind validation, falsification log discipline, and a domain where reality resolves quickly enough for cycle-time learning.
 
+The [Polymarket Validation Protocol](../../protocols/Polymarket_Validation.md) is the operational answer to those gaps. Markets selected under that protocol are filed in [`polymarket/`](polymarket/) and contribute to a running calibration score that updates on every resolution. The protocol predates any selection — its commit hash is the methodology's pre-registration timestamp.
+
 ## What's archived
 
 The 36 ad-hoc Python scripts that produced these runs (post-hoc — most were reverse-engineered) live in [`scripts/`](scripts/). They are not intended for re-execution; the productized API in `ganymede-backend/app/services/orchestrator.py` supersedes them. They remain in the repo as historical receipts and as an index from each run record back to the specific operational steps that produced it.
