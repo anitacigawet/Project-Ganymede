@@ -66,11 +66,14 @@ This is what the project calls the **Mirror** — not a metaphysical self-actual
 
 ## Open work
 
-- ✅ **Contrast notebook exists.** Notebook ID `756e3683-f651-4381-b560-b13711b84ce6` — same source corpus as the canonical Engine, currently configured with the Engine persona + `SHORTER` response length. Wired into code as `NotebookLMService.MIRROR_AUDITOR_ID`.
-- 🟡 **Apply the Mirror Auditor persona** to the contrast notebook (one `configure_mirror_auditor()` call). Replaces the current Engine-persona configuration with the fault-finder persona documented in [`../../protocols/Mirror_Auditor_Persona.md`](../../protocols/Mirror_Auditor_Persona.md). Sets response length to `LONGER`. **Pending user OK before applying** (account-state change).
-- 🟡 **Re-run the Amnesia scenario through Mirror Validation.** This is the natural first test since we already have a known-wrong Stroke-1 output. Feed the "Dominance Collapse / Sovereignty Handover" resolution into the Mirror Auditor and verify it catches the documented failure modes (treating signal as phase shift, ignored cost of reversal, dimensional greed). If yes, the methodology is validated end-to-end.
+- ✅ **Contrast notebook exists.** Notebook ID `756e3683-f651-4381-b560-b13711b84ce6` — same source corpus as the canonical Engine. Wired into code as `NotebookLMService.MIRROR_AUDITOR_ID`.
+- ✅ **Mirror Auditor persona applied.** `configure_mirror_auditor()` ran successfully on 2026-05-06; the contrast notebook now carries the fault-finder persona + `LONGER` response length.
+- ✅ **End-to-end methodology validated on the Amnesia case.** The auditor caught all four documented failure modes (rigidity errors, pattern-matching, confidence-evidence gaps, dimensional greeds) without coaching, in compliant format, with no counter-strategy. Full run record: [`../runs/Mirror_Validation_Amnesia.md`](../runs/Mirror_Validation_Amnesia.md).
+- 🟡 **False-positive test.** Feed a known-sound Stroke-1 output (the [Powell Cleanroom Engine Resolution](../runs/Powell_Cleanroom/05_Engine_Resolution.md)) into the auditor. If it correctly returns "sound, no substantive faults," the persona is robust in both directions. If it manufactures faults to seem useful, the persona needs the anti-confabulation guardrail tightened.
+- 🟡 **Close the loop with a Stroke 3 run.** Take the Amnesia audit output and feed it back into the canonical Engine as Stroke-2 friction injection; see if Stroke 3 produces a recalibrated resolution that survives re-audit.
+- 🟡 **Generalize beyond Amnesia.** Run audits on additional Stroke-1 outputs from different domains (Powell, Tokenized Land, Genie Giant-Slayer) and verify the auditor's signal-to-noise stays acceptable.
 - 🟡 **Define convergence.** When does the loop stop? Probably: "no new substantive fault on the most recent stroke" plus an upper bound on iterations to prevent runaway.
-- 🟡 **Document iteration history per run.** Every Mirror-Validated run should carry its full stroke history (Stroke 1 output, contrast critique, Stroke 2 output, etc.) so that future readers can see the engine adapting.
+- 🟡 **Productize the multi-stroke loop in code.** Currently each stroke is a manual API call. The orchestrator should expose a `run_iterative_engine(scenario, max_strokes=3)` method that automates Stroke 1 → audit → friction-injection → Stroke 2 → re-audit → Stroke 3.
 
 ## Source artifacts
 
