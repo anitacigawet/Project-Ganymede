@@ -169,14 +169,54 @@ Cheaper (no renames) but accepts that "Mirror" never gets the role the user's in
 
 This doc uses "Realist" as a working placeholder. Worth deciding before any code work, because the persona file's name needs to land somewhere stable.
 
+## Realist substrate — ten-notebook design
+
+A design decision was made (recorded here so it doesn't drift): the Realist is **not a single notebook** with a cross-disciplinary corpus. It is a **chord of ten persona-locked notebooks**, each one a deeply specialized methodology silo, orchestrated by a meta-consumer.
+
+### Why ten notebooks instead of one
+
+The single-notebook approach fails for two reasons:
+
+- **Vector-collapse on query.** A 300-source notebook covering ten traditions, when queried, naturally pulls from the most semantically similar slice of its corpus. The other nine traditions go unused. The notebook becomes effectively single-tradition per query, just with the tradition picked unreliably.
+- **Persona-discipline conflict.** Each tradition has a different *kind of output* it produces well — reference-class forecasting produces base rates, behavioral game theory produces empirical-deviation patterns, causal inference produces counterfactual structure. A persona that asks for all of these at once produces theatrical mush. A persona that picks one collapses the corpus.
+
+The chord-of-specialists approach: each notebook is 300 sources of one tradition, with a persona designed to elicit *exactly that tradition's output type*. The orchestrator queries each in turn (or selectively, depending on the scenario), then a Synthesizer reads the ten outputs and produces a unified Realist analysis.
+
+This trades one notebook for ten and trades one persona for ten — a real cost, justified by the depth and compositional flexibility it buys.
+
+### The ten traditions
+
+Tier 1 (load-bearing):
+1. **Reference-Class Forecasting** — Tetlock, Kahneman/Lovallo. Empirical base-rate methodology.
+2. **Behavioral Game Theory** — Camerer, Henrich, Bowles/Gintis. Experimental deviations from rational-actor predictions.
+3. **Cognitive Biases & Heuristics** — Kahneman/Tversky stream. Systematic patterns of error in human reasoning.
+4. **Bounded Rationality & Adaptive Heuristics** — Simon, Gigerenzer. The counterweight to "humans are broken."
+
+Tier 2 (strong support):
+5. **Causal Inference** — Pearl, Rubin, process tracing. Counterfactual structure and confounding.
+6. **Sociology of Power & Institutions** — Bourdieu, Tilly, DiMaggio/Powell, Granovetter. Capital, habitus, network position.
+7. **Demographic & Structural Epidemiology** — Massey, Sampson, Wilkinson/Pickett, Bonilla-Silva. Empirical patterns of how structure shapes outcomes.
+
+Tier 3 (specialized):
+8. **Path-Dependency & Lock-in** — Pierson, David, Arthur. Why systems persist suboptimally.
+9. **Limits of Expert Prediction** — Tetlock's earlier work, Meehl, Silver, Taleb. When prediction fails and why.
+10. **Agent-Based Modeling** — Schelling, Axelrod, Epstein. Emergent patterns from individual-level rules.
+
+The full operational spec — surgical Deep Research prompts, persona text, response-length settings, build order, checkpoints — is in [`Realist_Notebook_Build.md`](Realist_Notebook_Build.md). That doc is what the build is executed from.
+
+### Constraints that drove the design
+
+- **Consumer-agnostic corpus.** No tradition selected for any particular consumer's domain (e.g. PrisonBreak's wrongful-conviction work). The Realist is a methodology reference, not a domain reference. Domain context enters via Truth Packets at query time.
+- **Variant 1 prevention.** Each tradition's persona is grounded in *concrete output requirements* (a reference class, a base rate, a specific bias name with citation, a causal structure) — not in "human realism" or "lived reality" vocabulary that invites theatrical performance.
+- **Independence of specialists.** Each notebook reasons from its own tradition only. It does not produce competing strategic analyses. The Synthesizer is the role that combines outputs; the specialists do not encroach on each other's territory.
+
 ## Open questions
 
 1. **Does parallel perception actually catch missing-axis failures the Auditor doesn't?** Best evidence comes from the Polymarket runs once we have a few closed misses to inspect. Until then this is theoretical.
-2. **What's the Realist's persona, concretely?** Variable-surfacing? Base-rate elicitation? Cost-of-reversal? Some combination? Has to avoid Variant 1 (theatrical "human" jargon).
-3. **What's the Synthesizer's stance?** Specifically: is it just an arbitrator on existing outputs, or does it have agency to request re-runs? The latter is more powerful but introduces unbounded-loop risk.
-4. **One notebook or one persona-per-prompt?** The current architecture has one notebook per persona (Engine = `0a7d2672-...`, Auditor = `756e3683-...`). The Realist would need its own notebook, which means the user provisions one and applies the persona. Alternative: per-call persona injection (more flexible, harder to harden — NotebookLM's persistent persona is what makes the current architecture clean).
-5. **How does this interact with the Polymarket Validation Protocol?** Validation-track runs are frozen at protocol v1. If Corpus Callosum becomes part of v2, that's a versioned epoch boundary, not a continuous evolution. Worth being clear that any Corpus Callosum experimentation happens on the *exploration* track until it's ready to be promoted via a cut-point commit.
-6. **Naming.** Resolution A or B above (or something else).
+2. **What's the Synthesizer's stance?** Specifically: is it just an arbitrator on existing outputs, or does it have agency to request re-runs? The latter is more powerful but introduces unbounded-loop risk. Probably an 11th notebook with its own persona, but designed last after the ten specialists are built and we can see what their outputs actually look like in practice.
+3. **How does this interact with the Polymarket Validation Protocol?** Validation-track runs are frozen at protocol v1. If Corpus Callosum becomes part of v2, that's a versioned epoch boundary, not a continuous evolution. Worth being clear that any Corpus Callosum experimentation happens on the *exploration* track until it's ready to be promoted via a cut-point commit.
+4. **Naming.** Resolution A (rename existing Mirror Auditor → Auditor, free up "Mirror" for the new role) vs. Resolution B (keep current names, call the new chord "Realist") — see [Naming](#naming) section above. Working with "Realist" for now.
+5. **Cooldown budget.** A full Corpus Callosum invocation could be 15+ NotebookLM calls (10 specialists + Engine + Auditor + Synthesizer + possible re-runs). At 8s per call cooldown floor, that's 2+ minutes of pure cooldown per scenario. Hits the 20/hour soft cap with ~1-2 runs per hour. Worth knowing the budget before running.
 
 ## Why this lives in `concepts/` and not in `protocols/` or `pathways/`
 
