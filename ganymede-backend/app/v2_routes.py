@@ -111,6 +111,40 @@ class SynthesizeResponse(BaseModel):
     state: SessionStateResponse
 
 
+class IterateRequest(BaseModel):
+    """Drive the full Iterative Engine multi-stroke loop in one call.
+
+    The session must have been created with ``iterative=True`` and
+    ``max_strokes >= 2``. The server runs Stroke 1 (thesis synthesis),
+    Stroke 2 (Mirror Auditor audit), and Stroke 3 (friction-injected
+    re-synthesis) in sequence, emitting STROKE_STARTED/STROKE_COMPLETED
+    events on the session as it goes. WebSocket subscribers see each
+    stroke land in real time.
+
+    The HTTP request blocks until the loop terminates (or fails) — for
+    UI consumers, prefer subscribing to the WS stream so the UI can
+    render strokes as they arrive instead of waiting on a single
+    long-blocking call. The HTTP response carries the full result list
+    for callers that want it as one payload.
+    """
+    model_config = ConfigDict(extra="forbid")
+    truth_packets: list[TruthPacket] = Field(min_length=1)
+    max_strokes: Optional[int] = Field(
+        default=None, ge=1, le=10,
+        description=(
+            "Cap on strokes for this loop. Defaults to the session's own "
+            "``max_strokes``. Pass a smaller value (e.g. 2) to stop after "
+            "the audit stroke without re-synthesis."
+        ),
+    )
+
+
+class IterateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    strokes: list[StrokeResult]
+    state: SessionStateResponse
+
+
 class CompleteResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     final_resolution: FinalResolution
@@ -270,6 +304,56 @@ async def synthesize_stroke(
         raise HTTPException(status_code=500, detail=str(exc))
 
     return SynthesizeResponse(stroke=stroke, state=_state(session))
+
+
+@router.post(
+    "/sessions/{session_id}/iterate",
+    response_model=IterateResponse,
+)
+async def iterate_session(
+    session_id: str,
+    req: IterateRequest,
+) -> IterateResponse:
+    """Run the full Iterative Engine multi-stroke loop in one HTTP call.
+
+    Convenience over making N separate ``/synthesize`` calls. The
+    orchestrator drives Stroke 1 → Stroke 2 (audit) → Stroke 3 internally
+    and emits stroke events on the session as each lands; WS subscribers
+    see them in real time. Returns when the loop terminates.
+
+    Errors:
+        409 if the session is not in a runnable state (e.g. already
+            completed, or not iterative).
+        422 if ``max_strokes`` is out of bounds for this session.
+        500 on unexpected orchestrator failure (the session is also
+            transitioned to error state internally).
+    """
+    session = _require_session(session_id)
+    orch = _get_orchestrator()
+
+    if session.status != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session {session_id} is not running (status={session.status})",
+        )
+
+    max_strokes = req.max_strokes if req.max_strokes is not None else session.max_strokes
+    try:
+        strokes = await orch.run_iterative_engine(
+            session,
+            truth_packets=req.truth_packets,
+            max_strokes=max_strokes,
+        )
+    except ValueError as exc:
+        # Non-iterative session or max_strokes out of range
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        logger.exception("iterate_session failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return IterateResponse(strokes=strokes, state=_state(session))
 
 
 @router.post(
