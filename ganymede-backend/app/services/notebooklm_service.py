@@ -12,6 +12,13 @@ Hard guardrails (also documented in ``docs/OVERVIEW.md``):
     - Any new oracle is created via :meth:`create_notebook` and, by
       convention from the orchestrator layer, requires explicit per-call
       caller intent (no batch creation).
+    - **All NotebookLM API calls go through a cooldown gate**
+      (:class:`_CooldownGate`) that enforces minimum spacing between calls
+      and tracks cumulative call volume. Pattern adapted from the Z-SPAN
+      bridge cooldown discipline. The unofficial NotebookLM API has invisible
+      safety triggers; the gate is what keeps us from finding them. See
+      ``docs/protocols/Account_Safety.md`` for the rationale and tunable
+      env vars.
 
 Notebook persona reference:
     - Engine: ``docs/protocols/Engine_Persona.md``
@@ -21,11 +28,147 @@ Notebook persona reference:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
+import time
+from collections import deque
 
 from notebooklm import NotebookLMClient, ChatGoal, ChatResponseLength
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Cooldown gate
+#
+# Every NotebookLM API call routes through ``_GATE.acquire()`` before talking
+# to the upstream. The gate enforces a hard minimum spacing between any two
+# calls (``GANYMEDE_NOTEBOOKLM_COOLDOWN`` seconds, default 8s, matching
+# Z-SPAN's documented default). It also tracks cumulative call volume and
+# warns when soft caps are approached, but does not hard-block on volume —
+# the hard floor is the per-call cooldown.
+#
+# The orchestrator (or any caller running a multi-step workflow) should
+# additionally call ``mark_session_boundary()`` between distinct experimental
+# runs to enforce a longer between-session pause
+# (``GANYMEDE_NOTEBOOKLM_SESSION_COOLDOWN``, default 60s). This is advisory
+# in code but documented in ``docs/protocols/Account_Safety.md``.
+#
+# All env vars are documented in that doc; defaults match Z-SPAN's
+# operationally-validated values.
+# ---------------------------------------------------------------------------
+
+_API_COOLDOWN_SEC = float(os.getenv("GANYMEDE_NOTEBOOKLM_COOLDOWN", "8"))
+_SESSION_COOLDOWN_SEC = float(os.getenv("GANYMEDE_NOTEBOOKLM_SESSION_COOLDOWN", "60"))
+_HOURLY_SOFT_CAP = int(os.getenv("GANYMEDE_NOTEBOOKLM_HOURLY_CAP", "20"))
+_DAILY_SOFT_CAP = int(os.getenv("GANYMEDE_NOTEBOOKLM_DAILY_CAP", "100"))
+
+
+class _CooldownGate:
+    """Single global gate enforcing minimum spacing between NotebookLM API calls.
+
+    Async-safe. All ``NotebookLMService`` API methods call
+    :meth:`acquire` immediately before any ``self.client.X`` invocation.
+    """
+
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._last_call_at: float = 0.0  # monotonic
+        # Wall-clock timestamps of recent calls, kept for soft-cap warnings.
+        self._recent: deque[float] = deque()
+        # Mark of the start of the current session, for inter-session cooldown
+        # checks. None means "no session in progress."
+        self._session_started_at: float | None = None
+
+    async def acquire(self):
+        """Block until it's safe to make the next NotebookLM API call.
+
+        Enforces the per-call cooldown (hard floor) and emits warnings if
+        soft caps are being approached.
+        """
+        async with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_call_at
+            if self._last_call_at > 0 and elapsed < _API_COOLDOWN_SEC:
+                wait = _API_COOLDOWN_SEC - elapsed
+                logger.info(
+                    "NotebookLM cooldown: waiting %.1fs before next call",
+                    wait,
+                )
+                await asyncio.sleep(wait)
+
+            # Soft-cap warnings (advisory, never blocking)
+            self._prune_old_calls()
+            now_wall = time.time()
+            in_last_hour = sum(1 for t in self._recent if t > now_wall - 3600)
+            if in_last_hour >= _HOURLY_SOFT_CAP:
+                logger.warning(
+                    "NotebookLM hourly soft cap reached: %d calls in last hour "
+                    "(cap %d). Continuing but consider stopping the session.",
+                    in_last_hour, _HOURLY_SOFT_CAP,
+                )
+            in_last_day = sum(1 for t in self._recent if t > now_wall - 86400)
+            if in_last_day >= _DAILY_SOFT_CAP:
+                logger.warning(
+                    "NotebookLM daily soft cap reached: %d calls in last 24h "
+                    "(cap %d). Strongly consider stopping for the day.",
+                    in_last_day, _DAILY_SOFT_CAP,
+                )
+
+            self._last_call_at = time.monotonic()
+            self._recent.append(now_wall)
+
+    async def mark_session_boundary(self):
+        """Wait the inter-session cooldown before the next call.
+
+        Call this between distinct experimental runs (e.g. between a Powell
+        run and a Tokenized Land run, or between a Mirror Validation audit
+        and an unrelated Cleanroom run). Within a single multi-step
+        workflow (Triage → Oracles → Synthesis), do NOT call this — the
+        per-call cooldown is sufficient.
+
+        Idempotent: calling it twice in a row only waits once.
+        """
+        async with self._lock:
+            now = time.monotonic()
+            if self._session_started_at is None:
+                self._session_started_at = now
+                return
+            elapsed = now - self._session_started_at
+            if elapsed < _SESSION_COOLDOWN_SEC:
+                wait = _SESSION_COOLDOWN_SEC - elapsed
+                logger.info(
+                    "NotebookLM session boundary: waiting %.1fs before next session",
+                    wait,
+                )
+                await asyncio.sleep(wait)
+            self._session_started_at = time.monotonic()
+
+    def _prune_old_calls(self):
+        cutoff = time.time() - 86400  # keep last 24h
+        while self._recent and self._recent[0] < cutoff:
+            self._recent.popleft()
+
+    def stats(self) -> dict:
+        """Snapshot of cooldown gate state, for ops/observability."""
+        self._prune_old_calls()
+        now_wall = time.time()
+        return {
+            "calls_last_hour": sum(1 for t in self._recent if t > now_wall - 3600),
+            "calls_last_24h": len(self._recent),
+            "hourly_cap": _HOURLY_SOFT_CAP,
+            "daily_cap": _DAILY_SOFT_CAP,
+            "api_cooldown_sec": _API_COOLDOWN_SEC,
+            "session_cooldown_sec": _SESSION_COOLDOWN_SEC,
+        }
+
+
+# Module-global gate. Single instance shared across all NotebookLMService
+# instances within the process — accidental concurrent ServiceLM instances
+# (e.g. tests vs main app) would otherwise each run their own cooldown
+# clock, defeating the purpose. One process, one gate.
+_GATE = _CooldownGate()
 
 
 # ---------------------------------------------------------------------------
@@ -118,11 +261,12 @@ class NotebookLMService:
 
         Used by orchestrator to create ephemeral PKI Oracles. The runaway-
         prevention guardrail (one notebook per explicit caller intent) is
-        enforced at the orchestrator layer.
+        enforced at the orchestrator layer. Cooldown gate enforced here.
         """
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info("Creating Notebook: %s", title)
         nb = await self.client.notebooks.create(title)
         return nb.id
@@ -137,6 +281,7 @@ class NotebookLMService:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info("Uploading source to notebook %s: %s", notebook_id, source)
         if is_url:
             await self.client.sources.add_url(notebook_id, source, wait=True)
@@ -148,6 +293,7 @@ class NotebookLMService:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info("Querying notebook %s: %s", notebook_id, query[:80])
         result = await self.client.chat.ask(notebook_id, query)
         return result.answer
@@ -164,6 +310,7 @@ class NotebookLMService:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info("Configuring PKI Oracle for notebook %s", notebook_id)
         await self.client.chat.configure(
             notebook_id=notebook_id,
@@ -184,6 +331,7 @@ class NotebookLMService:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info(
             "Configuring canonical 9D Chess Engine persona on %s",
             self.CHESS_ENGINE_ID,
@@ -207,6 +355,7 @@ class NotebookLMService:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
+        await _GATE.acquire()
         logger.info(
             "Configuring Mirror Auditor persona on %s",
             self.MIRROR_AUDITOR_ID,
@@ -218,6 +367,22 @@ class NotebookLMService:
             custom_prompt=MIRROR_AUDITOR_PERSONA,
         )
         logger.info("Mirror Auditor persona applied to %s", self.MIRROR_AUDITOR_ID)
+
+    # ----------------------------------------------- session-boundary helper
+
+    async def mark_session_boundary(self):
+        """Wait the inter-session cooldown before the next call.
+
+        Call between distinct experimental runs (e.g. between a Powell run
+        and a Tokenized Land run). Within a single multi-step workflow
+        (Triage → Oracles → Synthesis), do NOT call — the per-call cooldown
+        is sufficient. See ``docs/protocols/Account_Safety.md``.
+        """
+        await _GATE.mark_session_boundary()
+
+    def cooldown_stats(self) -> dict:
+        """Snapshot of cooldown gate state, for ops/observability."""
+        return _GATE.stats()
 
     # -------------------------------------------------- read-only Engine ops
 
