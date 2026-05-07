@@ -423,6 +423,260 @@ class GanymedeOrchestrator:
         )
         return stroke
 
+    async def run_audit_stroke(
+        self,
+        session: Session,
+        *,
+        target_text: Optional[str] = None,
+        scenario_context: Optional[str] = None,
+    ) -> StrokeResult:
+        """Run one audit stroke against the Mirror Auditor.
+
+        The Mirror Auditor is the second 9D-Chess instance, persona-locked
+        for fault-finding (see ``docs/protocols/Mirror_Auditor_Persona.md``).
+        It enumerates four categories of faults in the supplied analysis
+        text without producing a counter-strategy.
+
+        Args:
+            session: the active Session. Audit is recorded as the next
+                stroke in sequence.
+            target_text: the analysis text to audit. If None, defaults to
+                the most recent stroke's ``raw_response`` (the natural
+                Stroke 1 → Stroke 2 audit pattern).
+            scenario_context: optional context describing the original
+                scenario the analysis was responding to. Helps the
+                auditor evaluate whether the analysis fits the scenario.
+                If None, derived from session.scenario.
+
+        The recorded StrokeResult has ``pathway=MIRROR_AUDIT`` regardless
+        of the session's primary pathway, since this stroke went to the
+        auditor instance, not the canonical Engine.
+        """
+        if session.status != "running":
+            raise RuntimeError(
+                f"Session {session.id} is not running (status={session.status})"
+            )
+        if target_text is None:
+            if not session.strokes:
+                raise ValueError(
+                    f"Session {session.id}: cannot audit — no prior stroke "
+                    f"to audit and no target_text supplied"
+                )
+            target_text = session.strokes[-1].raw_response
+        if scenario_context is None:
+            try:
+                scenario_context = scenario_to_synthesis_text(
+                    session.scenario, session.pathway
+                )
+            except ValueError:
+                # MIRROR_AUDIT-pathway sessions don't have a synthesizable
+                # scenario; fall back to whatever's in prior_resolution
+                # or extra_context.
+                scenario_context = (
+                    session.scenario.prior_resolution
+                    or session.scenario.extra_context
+                    or "(no scenario context provided)"
+                )
+
+        stroke_number = len(session.strokes) + 1
+        await session.emit(
+            SessionEventType.STROKE_STARTED,
+            payload={"kind": "audit", "auditing_stroke": stroke_number - 1 or None},
+            stroke_number=stroke_number,
+        )
+
+        prompt = AUDIT_TEMPLATE.format(
+            scenario_context=scenario_context.strip(),
+            analysis_under_audit=target_text.strip(),
+        )
+
+        started = utcnow()
+        logger.info(
+            "Session %s stroke %d: audit %d-char target",
+            session.id, stroke_number, len(target_text),
+        )
+        try:
+            raw = await self.svc.query_mirror_auditor(prompt)
+        except Exception as exc:
+            await session.fail(str(exc), exc_type=type(exc).__name__)
+            raise
+
+        completed = utcnow()
+        stroke = StrokeResult(
+            stroke_number=stroke_number,
+            pathway=Pathway.MIRROR_AUDIT,
+            raw_response=raw,
+            audit_findings=_parse_audit_findings(raw),
+            started_at=started,
+            completed_at=completed,
+        )
+        await session.record_stroke(stroke)
+        await session.emit(
+            SessionEventType.SYNTHESIS_COMPLETE,
+            payload={
+                "stroke_number": stroke_number,
+                "response_chars": len(raw),
+                "kind": "audit",
+                "fault_count": len(stroke.audit_findings or []),
+            },
+            stroke_number=stroke_number,
+        )
+        await session.emit(
+            SessionEventType.STROKE_COMPLETED,
+            payload={"duration_seconds": stroke.duration_seconds},
+            stroke_number=stroke_number,
+        )
+        return stroke
+
+    async def run_iterative_engine(
+        self,
+        session: Session,
+        truth_packets: list[TruthPacket],
+        *,
+        max_strokes: int = 3,
+    ) -> list[StrokeResult]:
+        """Run the full Iterative Engine multi-stroke loop on a session.
+
+        Stroke 1: synthesis (canonical Engine)
+        Stroke 2: audit (Mirror Auditor reviews Stroke 1)
+        Stroke 3: re-synthesis (canonical Engine, friction-injected with
+                  audit findings)
+
+        Stops at ``max_strokes`` (default 3 for a full thesis-antithesis-
+        synthesis cycle). For ``max_strokes=1`` this degrades to a single
+        synthesis stroke (same as ``run_synthesis_stroke`` directly).
+        For ``max_strokes=2`` it does synthesis + audit but no
+        re-synthesis.
+
+        The session must be created with ``iterative=True`` and
+        ``max_strokes >= 2`` for this to run usefully.
+
+        Returns the list of all StrokeResults produced. Caller invokes
+        :meth:`Session.complete` afterward to finalize.
+        """
+        if not session.iterative:
+            raise ValueError(
+                f"Session {session.id} is not iterative — use "
+                f"run_synthesis_stroke for single-pass."
+            )
+        if max_strokes < 1 or max_strokes > session.max_strokes:
+            raise ValueError(
+                f"max_strokes ({max_strokes}) must be 1..{session.max_strokes}"
+            )
+
+        results: list[StrokeResult] = []
+
+        # Stroke 1: thesis
+        s1 = await self.run_synthesis_stroke(session, truth_packets)
+        results.append(s1)
+        if max_strokes < 2:
+            return results
+
+        # Stroke 2: antithesis (audit)
+        s2 = await self.run_audit_stroke(session)
+        results.append(s2)
+        if max_strokes < 3:
+            return results
+
+        # Stroke 3: synthesis (re-fire with audit as friction)
+        framing = ITERATIVE_RESYNTHESIS_TEMPLATE
+        # The re-synthesis prompt embeds Stroke 1's text + the audit
+        # findings. Built into the framing template; the truth_packets
+        # passed here are the same originals (the Engine still needs
+        # them for context, even on the re-fire).
+        framing_with_audit = framing.replace(
+            "{stroke_1_response}", s1.raw_response
+        ).replace(
+            "{audit_findings}",
+            s2.raw_response,
+        )
+        s3 = await self.run_synthesis_stroke(
+            session, truth_packets, framing=framing_with_audit
+        )
+        results.append(s3)
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Audit-stroke prompt (Mirror Auditor framing)
+#
+# The Auditor's persona already configures it for fault-finding; this
+# template just wraps the analysis under audit with a small framing block
+# that names the original scenario for context. Persona text in
+# docs/protocols/Mirror_Auditor_Persona.md.
+# ---------------------------------------------------------------------------
+
+AUDIT_TEMPLATE = """\
+You are receiving a Stroke-1 resolution from another 9D-Chess instance for audit.
+
+ORIGINAL SCENARIO THE ANALYSIS WAS RESPONDING TO:
+{scenario_context}
+
+ANALYSIS UNDER AUDIT (verbatim output from the other instance):
+=====
+{analysis_under_audit}
+=====
+
+Per your operational rules, audit this analysis. Identify rigidity errors, pattern-matching, confidence-evidence gaps, and dimensional greeds. If sound, say so. Surgical plain language; no 9D jargon; no counter-strategy."""
+
+
+# ---------------------------------------------------------------------------
+# Iterative Engine re-synthesis prompt (Stroke 3)
+#
+# The original scenario + Truth Packets get re-fed into the Engine, this time
+# accompanied by Stroke 1's resolution and Stroke 2's audit findings. The
+# Engine is asked to recalibrate accounting for the audit's friction.
+# ---------------------------------------------------------------------------
+
+ITERATIVE_RESYNTHESIS_TEMPLATE = """\
+ORIGINAL SCENARIO:
+{scenario}
+
+AUTHENTICATED TRUTH PACKETS (from PKI Oracle swarm):
+{packets_block}
+
+PRIOR ANALYSIS (Stroke 1 resolution from this Engine):
+=====
+{stroke_1_response}
+=====
+
+AUDIT FINDINGS (from a second 9D-Chess instance configured as Mirror Auditor):
+=====
+{audit_findings}
+=====
+
+MISSION:
+Re-fire the synthesis. The Stroke-1 resolution above is your prior pass; the audit identifies specific failure modes in that pass. Recalibrate. The Stroke-3 resolution should be the move that survives BOTH the original physics AND the audit's friction. If the audit's findings are themselves mistaken, say so explicitly and explain why; otherwise integrate them into a tighter synthesis."""
+
+
+def _parse_audit_findings(raw: str) -> Optional[list[str]]:
+    """Best-effort extraction of the four-category fault list from a
+    Mirror Auditor response.
+
+    The Auditor persona is configured to emit findings in a numbered
+    structure (RIGIDITY ERRORS / PATTERN-MATCHING / CONFIDENCE-EVIDENCE
+    GAPS / DIMENSIONAL GREEDS). This parser splits on the numbered
+    headers; if the response doesn't match the expected structure it
+    returns None and the caller falls back to displaying raw_response.
+    """
+    import re
+    # Match patterns like "1. RIGIDITY", "2.", or "**1. RIGIDITY**"
+    pattern = re.compile(
+        r"(?:^|\n)\**\s*([1-4])\.\s",
+        re.MULTILINE,
+    )
+    matches = list(pattern.finditer(raw))
+    if len(matches) < 2:
+        return None
+    findings = []
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
+        chunk = raw[start:end].strip()
+        if chunk:
+            findings.append(chunk)
+    return findings if findings else None
+
 
 # ---------------------------------------------------------------------------
 # Scenario → synthesis-prompt-text helper
