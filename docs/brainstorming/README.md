@@ -12,6 +12,7 @@ The user's standing instruction on tone: *"You will have to have nuance when rea
 | [`Practical_Power_Plays.md`](Practical_Power_Plays.md) | Four offensive-stance plays applied to identifiable real-world targets (Content Creator, Tech Startup, High-Value Scientist, Tech Competitor). |
 | [`Normal_9D_Dynamics.md`](Normal_9D_Dynamics.md) | Four offensive-stance applications to "normal everyday" dynamics (Office, Social, Negotiation, Project Management). |
 | [`Other_Riffs.md`](Other_Riffs.md) | Standalone scenario ideas (BRICS currency unit, Open-Source BCI, Sovereign Sea-Stead, Deep-Sea Mineral Silent War, etc.) and the "Strategic Mirror" / "Genius Reverse-Engineering" utility concept. |
+| [`Symbolic_Logic_Bicameral.md`](Symbolic_Logic_Bicameral.md) | Architectural thought experiment (not a scenario seed): should the Engine ↔ Auditor / Engine ↔ Bridge channel use structured symbolic logic instead of prose? Triggered by the operator's Bicameral Mind paper find; un-implementable on NotebookLM today; gated on local-model access (constrained decoding, exposed activations, domain-grounded fine-tuning). Preserved for the eventual local-models pivot. |
 
 ## What's NOT in this folder
 

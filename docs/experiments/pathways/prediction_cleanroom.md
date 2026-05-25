@@ -33,7 +33,7 @@ Two runs have already shown this. The remaining work is methodological — makin
             ▼ Truth Packets, raw and unmodified
    ┌──────────────────────┐
    │ 9D Chess Engine      │── Convergence Theorem synthesis
-   │ (resolution)         │   ("Strategic Lasso" + "Incomprehensible Move")
+   │ (resolution)         │   (identifies Strategic Lasso + Incomprehensible Move)
    └──────────────────────┘
             │
             ▼

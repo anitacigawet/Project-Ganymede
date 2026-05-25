@@ -1,8 +1,10 @@
 # 9D Chess Mirror Auditor — Persona
 
-The system instruction proposed for the second 9D Chess notebook (`756e3683-f651-4381-b560-b13711b84ce6`), which the project uses as the contrast/audit instance for the [Mirror Validation pathway](../experiments/pathways/mirror_validation.md).
+The system instruction for the second 9D Chess notebook (`756e3683-f651-4381-b560-b13711b84ce6`), which the project uses as the contrast/audit instance for the [Mirror Validation pathway](../experiments/pathways/mirror_validation.md).
 
-**Status:** *Proposed*. The notebook currently carries the same persona as the canonical Engine (*"You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. Respond with supreme order and precision."*) plus a "shorter" response-length setting. This doc proposes replacing both, pending user OK.
+**Status:** ✅ **Applied and validated 2026-05-06 on the Amnesia substrate.** The notebook carries this persona with `LONGER` response length, applied via `NotebookLMService.configure_mirror_auditor()`. The auditor caught all four documented failure modes from the Amnesia Stroke-1 output without coaching — full run record at [`../experiments/runs/Mirror_Validation_Amnesia.md`](../experiments/runs/Mirror_Validation_Amnesia.md).
+
+**Sibling persona:** the [Connection Bridge persona](Connection_Bridge_Persona.md) shipped 2026-05-22 as an orthogonal audit lens — same substrate as both the Engine and this Auditor, but configured for *cross-packet connection identification* rather than fault enumeration. Where the Mirror Auditor finds failure modes *in* the Engine's reasoning, the Connection Bridge finds connections *missed by* the Engine's reasoning. Both audits operate on the same Stroke-1 output and are complementary, not redundant; both are described together in [`../concepts/Bicameral_Convergence.md`](../concepts/Bicameral_Convergence.md).
 
 ## The proposed persona (verbatim)
 
@@ -65,8 +67,15 @@ This is the [Mirror Validation pathway's](../experiments/pathways/mirror_validat
 - **Same source corpus is intentional.** Both notebooks see the same 9D foundation documents, so the audit operates on consistent factual ground. The *only* differences between the two notebooks are persona and response length.
 - **Refinement is permitted, with smoke-test discipline** — same as for the Engine persona. If the proposed persona produces poor audits, refine and re-test against the known-wrong Amnesia Stroke-1 output (which has documented failure modes the auditor should catch).
 
-## What needs to happen for this to go live
+## How this went live (historical record)
 
-1. **User OK on the proposed persona text** (and the `LONGER` response-length setting). The user has delegated configuration authority but the project's standing principle is to confirm before applying account-state changes.
-2. **Apply the persona** to notebook `756e3683-f651-4381-b560-b13711b84ce6` via `NotebookLMService.configure_mirror_auditor()` (new method to add — sibling of the existing `configure_pki_oracle()`).
-3. **First test run:** feed the known-wrong Amnesia Stroke-1 output (the "Dominance Collapse / Sovereignty Handover" resolution) into the auditor and verify it catches the documented failure modes (treating signal as phase shift, ignored cost of reversal, dimensional greed). If yes, the methodology is validated end-to-end.
+1. ✅ **User OK on the persona text + `LONGER` response-length setting** — confirmed 2026-05-06.
+2. ✅ **Persona applied** to notebook `756e3683-f651-4381-b560-b13711b84ce6` via `NotebookLMService.configure_mirror_auditor()` — single-call success 2026-05-06.
+3. ✅ **First test run** — fed the known-wrong Amnesia Stroke-1 output into the auditor, verified it caught all four documented failure modes (rigidity errors, pattern-matching, confidence-evidence gaps, dimensional greeds) in compliant format without coaching. Methodology validated end-to-end. Full run record at [`../experiments/runs/Mirror_Validation_Amnesia.md`](../experiments/runs/Mirror_Validation_Amnesia.md).
+
+## What's still pending
+
+- **False-positive test (Powell-sound).** Feed the [Powell Cleanroom Engine Resolution](../experiments/runs/Powell_Cleanroom/05_Engine_Resolution.md) into the auditor and verify it returns "sound, no substantive faults." If it manufactures faults to seem useful, the persona's anti-confabulation guard needs tightening.
+- **Stroke 3 close-the-loop.** Feed the Amnesia audit findings back to the canonical Engine as Stroke-2 friction; see if Stroke 3 produces a recalibrated resolution that survives re-audit.
+- **Generalisation beyond Amnesia.** Run audits on Stroke-1 outputs from non-Amnesia domains (Powell, Tokenized Land, Genie Giant-Slayer) and verify signal-to-noise stays acceptable.
+- **Productisation of multi-stroke loop in code.** The orchestrator should expose `run_iterative_engine(scenario, max_strokes=3)` that automates Stroke 1 → audit → friction-injection → Stroke 2 → re-audit → Stroke 3.

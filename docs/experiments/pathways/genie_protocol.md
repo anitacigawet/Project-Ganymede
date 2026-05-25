@@ -37,6 +37,15 @@ THE WISH:
 Start Phase 1 now. What are the Truths you need to fulfill this wish?
 ```
 
+### Vocabulary note
+
+The Genie Prime template uses the framework primitives **Strategic Lasso** and **Incomprehensible Move**. In Genie's pathfinding register, these read as:
+
+- **Strategic Lasso** = the structural convergence that pulls the operator toward the wished-for state (a navigational mechanism, not an attack — the *operator* is the one navigating)
+- **Incomprehensible Move** = the non-obvious, non-direct route through dimensional asymmetry that gets there
+
+The math is the same as in [Offensive Architect](offensive_architect.md), but the Genie's framing positions the operator as the *path-taker*, not the *trap-setter*. The "target" in Genie context is whatever incumbent stands between the operator and the wish — and the Engine navigates around its dimensional blind spots rather than designing a funnel into a Set of Disadvantageous States. See the [Vocabulary register section](../../GLOSSARY.md#vocabulary-register) of GLOSSARY.md for how the same primitives read across all four pathways.
+
 ## Demonstrated run: Zero-Budget Giant-Slayer
 
 Recorded as run [`../runs/Genie_Giant_Slayer.md`](../runs/Genie_Giant_Slayer.md).

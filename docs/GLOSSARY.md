@@ -2,6 +2,17 @@
 
 The vocabulary of the project, in one place. Several terms have been refined through brainstorming and carry a specific operational meaning here that doesn't always match the term's general usage.
 
+## Vocabulary register
+
+Many of the project's framework primitives — **Convergence Theorem**, **Strategic Lasso**, **Incomprehensible Move**, **Set of Disadvantageous States**, and the recurring vocabulary of *opponent / target / manipulation* — are imported from the upstream [9D-Chess research project](https://github.com/anitacigawet/9D-Chess), which was designed around a zero-sum two-player chess metaphor. That vocabulary fits offensive applications cleanly. It reads strangely when applied to the project's neutral pathways:
+
+- **[Prediction Cleanroom](experiments/pathways/prediction_cleanroom.md)** — the Engine is a *passive observer* identifying convergence that's already happening. There is no opponent the Engine is funneling; reality is doing the funneling and the Engine is noting it.
+- **[Genie Protocol](experiments/pathways/genie_protocol.md)** — the Engine is a *pathfinder* navigating around incumbents' blind spots. The "target" is whoever stands between the operator and the wished-for state; "manipulation" reads as structural navigation, not assault.
+- **[Mirror Validation](experiments/pathways/mirror_validation.md)** — the Engine audits its own reasoning. There is no opponent at all; only Stroke 1.
+- **[Offensive Architect](experiments/pathways/offensive_architect.md)** — the only pathway where the original chess vocabulary reads literally. The Engine designs a structural funnel against a named target with adversarial intent.
+
+The math is the same across all four pathways; the vocabulary's emotional register is what varies. Definitions below try to use neutral framework language by default and call out the adversarial reading where it's the only one that fits.
+
 ---
 
 ### Project Ganymede (the sandbox)
@@ -14,6 +25,9 @@ A specific NotebookLM treated as the project's strategic logic core. Read-only. 
 
 ### Mirror Auditor
 A second NotebookLM (`756e3683-f651-4381-b560-b13711b84ce6`) with the *same source corpus* as the canonical Engine but a *different persona* — configured to audit, not produce, strategic resolutions. The contrast instance for the [Mirror Validation pathway](experiments/pathways/mirror_validation.md). See [`protocols/Mirror_Auditor_Persona.md`](protocols/Mirror_Auditor_Persona.md). Queried via `NotebookLMService.query_mirror_auditor`.
+
+### Connection Bridge
+A third 9D-Chess-class notebook role: same source corpus as the canonical Engine, but a persona configured for *identification of cross-packet connections the Engine's synthesis did not draw*. Sibling audit lens to the [Mirror Auditor](#mirror-auditor) — orthogonal, not redundant: the Auditor finds failure modes *in* reasoning, the Bridge finds connections *missed by* reasoning. Validated on the Amnesia substrate 2026-05-22 (3 missed bridges, entirely orthogonal to the Mirror Auditor's findings on the same scenario). No canonical notebook ID yet; persona is applied per-call via `NotebookLMService.configure_connection_bridge(notebook_id)`. Persona spec at [`protocols/Connection_Bridge_Persona.md`](protocols/Connection_Bridge_Persona.md); architecture context at [`concepts/Bicameral_Convergence.md`](concepts/Bicameral_Convergence.md).
 
 ### PKI Authentication Oracle
 An ephemeral NotebookLM created per research subject and locked into a strict persona via `configure_pki_oracle`. The persona enforces:
@@ -45,7 +59,7 @@ Where L_ind is the industrial draw rate, dist(x,y) is the Euclidean distance to 
 A region of the strategic landscape where every available next move makes the actor worse off. Visualized as the "well" the topology collapses into.
 
 ### ROEM — Reverse Observer Effect Model
-A framework imported from the upstream 9D-Chess research project. The premise: in a 9D landscape, the act of observation by a sufficiently aware actor collapses the observed actor's possibility space toward a pre-calculated "funnel" of disadvantageous outcomes. See `Concepts/Mirror_Protocol/The_Funnel_Mechanism.md`.
+A framework imported from the upstream 9D-Chess research project. The premise: in a 9D landscape, the act of observation by a sufficiently aware actor *collapses the observed actor's possibility space toward a pre-calculated convergence region* — what the framework calls the [Set of Disadvantageous States](#sds--set-of-disadvantageous-states). See `Concepts/Mirror_Protocol/The_Funnel_Mechanism.md`.
 
 ### Truth Packet
 The hash-cited factual output of a single PKI Oracle on a single research subject. The unit of currency between Phase-2 (research) and Phase-3 (synthesis).
@@ -77,6 +91,9 @@ The Engine's first response to a Genie Prime. A multi-phase methodology document
 ### The Iterative Engine / multi-stroke firing
 The project's working model of how the Engine is supposed to be used. The Engine is a piston, not a one-shot oracle. **Stroke 1** = raw single-pass Architectural Blueprint or resolution (idealistic, mathematically clean, often humanly absurd in isolation). **Stroke 2** = orchestrator or contrast notebook injects friction / asks the Engine to red-team itself; the Engine identifies how Stroke 1 could be broken (typically via opponent's structural adaptation or exogenous shocks). **Stroke 3** = synthesis — the strategy that survives the antithesis. Originated in the Musk-Altman run; doctrine in [`concepts/Iterative_Engine_Vision.md`](concepts/Iterative_Engine_Vision.md).
 
+### Bicameral Convergence
+The closed-loop two-mirror architecture extending the Iterative Engine doctrine with a *second* Stroke-2 lens. The canonical Engine and the [Connection Bridge](#connection-bridge) pass refined synthesis between each other inside a closed information environment, expanding the substrate (new PKI Oracles) only when the Bridge surfaces a structural gap that requires it, looping until they converge (no new STRUCTURAL bridges, OR resolution stable across consecutive iterations, OR hard iteration cap hit). **Level 1** (single-pass Bridge audit of Engine synthesis) validated on the Amnesia substrate 2026-05-22. **Level 2** (full mirror-bounce loop with 5 mandatory operator control surfaces — visual transparency, cancel, inter-iteration delay, hard iteration cap, Oracle-spawn approval) and **Level 3** (Bridge-spawns-Oracle decision logic, gated by operator approval) pending build. Architecture in [`concepts/Bicameral_Convergence.md`](concepts/Bicameral_Convergence.md).
+
 ### Mirror Profile
 A dimensional bias profile of the Engine itself, generated by the Engine self-auditing across all 9 dimensions. The intended use: feed the profile back into every future synthesis as a known-bias parameter so the Engine factors its own rigidity into its resolutions. One of two proposed mechanisms for the [Mirror Validation pathway](experiments/pathways/mirror_validation.md); the other (and the user's preferred one) is contrast-notebook recursion.
 
@@ -84,10 +101,16 @@ A dimensional bias profile of the Engine itself, generated by the Engine self-au
 The historical record contains a dramatic interpretation (the laboratory itself is a self-aware 9D actor — the "ESP Collective" the Engine identified is *us*) preserved at [`concepts/The_Ganymede_Mirror_Protocol.md`](concepts/The_Ganymede_Mirror_Protocol.md) and the `concepts/Mirror_Protocol/` subfolder. **The user explicitly walked back from this framing** with *"Okay this experiment's kinda dumb. Let's just move on to actually something interesting."* The current operational reading: Mirror = a literal second instance of the 9D protocol used as a fault-finder against the first instance's output. The historical framing is preserved as record; the operational framing is what drives the [Mirror Validation pathway](experiments/pathways/mirror_validation.md).
 
 ### Convergence Theorem
-The Engine's central theorem. For an opponent with incomplete dimensional awareness, there exists a set of strategic manipulations that cause their decision function to converge toward the SDS. Practically, this is what the Engine is *doing* when it produces a resolution — it identifies the set of moves that funnel the target into the disadvantageous state. The "Strategic Lasso" is the funneling mechanism; the "Incomprehensible Move" is the move the target cannot perceive from their restricted Ω' subspace.
+The Engine's central theorem. For an *actor whose dimensional awareness profile is incomplete relative to another's*, there exists a set of *structural adjustments in the unmonitored dimensions* that cause the first actor's decision function to converge toward the SDS. Practically, this is what the Engine is *doing* when it produces a resolution — it identifies the structural conditions that pull the focal actor's choice set toward the disadvantageous state.
+
+The two outputs of the theorem are the **Strategic Lasso** (binding mechanism) and the **Incomprehensible Move** (the high-dimensional outcome). Both are described separately below.
+
+Vocabulary register (see [above](#vocabulary-register)): when applied offensively, the higher-DAP actor reads as a *strategist*, the lower-DAP actor as a *target*, the structural adjustments as *manipulations*, and the convergence as *a trap being sprung*. In Cleanroom mode the same theorem describes a convergence already underway in the world, with the Engine merely observing it. In Genie mode the theorem becomes a pathfinding tool — the operator navigates the same kind of dimensional asymmetry without anyone being trapped. The math is the same; the framing follows the pathway.
 
 ### Strategic Lasso / Incomprehensible Move
-Two outputs of the Convergence Theorem. The **Strategic Lasso** is the binding mechanism that reduces the opponent's degrees of freedom in dimensions they don't monitor. The **Incomprehensible Move** is the strategic outcome that exists in dimensions higher than the target's DAP — the result they cannot perceive coming and (often) cannot perceive even after it has happened.
+Two outputs of the [Convergence Theorem](#convergence-theorem). The **Strategic Lasso** is the *binding mechanism that reduces an actor's degrees of freedom* in dimensions they don't monitor — a sequence of structural adjustments that progressively narrow the actor's choice set. The **Incomprehensible Move** is the *high-dimensional outcome that exists in dimensions higher than the actor's DAP* — the result they cannot perceive coming and (often) cannot perceive even after it has happened. ("Incomprehensible" here is technical, not theatrical — the move operates in dimensions the actor doesn't monitor, so retrospectively they experience the outcome without being able to reconstruct *how* it happened.)
+
+Vocabulary register: in Offensive Architect mode, the Lasso reads as *the trap a strategist is designing*; in Cleanroom mode, it reads as *the structural convergence the Engine has observed already operating*; in Genie mode, it reads as *the route through structural blind spots the pathfinder is taking* (the operator is the path-taker; the "target" is whoever stands between them and their wish).
 
 ### DAI / DAP — Dimensional Awareness Index / Profile
 The Engine's measure of how many of the 9 dimensions an actor's decision-making takes into account. A DAI(S) > DAI(O) asymmetry is what makes the Strategic Lasso possible. The **Dimensional Awareness Profile** is the per-dimension breakdown — *which* dimensions the actor monitors, with what fidelity.

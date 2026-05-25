@@ -17,3 +17,11 @@ The User is not a passenger; the User is the **Orchestrator.**
 
 ## 4. Goal: Strategic Alpha
 The result of this iterative firing is a **Strategic Alpha** that cannot be found via standard 2D analysis. It turns "Failing" simulations into "Learning" inputs, eventually yielding the **"Incomprehensible Move"** that survives both the math and the man.
+
+## 5. Bicameral Convergence — the multi-stroke loop generalisation
+
+The single-fire Stroke 1 → Stroke 2 → Stroke 3 piston is the basic firing pattern. **[Bicameral Convergence](Bicameral_Convergence.md)** generalises this into a multi-stroke loop where the canonical Engine and the [Connection Bridge](../protocols/Connection_Bridge_Persona.md) (a second persona-locked instance with the same source corpus but a cross-packet-connection-identification persona) pass refined synthesis between each other inside a closed information environment until they converge on an assessment.
+
+The Iterative Engine is the firing pattern; Bicameral Convergence is the loop that uses that firing pattern recursively, with a convergence criterion (no new STRUCTURAL bridges, OR resolution stable, OR hard iteration cap) and 5 mandatory operator control surfaces (visual transparency events, cancel endpoint, inter-iteration delay, hard iteration cap, Oracle-spawn approval gate). Both concepts coexist — single-fire iteration for one-shot stress-testing, Bicameral Convergence for cases where the operator wants the loop to keep refining until it exhausts the substrate.
+
+**Level 1** (single-pass Bridge audit of Engine synthesis) validated on the Amnesia substrate 2026-05-22. **Levels 2 and 3** (full mirror-bounce loop, then Bridge-spawns-Oracle decision logic with operator approval gate) pending build.

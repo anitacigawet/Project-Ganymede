@@ -22,6 +22,14 @@ Distinct from [`../concepts/`](../concepts/) (Project Ganymede's own thinking ar
 | `Vulnerabilities_of_Binary_Systems.md` | The argument for why limited-dimension systems are exploitable by 9D actors. The motivation for the framework's "conceptual zero-day" framing. |
 | `Neuro-Linguistic Programming & VR via the 8 Pillars of Metacognition.pdf` | Long-form treatment of the 8 Pillars via NLP and VR. The deepest cut of the metacognitive layer. |
 
+## A note on vocabulary
+
+These foundations docs are upstream 9D-Chess content. The original project was built around a zero-sum two-player chess metaphor, so the vocabulary throughout is adversarial: *opponent*, *target*, *strategic manipulation*, *strike*, *funnel into disadvantageous states*.
+
+Project Ganymede applies the same framework across four pathways, only one of which ([Offensive Architect](../experiments/pathways/offensive_architect.md)) is genuinely adversarial. The others — [Cleanroom](../experiments/pathways/prediction_cleanroom.md) (passive observation), [Genie](../experiments/pathways/genie_protocol.md) (pathfinding), [Mirror Validation](../experiments/pathways/mirror_validation.md) (self-audit) — use the *same math* with the *same primitives* but the chess vocabulary reads strangely. For the neutral framing of the same primitives, see the [Vocabulary register section](../GLOSSARY.md#vocabulary-register) of GLOSSARY.md.
+
+Don't try to neutralise these source files. They are an upstream snapshot and a reproducibility artifact (see "Why these are committed to the repo" below). The reframing belongs at the project's authored-docs layer, not here — editing these would break the snapshot relationship with the [upstream 9D-Chess research project](https://github.com/anitacigawet/9D-Chess).
+
 ## How Project Ganymede uses these
 
 The canonical [[9D Chess Engine]] notebook (`0a7d2672-...`) is grounded in this corpus. When the Engine produces a [[Strategic Lasso]] or names an [[Incomprehensible Move]], the vocabulary and reasoning are drawing from these docs.

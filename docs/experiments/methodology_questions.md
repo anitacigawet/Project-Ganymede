@@ -71,24 +71,29 @@ Cross-reference: the upstream theoretical project at [github.com/anitacigawet/9D
 **Status update (2026-05).** Two of the three failure modes from the original observation have been mitigated:
 
 - ✅ **Prompt-loss risk closed.** The persona text is now committed at [`../protocols/Engine_Persona.md`](../protocols/Engine_Persona.md). The persona itself is small — *"You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. Respond with supreme order and precision."* — most of the Engine's strategic-physics capability comes from the source corpus + the Genie Prime priming, not from this persona.
-- ✅ **Two-instance access acquired.** The user has provided access to two 9D-Chess notebooks with the same source corpus: canonical Engine `0a7d2672-009e-4995-9477-68c9b2fd9e54` and Mirror Auditor `756e3683-f651-4381-b560-b13711b84ce6`. This is what unblocks the Mirror Validation pathway and gives the project its first lever on the locus-of-intelligence question — we can now run the same scenario against both notebooks under identical source corpus but different personas, isolating the persona's contribution.
+- ✅ **Two-instance access acquired (and a third role added 2026-05-22).** The user provided access to two 9D-Chess notebooks with the same source corpus: canonical Engine `0a7d2672-009e-4995-9477-68c9b2fd9e54` and Mirror Auditor `756e3683-f651-4381-b560-b13711b84ce6`. This is what unblocked the Mirror Validation pathway and gave the project its first lever on the locus-of-intelligence question — running the same scenario against both notebooks under identical source corpus but different personas, isolating the persona's contribution. Extended 2026-05-22 with the [Connection Bridge persona](../protocols/Connection_Bridge_Persona.md), applied per-call to any non-canonical notebook with the foundations corpus loaded; the Bridge's cross-packet-connection output discipline produced findings entirely orthogonal to the Mirror Auditor on the same Amnesia substrate. Three personas on the same substrate now provide three observable behavioural samples per scenario — Engine (synthesis), Auditor (failure-mode enumeration), Bridge (missed-connection enumeration).
 - 🟡 **Cross-base-model experiment still open.** We can't instantiate a "mirror Engine" on a different base LLM (Claude, GPT) because NotebookLM is fronted by Google's model and we don't control that. The cross-base-model experiment requires either (a) a self-hosted runtime on a different base model with the same source corpus loaded, or (b) waiting for NotebookLM to support model selection. Same constraint as the Pattern Attractor question (Q1) — both questions point toward an eventual home-brewed runtime if NotebookLM-as-substrate has limits.
 
 **Status.** Mostly mitigated. Cross-base-model experiment remains a long-term ambition gated on (a) accumulating more validated runs to argue for the investment, and (b) the upstream 9D-Chess foundation re-read flagged in Q1's status section.
 
 ---
 
-## Q4: What "module integration" looks like in practice
+## Q4: What "module integration" looks like in practice ✅ RESOLVED
 
-**Observation.** The project's stated north star (per [`../OVERVIEW.md`](../OVERVIEW.md#north-star-module-not-service)) is to plug into the user's other projects as a private analysis module. We have not yet defined what that integration *looks like* — what API the consuming projects call, what they pass in, what they get back.
+**Observation (preserved).** The project's stated north star (per [`../OVERVIEW.md`](../OVERVIEW.md#north-star-module-not-service)) is to plug into the user's other projects as a private analysis module. The integration shape was an open question at the time of logging.
 
-**Open questions.**
-- Synchronous (call → wait → resolution) or asynchronous (kick off → poll for status)? Most ULL runs take many minutes; sync probably doesn't fit.
-- One scenario per call, or persistent session that supports Iterative Engine multi-stroke conversations?
-- What is the consumer's natural input format? GSS-shaped JSON? Free-text scenarios? Structured (target, objective, constraints)?
-- What does the consumer get back — full Resolution text, structured Lasso/IM extraction, or a callback when each stroke lands?
+**Status.** ✅ Answered through the v2 API ship (Architecture History milestone 31) and the integration documentation in [`../integration/`](../integration/).
 
-**Status.** Logged. Will need to be answered before any actual module integration can ship. Probably worth a small spike on one of the user's existing projects to see what the natural shape of the integration is, rather than guessing in the abstract.
+**Resolutions to the original open questions:**
+
+- *Sync vs. async?* — **Both.** Per-stroke synthesis calls are synchronous (`POST /api/v2/sessions/{id}/synthesize` blocks for the duration of one Engine call, typically minutes). Long-running operations (Studio outputs, Deep Research) are async with a background-task registry (`POST` returns 202 + `task_id`, consumer polls `/api/v2/tasks/{id}`). The full Iterative Engine multi-stroke loop is exposed as a single blocking call (`POST /api/v2/sessions/{id}/iterate`) with per-stroke events emitted on the session's WebSocket stream for live UI progress.
+- *One-shot vs. persistent session?* — **Persistent session.** The session abstraction holds scenario + pathway + stroke history + subscriber queues. Multi-stroke conversations and recursive-dialogue loops happen inside one session.
+- *Consumer input format?* — **Pre-harvested Truth Packets + a Scenario object shaped per the chosen pathway.** Pathways take different scenario shapes (Cleanroom: `question`; Genie: `current_state` + `wished_for_state`; Offensive: `target` + `objective_state`; Mirror Audit: `prior_resolution`). Consumers ship their own Truth Packets from their own RAG layer — Ganymede does not harvest for the consumer in v2.
+- *Consumer output?* — **Structured `FinalResolution`.** Ordered `StrokeResult[]` (each with Strategic Lasso, Incomprehensible Move, Resolution text), a `final_text` convenience field, and per-stroke event timeline. Available via WebSocket push (real-time) or HTTP poll (`GET /api/v2/sessions/{id}/events`).
+
+**First concrete consumer:** [PrisonBreak](../integration/examples/prisonbreak_consumer.md) — self-hosted "digital public defender" using the Genie pathway with case errors mapped to Truth Packets.
+
+**Roadmap-level remaining question (out of scope for methodology):** *which* other projects should consume Ganymede next. That's a prioritisation question, not a methodology one. Closed here.
 
 ---
 
