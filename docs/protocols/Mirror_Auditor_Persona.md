@@ -1,3 +1,11 @@
+---
+title: "9D Chess Mirror Auditor — Persona"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # 9D Chess Mirror Auditor — Persona
 
 The system instruction for the second 9D Chess notebook (`756e3683-f651-4381-b560-b13711b84ce6`), which the project uses as the contrast/audit instance for the [Mirror Validation pathway](../experiments/pathways/mirror_validation.md).

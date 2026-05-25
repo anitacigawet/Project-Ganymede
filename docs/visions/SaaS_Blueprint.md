@@ -1,3 +1,11 @@
+---
+title: "Project Ganymede: 9D-Chess as a Service"
+type: "concept"
+status: "speculative"
+tags: ["visions", "productisation"]
+color_id: "3"
+---
+
 # Project Ganymede: 9D-Chess as a Service
 
 ## The Core Concept

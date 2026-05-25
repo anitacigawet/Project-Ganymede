@@ -1,3 +1,11 @@
+---
+title: "Genie Giant-Slayer Run"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Genie Giant-Slayer Run
 
 **Date:** 2026-05-04 (same session, after Powell + Tokenized Land).

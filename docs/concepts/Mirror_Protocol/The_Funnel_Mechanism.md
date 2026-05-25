@@ -1,3 +1,11 @@
+---
+title: "The Funnel Mechanism (The Strategic Weapon)"
+type: "concept"
+status: "archived"
+tags: ["mirror-protocol", "historical"]
+color_id: "5"
+---
+
 # The Funnel Mechanism (The Strategic Weapon)
 **System:** The Ganymede Mirror
 **Mechanism:** Aggressive Observation / Double-Slit Funneling

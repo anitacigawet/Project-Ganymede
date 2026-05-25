@@ -1,3 +1,11 @@
+---
+title: "Consuming the Ganymede v2 API"
+type: "architecture-component"
+status: "active"
+tags: ["integration", "api"]
+color_id: "2"
+---
+
 # Consuming the Ganymede v2 API
 
 This is the doc to read first if you're building a consumer that wants to use Ganymede's strategic-analysis engine. It assumes no prior knowledge of the project's research framework — concepts are introduced inline. After reading, you should be able to write a working consumer in any language that can speak HTTP and JSON.
@@ -539,15 +547,118 @@ This is deliberate. Persistence within Ganymede would create cross-consumer stat
 
 A single Ganymede instance is single-tenant. The cooldown gate is process-global; multiple sessions running concurrently against the same backend will serialize at the NotebookLM call layer regardless. If a consumer needs more parallelism, run multiple Ganymede instances on separate ports (each with its own NotebookLM session — non-trivial; not the v1 supported shape).
 
+## Notebook lifecycle, Studio, Deep Research (added 2026-05)
+
+The session-based endpoints above cover *strategic synthesis* over pre-harvested Truth Packets — the primary consumer flow. A second endpoint surface, added in milestone 31, covers *notebook-side* operations: creating notebooks, configuring personas, generating Studio outputs (audio / video / infographic), and kicking off Deep Research. These are the primitives consumers like the Realist 10-notebook substrate build and the Persona Expansion experiment use directly.
+
+Long-running operations (Studio generation, Deep Research) return a `task_id` immediately (HTTP 202) and the consumer polls `/api/v2/tasks/{task_id}` until `status == 'completed'` or `'error'`. Studio generations typically take 5-30 minutes; Deep Research is similar. Same cooldown gate as the session endpoints — no separate rate-limit budget.
+
+### Notebook lifecycle
+
+```
+POST /api/v2/notebooks
+  body: { title }
+  → 201 { notebook_id, title }
+
+POST /api/v2/notebooks/{id}/configure-persona
+  body: { custom_prompt, response_length="LONGER" }
+  → 200 { notebook_id, response_length, persona_char_count }
+  → 403 if id is CHESS_ENGINE_ID / MIRROR_AUDITOR_ID / LEGACY_ENGINE_ID
+        (read-only canonical notebooks — use the named configure_chess_engine /
+         configure_mirror_auditor primitives if you need to refresh those)
+
+POST /api/v2/notebooks/{id}/sources/url
+  body: { url }
+  → 200 { notebook_id, url, status="uploaded" }
+```
+
+### Studio outputs (background task)
+
+```
+POST /api/v2/notebooks/{id}/studio/audio
+  body: { instructions, audio_format="DEEP_DIVE", audio_length="LONG",
+          language="en", download=true }
+  → 202 { task_id, kind="audio", notebook_id, status="running", poll_url }
+
+POST /api/v2/notebooks/{id}/studio/video
+  body: { instructions, video_format="EXPLAINER", video_style="CLASSIC",
+          language="en", download=true }
+  → 202 { task_id, kind="video", ... }
+
+POST /api/v2/notebooks/{id}/studio/infographic
+  body: { instructions, orientation="PORTRAIT", detail_level="DETAILED",
+          style="PROFESSIONAL", language="en", download=true }
+  → 202 { task_id, kind="infographic", ... }
+```
+
+The `download` flag (default true) controls whether the task waits for the upstream artifact to finish generating and downloads it to `<GANYMEDE_MEDIA_DIR>/<run_id>/<kind>.<ext>` (default `media/`). With `download=false`, the task completes as soon as the create call returns a NotebookLM task ID; the caller polls NotebookLM separately. Most consumers want `download=true`.
+
+On completion, `result` carries `{ task_id, status, is_complete, downloaded_path }`. `status` is one of `"ok"`, `"timeout"`, `"silent_rejection"` — silent rejection means NotebookLM accepted the create call but never started generation (their server quietly refused); the wrapper retries up to 3× automatically before surfacing this.
+
+### Deep Research (background task)
+
+```
+POST /api/v2/notebooks/{id}/research
+  body: { query, source="web", mode="deep", auto_import=false,
+          max_sources=null, poll_interval=null, timeout=null }
+  → 202 { task_id, kind="research", ... }
+```
+
+On completion, `result` carries `{ task_id, status, query, sources, summary, report, imported }`. `imported` is the list of sources imported back into the notebook (empty unless `auto_import=true`).
+
+### Task lifecycle
+
+```
+GET /api/v2/tasks/{task_id}
+  → 200 { task_id, kind, notebook_id, status, result, error_message,
+          exc_type, created_at, completed_at }
+
+DELETE /api/v2/tasks/{task_id}
+  → 200 { task_id, cancelled: bool }
+  → 404 if task not found
+  (cancelled=false if the task already completed; result/error preserved)
+
+GET /api/v2/tasks
+  → 200 { tasks: [...] }   (debug; not paginated)
+```
+
+Cancellation issues `asyncio.Task.cancel()`. For Studio / Research that's already in flight upstream, cancellation stops our local polling — the upstream generation continues on NotebookLM's side until it completes (and the resulting artifact sits in the notebook unused).
+
+## Auth pill endpoints (added 2026-05)
+
+The Z-SPAN-style auth health flow. Stateless wrappers over `app.services.notebooklm.auth_check`. The `AuthPill` component in `ganymede-ui/src/components/AuthPill.tsx` is the reference consumer.
+
+```
+GET /api/v2/auth/status              (optional ?force=true)
+  → 200 { status: "valid"|"expired"|"missing"|"unknown",
+          details, checked_at, cached, cache_age_seconds }
+
+POST /api/v2/auth/relogin
+  → 200 { spawned, cmd, pid, note, error? }
+  (spawns `python -m notebooklm login` which opens a browser for Google OAuth)
+
+POST /api/v2/auth/relogin/confirm
+  body: { timeout_seconds=30 }
+  → 200 { confirmed, exit_code, output, note?, error? }
+  (feeds ENTER to the subprocess so it saves cookies and exits — call AFTER
+   the user has completed sign-in in the browser)
+
+GET /api/v2/auth/relogin/status
+  → 200 { in_flight, exited, pid?, exit_code? }
+```
+
+Cache TTL is 300s by default (tunable via `GANYMEDE_NOTEBOOKLM_AUTH_CHECK_TTL`). The `relogin` and `confirm` calls automatically invalidate the cache so the next status probe re-runs.
+
 ## What's not in v1
 
 These are deliberate non-goals for the current API surface, not bugs:
 
 - **Oracle creation through the API.** The PKI Oracle harvest path (where Ganymede spins up new persona-locked notebooks to research subjects on demand) exists in the orchestrator but is not exposed in v2. Consumers ship pre-harvested Truth Packets instead. This is the right answer for any consumer that already has its own grounded RAG layer (PrisonBreak, Polymarket-Validator, etc). When/if the Oracle approval gate gets a v2 surface, the event-stream types `oracle_request`, `oracle_created`, `oracle_harvested` are reserved for it.
-- **Persistence.** As noted above. Consumer-side problem.
+- **Persistence.** As noted above. Background tasks are also in-memory; a backend restart loses any in-flight task. Consumers persist their own task ID mappings if they need durability across restarts.
 - **Authentication.** None. The backend listens on `127.0.0.1:8000` and trusts every caller. Don't bind to `0.0.0.0` without putting auth in front of it.
 - **Multi-tenancy.** Out of scope. One Ganymede instance, one NotebookLM session, one Engine notebook.
 - **Mirror Validation as a standalone pathway runnable through the API.** It's currently driven internally by `/iterate` (Stroke 2). If a consumer wants to audit a specific external piece of analysis (no preceding Stroke 1 from the same session), use the `mirror_audit` pathway with `prior_resolution` in the Scenario.
+- **Remote download of Studio artifacts.** When a Studio task completes, `result.downloaded_path` is the *server-side* file path. Same-host consumers can open it directly; a remote consumer would need a `GET /api/v2/tasks/{id}/download` endpoint that streams the file. Not in v1 — add when a remote consumer asks.
 
 ## Where to look in the source
 

@@ -1,3 +1,11 @@
+---
+title: "Concrete Cross-Domain Applications of the Integrated 9D Framework and Metacognition"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Concrete Cross-Domain Applications of the Integrated 9D Framework and Metacognition
 
 ## Introduction

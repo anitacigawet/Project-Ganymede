@@ -1,3 +1,11 @@
+---
+title: "Architecture History"
+type: "history-record"
+status: "active"
+tags: ["history", "chronological"]
+color_id: "6"
+---
+
 # Architecture History
 
 A distilled timeline of how Project Ganymede evolved, reconstructed from the original 2,749-line architecture chat transcript and the orchestrator's artifact log. Each milestone is a short paragraph. For the full operational rules these milestones produced, see [`../protocols/`](../protocols/). For the actual run records, see [`../experiments/`](../experiments/).

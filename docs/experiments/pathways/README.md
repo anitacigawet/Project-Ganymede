@@ -1,3 +1,11 @@
+---
+title: "Active Research Pathways"
+type: "cluster-head"
+status: "active"
+tags: ["pathway", "experiments", "cluster-head"]
+color_id: "3"
+---
+
 # Active Research Pathways
 
 Each pathway is a hypothesis + a method + a success criterion. Pathways are not products — they are research lines we are actively iterating on. A scenario run lives in `../runs/`; a pathway is the larger experimental program that scenario was sampling from.

@@ -1,3 +1,11 @@
+---
+title: "The Synthetic Perception Engine: Workflow & Automation Blueprint"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # The Synthetic Perception Engine: Workflow & Automation Blueprint
 
 ## The Core Concept

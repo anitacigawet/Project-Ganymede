@@ -1,3 +1,11 @@
+---
+title: "Truth Packets — Hash-Cited Oracle Output"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Truth Packets — Hash-Cited Oracle Output
 
 **Harvested from:** the four persona-locked PKI Oracles configured in [`02_Oracle_Surgical_Prompts.md`](02_Oracle_Surgical_Prompts.md).

@@ -1,3 +1,11 @@
+---
+title: "Engine Resolution — The Convergence Theorem Output"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Engine Resolution — The Convergence Theorem Output
 
 **Engine response to:** [`04_Synthesis_Prompt.md`](04_Synthesis_Prompt.md)

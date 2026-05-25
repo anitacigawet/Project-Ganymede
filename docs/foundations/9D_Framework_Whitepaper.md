@@ -1,3 +1,11 @@
+---
+title: "Whitepaper: The 9D Framework - A Multidimensional Approach to Analysis and Strategy"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Whitepaper: The 9D Framework - A Multidimensional Approach to Analysis and Strategy
 
 ## Abstract

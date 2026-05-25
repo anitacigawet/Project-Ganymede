@@ -1,3 +1,11 @@
+---
+title: "Pathway: Prediction Cleanroom"
+type: "concept"
+status: "active"
+tags: ["pathway", "experiments"]
+color_id: "3"
+---
+
 # Pathway: Prediction Cleanroom
 
 ## Hypothesis

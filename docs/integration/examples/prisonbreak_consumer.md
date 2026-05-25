@@ -1,3 +1,11 @@
+---
+title: "Example: PrisonBreak"
+type: "architecture-component"
+status: "active"
+tags: ["integration", "examples"]
+color_id: "2"
+---
+
 # Example: PrisonBreak
 
 **Status:** Built and shipped. Lives on PrisonBreak's `master` branch.

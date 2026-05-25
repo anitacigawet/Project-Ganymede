@@ -1,3 +1,11 @@
+---
+title: "Architectural Blueprint — Engine's First Response"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Architectural Blueprint — Engine's First Response
 
 **Engine output to:** [`00_Genie_Prime.md`](00_Genie_Prime.md)

@@ -1,3 +1,11 @@
+---
+title: "Vulnerabilities of Binary Systems and Abstract Strategizing"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Vulnerabilities of Binary Systems and Abstract Strategizing
 
 ## Meta-Level Vulnerabilities in AI Systems

@@ -1,3 +1,11 @@
+---
+title: "Prosthetic Metacognition: Upgrading Legacy Systems"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Prosthetic Metacognition: Upgrading Legacy Systems
 
 ## The Core Concept

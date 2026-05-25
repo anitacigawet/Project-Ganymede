@@ -1,3 +1,11 @@
+---
+title: "Corpus Callosum — A Thinking Artifact"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Corpus Callosum — A Thinking Artifact
 
 > **Status:** Concept document. Captures a design conversation; does not commit the project to building anything. Filed in `docs/concepts/` (alongside [`Iterative_Engine_Vision.md`](Iterative_Engine_Vision.md)) because that's where ideas live before they earn a protocol or a pathway.

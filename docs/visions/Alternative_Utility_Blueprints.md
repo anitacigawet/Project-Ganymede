@@ -1,3 +1,11 @@
+---
+title: "Alternative Utility Blueprints: Project Ganymede"
+type: "concept"
+status: "speculative"
+tags: ["visions", "productisation"]
+color_id: "3"
+---
+
 # Alternative Utility Blueprints: Project Ganymede
 **Date:** 2026-05-04
 **Operational Focus:** Strategic Decoding & Intelligence Engineering

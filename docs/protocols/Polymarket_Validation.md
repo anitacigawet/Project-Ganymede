@@ -1,3 +1,11 @@
+---
+title: "Polymarket Validation Protocol"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # Polymarket Validation Protocol
 
 ## Why this exists

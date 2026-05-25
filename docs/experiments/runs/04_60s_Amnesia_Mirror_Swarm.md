@@ -1,3 +1,11 @@
+---
+title: "Mirror Swarm Verification Log"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Mirror Swarm Verification Log
 **Subject:** 60-Second Amnesia Simulation
 **Date:** 2026-05-04

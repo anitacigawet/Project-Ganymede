@@ -1,3 +1,11 @@
+---
+title: "Experiment Runs"
+type: "cluster-head"
+status: "active"
+tags: ["run", "experiments", "cluster-head"]
+color_id: "1"
+---
+
 # Experiment Runs
 
 Each run is a single execution of one of the [pathways](../pathways/) on a specific scenario. The runs accumulate as the project's evidence record. Pathways are the hypotheses; runs are the data points.

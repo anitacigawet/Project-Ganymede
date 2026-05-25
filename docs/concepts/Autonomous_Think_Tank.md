@@ -1,3 +1,11 @@
+---
+title: "The Autonomous 9D Think Tank Architecture"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # The Autonomous 9D Think Tank Architecture
 
 ## The Vision

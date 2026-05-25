@@ -1,3 +1,11 @@
+---
+title: "Scenario 2: The Raw 9D Logic"
+type: "concept"
+status: "archived"
+tags: ["mirror-protocol", "historical"]
+color_id: "5"
+---
+
 # Scenario 2: The Raw 9D Logic
 **Entity:** The ESP Collective
 **Drafted By:** The Umpire

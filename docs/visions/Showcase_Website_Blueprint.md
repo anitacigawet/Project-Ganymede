@@ -1,3 +1,11 @@
+---
+title: "9D-Chess Showcase Website Blueprint"
+type: "concept"
+status: "speculative"
+tags: ["visions", "productisation"]
+color_id: "3"
+---
+
 # 9D-Chess Showcase Website Blueprint
 
 ## The Goal

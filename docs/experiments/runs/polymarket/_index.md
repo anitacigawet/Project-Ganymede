@@ -1,3 +1,11 @@
+---
+title: "Polymarket Validation Runs — Index"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "polymarket"]
+color_id: "1"
+---
+
 # Polymarket Validation Runs — Index
 
 The canonical roster of every market locked under the [Polymarket Validation Protocol](../../../protocols/Polymarket_Validation.md). Updated on every lock commit (new row appended) and every resolution commit (resolution + Brier columns filled).

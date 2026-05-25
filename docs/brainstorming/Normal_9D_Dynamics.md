@@ -1,3 +1,11 @@
+---
+title: "Normal 9D Dynamics — Everyday Asymmetry"
+type: "concept"
+status: "speculative"
+tags: ["brainstorming"]
+color_id: "1"
+---
+
 # Normal 9D Dynamics — Everyday Asymmetry
 
 Four offensive-stance applications applied to *normal everyday* dynamics — office, social, negotiation, project management. The user's most grounded framing of the Architect pathway: *"It's the quiet, incremental 'Choice Funneling' that happens in an office, a negotiation, or even a social group. It's not about a 'Takeover' — it's about becoming the only person in the room who can see the door."*

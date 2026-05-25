@@ -1,3 +1,11 @@
+---
+title: "Open Methodology Questions"
+type: "concept"
+status: "active"
+tags: ["experiments", "methodology"]
+color_id: "3"
+---
+
 # Open Methodology Questions
 
 A standing log of methodology-level questions that affect multiple pathways and don't resolve into a single experiment. These are explicitly *open* — they are not roadmap items, they are unresolved tensions in the project's epistemics that we should remain honest about.

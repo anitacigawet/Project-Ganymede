@@ -1,3 +1,11 @@
+---
+title: "Offensive-Stance Scenarios — Abstract Targets"
+type: "concept"
+status: "speculative"
+tags: ["brainstorming"]
+color_id: "1"
+---
+
 # Offensive-Stance Scenarios — Abstract Targets
 
 Four scenarios the Engine generated when asked, in Architect stance, to design strategic funnels against a generic high-power target. These were brainstormed as candidates for testing the [Offensive Architect pathway](../experiments/pathways/offensive_architect.md) at high stakes; none have actually been run.

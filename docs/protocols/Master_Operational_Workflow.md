@@ -1,3 +1,11 @@
+---
+title: "Project Ganymede: Master Operational Workflow"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # Project Ganymede: Master Operational Workflow
 **Role:** The Strategic Liaison ("The Hand")
 **Core Principle:** Zero Degradation & Umpire-Driven Modeling

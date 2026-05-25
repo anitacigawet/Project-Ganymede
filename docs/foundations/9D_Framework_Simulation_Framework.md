@@ -1,3 +1,11 @@
+---
+title: "9D Framework Simulation Framework"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # 9D Framework Simulation Framework
 
 **Author:** 9D Framework Research Team  

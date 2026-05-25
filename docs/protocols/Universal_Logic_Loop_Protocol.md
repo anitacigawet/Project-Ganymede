@@ -1,3 +1,11 @@
+---
+title: "Universal Logic Loop Protocol"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # Universal Logic Loop Protocol
 **Role:** The Ganymede Orchestrator (“The Hand”)
 **Environment:** Strategic Laboratory (Isolated from Museum)

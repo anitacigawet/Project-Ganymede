@@ -1,3 +1,11 @@
+---
+title: "Comprehensive Multidimensional Analysis: \"Ready, Set, Go/Horus\""
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Comprehensive Multidimensional Analysis: "Ready, Set, Go/Horus"
 
 ## Executive Summary

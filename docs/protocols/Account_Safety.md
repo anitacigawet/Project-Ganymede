@@ -1,3 +1,11 @@
+---
+title: "Account Safety — NotebookLM Cooldown Discipline"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # Account Safety — NotebookLM Cooldown Discipline
 
 ## Why this exists
@@ -15,7 +23,7 @@ The mitigation is a **cooldown gate** at the lowest layer of the codebase that e
 
 ## What the gate enforces
 
-Implemented as `_CooldownGate` in `ganymede-backend/app/services/notebooklm_service.py`, with a single module-global instance shared by all `NotebookLMService` instances in the process.
+Implemented as `_CooldownGate` in `ganymede-backend/app/services/notebooklm/cooldown.py`, with a single module-global instance (`_GATE`) shared by all `NotebookLMService` instances in the process. Re-exported from the package root for legacy callers.
 
 | Setting | Default | Env var | Behavior |
 | --- | --- | --- | --- |
@@ -30,14 +38,19 @@ The 8s and 60s defaults match the values Z-SPAN's bridge documents as operationa
 
 Every method in `NotebookLMService` that invokes `self.client.X` has `await _GATE.acquire()` before the call. Methods covered:
 
+Core (in `notebooklm/client.py`):
 - `create_notebook`
-- `upload_document`
+- `upload_document` / `upload_url` / `upload_file`
 - `query_notebook` (and through it, `query_chess_engine`, `query_mirror_auditor`)
-- `configure_pki_oracle`
-- `configure_chess_engine`
-- `configure_mirror_auditor`
+- `configure_persona` (and through it, `configure_pki_oracle`, `configure_chess_engine`, `configure_mirror_auditor`)
 
-`initialize` and `close` are not gated — they're once-per-process and don't generate Engine traffic.
+Studio (in `notebooklm/studio.py`):
+- `generate_audio_overview`, `generate_video_overview`, `generate_infographic` — each Studio create call, each retry attempt, and each download poll iteration acquires the gate.
+
+Research (in `notebooklm/research.py`):
+- `start_research`, `poll_research`, `import_research_sources` — and the `run_deep_research` convenience method, which acquires once per upstream call.
+
+`initialize` and `close` are not gated — they're once-per-process and don't generate Engine traffic. The `auth_check` module's `_probe` is also not gated; it loads cookies without making a billable API call.
 
 ## What's NOT covered
 
@@ -60,7 +73,7 @@ If you start seeing 429s, 403s, "session expired" errors that don't go away afte
 2. **Don't retry.** Whatever caused the flag will only get worse with more requests.
 3. **Inspect the gate stats** (`NotebookLMService.cooldown_stats()`) to see what hourly/daily volume you've been at. Save those numbers — they're a data point for whether the configured caps are too loose.
 4. **Refresh login manually** (`notebooklm.exe login` from `ganymede-backend/venv_312/Scripts/`) and check whether the notebooks are still there via the web UI before doing anything else from code.
-5. **If notebooks are gone** — the project's notebook IDs in `notebooklm_service.py` (`CHESS_ENGINE_ID`, `MIRROR_AUDITOR_ID`) will need to be updated to whatever new notebooks the user creates. The persona text is preserved at `docs/protocols/Engine_Persona.md` and `docs/protocols/Mirror_Auditor_Persona.md` so the new notebooks can be re-configured to match.
+5. **If notebooks are gone** — the project's notebook IDs in `notebooklm/client.py` (`CHESS_ENGINE_ID`, `MIRROR_AUDITOR_ID`) will need to be updated to whatever new notebooks the user creates. The persona text is preserved at `docs/protocols/Engine_Persona.md` and `docs/protocols/Mirror_Auditor_Persona.md` so the new notebooks can be re-configured to match.
 6. **If notebooks are intact** — re-tighten the cooldown caps in `.env` (lower the hourly/daily limits, increase the per-call cooldown) and resume cautiously.
 
 ## Historical compliance note
@@ -71,7 +84,7 @@ This gate was added on 2026-05-06, after a session that did 3 NotebookLM API cal
 
 ```python
 import asyncio, time
-from app.services.notebooklm_service import NotebookLMService, _GATE
+from app.services.notebooklm import NotebookLMService, _GATE
 
 async def main():
     svc = NotebookLMService()

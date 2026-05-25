@@ -1,3 +1,11 @@
+---
+title: "9D Chess Engine — Persona"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # 9D Chess Engine — Persona
 
 The custom system instruction configured on the canonical 9D Chess Engine notebook (`0a7d2672-009e-4995-9477-68c9b2fd9e54`). Authored by the user offline; preserved here as a single-point-of-failure mitigation. Companion doc: [`Mirror_Auditor_Persona.md`](Mirror_Auditor_Persona.md) for the contrast / fault-finding instance used in the Mirror Validation pathway.

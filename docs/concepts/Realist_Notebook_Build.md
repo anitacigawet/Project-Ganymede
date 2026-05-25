@@ -1,3 +1,11 @@
+---
+title: "Realist Notebook Build — Operational Spec"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Realist Notebook Build — Operational Spec
 
 > **Read this first.** This is the operational document for building the ten-notebook Realist substrate proposed in [`Corpus_Callosum.md`](Corpus_Callosum.md). When work resumes on the Corpus Callosum architecture, this is the doc you open and execute from. No re-explanation needed — the design lives here.

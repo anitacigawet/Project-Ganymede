@@ -1,3 +1,11 @@
+---
+title: "Mirror Validation — Amnesia Audit Run"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Mirror Validation — Amnesia Audit Run
 
 **Date:** 2026-05-06

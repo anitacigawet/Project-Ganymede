@@ -1,3 +1,11 @@
+---
+title: "The 9D Strategic Sandbox: Generative UI Platform"
+type: "concept"
+status: "speculative"
+tags: ["visions", "productisation"]
+color_id: "3"
+---
+
 # The 9D Strategic Sandbox: Generative UI Platform
 
 ## The Vision

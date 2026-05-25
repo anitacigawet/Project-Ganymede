@@ -1,3 +1,11 @@
+---
+title: "Glossary"
+type: "concept"
+status: "active"
+tags: ["glossary", "vocabulary"]
+color_id: "4"
+---
+
 # Glossary
 
 The vocabulary of the project, in one place. Several terms have been refined through brainstorming and carry a specific operational meaning here that doesn't always match the term's general usage.

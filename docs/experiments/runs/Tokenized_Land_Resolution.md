@@ -1,3 +1,11 @@
+---
+title: "Tokenized Land Resolution (Argentina RWA Gambit)"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Tokenized Land Resolution (Argentina RWA Gambit)
 
 **Date:** 2026-05-04 (same session as the Powell run)

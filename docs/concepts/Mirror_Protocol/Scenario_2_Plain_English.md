@@ -1,3 +1,11 @@
+---
+title: "Scenario 2: The Plain English Translation"
+type: "concept"
+status: "archived"
+tags: ["mirror-protocol", "historical"]
+color_id: "5"
+---
+
 # Scenario 2: The Plain English Translation
 **Concept:** The Synchronized Collective (The Hive Mind)
 **Analogy:** The Bird Flock

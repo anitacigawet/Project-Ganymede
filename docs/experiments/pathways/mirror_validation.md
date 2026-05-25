@@ -1,3 +1,11 @@
+---
+title: "Pathway: Mirror Validation"
+type: "concept"
+status: "active"
+tags: ["pathway", "experiments"]
+color_id: "3"
+---
+
 # Pathway: Mirror Validation
 
 ## Hypothesis

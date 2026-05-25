@@ -1,3 +1,11 @@
+---
+title: "Iterative Engine Vision: The Multi-Stroke Paradigm"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Iterative Engine Vision: The Multi-Stroke Paradigm
 
 ## 1. The Philosophy of the "Piston"

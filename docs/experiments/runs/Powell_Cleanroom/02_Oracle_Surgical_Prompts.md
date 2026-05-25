@@ -1,3 +1,11 @@
+---
+title: "Oracle Surgical Prompts"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Oracle Surgical Prompts
 
 **Translated from:** [`01_Architectural_Blueprint.md`](01_Architectural_Blueprint.md)

@@ -1,3 +1,11 @@
+---
+title: "Persona Expansion Experiment — Concept Doc"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Persona Expansion Experiment — Concept Doc
 
 > **Status:** Concept document. Captures a design decision for an experiment to be run when the project resumes. Does not commit to building anything yet. Filed in `docs/concepts/` alongside [`Corpus_Callosum.md`](Corpus_Callosum.md) and [`Realist_Notebook_Build.md`](Realist_Notebook_Build.md). Treat as the third pinned experiment in the queue.

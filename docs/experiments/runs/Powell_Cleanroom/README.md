@@ -1,3 +1,11 @@
+---
+title: "Powell Cleanroom Run"
+type: "cluster-head"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom", "cluster-head"]
+color_id: "1"
+---
+
 # Powell Cleanroom Run
 
 **Date:** 2026-05-04

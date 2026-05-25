@@ -1,3 +1,11 @@
+---
+title: "Experiment 01 — Hualapai Water Crisis"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Experiment 01 — Hualapai Water Crisis
 
 **Status:** ✅ Complete. Validated the full pipeline end-to-end.

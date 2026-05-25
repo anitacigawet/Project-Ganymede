@@ -1,3 +1,11 @@
+---
+title: "Project Ganymede — Overview"
+type: "hub"
+status: "active"
+tags: ["hub", "overview"]
+color_id: "4"
+---
+
 # Project Ganymede — Overview
 
 ## What this is

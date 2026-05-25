@@ -1,3 +1,11 @@
+---
+title: "The Ganymede Mirror Protocol: Master Record (HISTORICAL)"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # The Ganymede Mirror Protocol: Master Record (HISTORICAL)
 
 > ⚠️ **Read this header before the body.** This document is preserved as a historical record of a brainstorming branch that the user later walked back from. Roughly an hour after this document was finalized, the user said in the same session: *"Okay this experiment's kinda dumb. Let's just move on to actually something interesting."*

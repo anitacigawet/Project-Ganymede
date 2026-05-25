@@ -1,3 +1,11 @@
+---
+title: "Symbolic Logic / Headless Logic Engine — Thought Paper"
+type: "concept"
+status: "speculative"
+tags: ["brainstorming"]
+color_id: "1"
+---
+
 # Symbolic Logic / Headless Logic Engine — Thought Paper
 
 > **Status:** Brainstorming-tier thought experiment. Not committed

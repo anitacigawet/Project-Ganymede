@@ -1,3 +1,11 @@
+---
+title: "Experimental Scripts (Archive)"
+type: "cluster-head"
+status: "archived"
+tags: ["scripts", "experiments", "archived", "cluster-head"]
+color_id: "1"
+---
+
 # Experimental Scripts (Archive)
 
 These 36 scripts are the literal receipts of the experiments documented in

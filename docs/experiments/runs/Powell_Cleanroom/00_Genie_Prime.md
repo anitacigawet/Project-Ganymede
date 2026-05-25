@@ -1,3 +1,11 @@
+---
+title: "Genie Prime — Engine Initialization"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Genie Prime — Engine Initialization
 
 **Sent to:** the 9D Chess Engine notebook that was canonical at the time of this run, ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390`. This ID is preserved as `NotebookLMService.LEGACY_ENGINE_ID` for traceability — the canonical Engine has since migrated to `0a7d2672-009e-4995-9477-68c9b2fd9e54` (same source corpus, same persona). Re-running this exact prompt against the new canonical Engine should produce a comparable Architectural Blueprint, but the historical artifact below was produced against the legacy ID.

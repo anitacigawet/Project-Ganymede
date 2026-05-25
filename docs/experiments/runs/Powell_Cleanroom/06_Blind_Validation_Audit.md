@@ -1,3 +1,11 @@
+---
+title: "Blind Validation Audit — Independent Confirmation"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Blind Validation Audit — Independent Confirmation
 
 **Engine prediction tested:** the [Demotion-via-Collins/Shadow-Fed pathway](05_Engine_Resolution.md).

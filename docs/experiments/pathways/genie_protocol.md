@@ -1,3 +1,11 @@
+---
+title: "Pathway: Genie Protocol"
+type: "concept"
+status: "active"
+tags: ["pathway", "experiments"]
+color_id: "3"
+---
+
 # Pathway: Genie Protocol
 
 ## What it does

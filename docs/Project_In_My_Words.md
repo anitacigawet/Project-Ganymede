@@ -1,3 +1,11 @@
+---
+title: "Project Ganymede — In My Words"
+type: "concept"
+status: "active"
+tags: ["personal-voice", "explanation"]
+color_id: "4"
+---
+
 # Project Ganymede — In My Words
 
 Two passages I reached for spontaneously when explaining Project

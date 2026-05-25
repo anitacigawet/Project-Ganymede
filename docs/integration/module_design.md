@@ -1,3 +1,11 @@
+---
+title: "Ganymede Module — Architecture & Design Decisions"
+type: "architecture-component"
+status: "active"
+tags: ["integration", "api"]
+color_id: "2"
+---
+
 # Ganymede Module — Architecture & Design Decisions
 
 **Status:** Built and shipped. The v2 API is live in `ganymede-backend/app/v2_routes.py`. PrisonBreak is the first concrete consumer (see [`examples/prisonbreak_consumer.md`](examples/prisonbreak_consumer.md)).

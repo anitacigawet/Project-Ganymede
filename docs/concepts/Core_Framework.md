@@ -1,3 +1,11 @@
+---
+title: "Project Ganymede: Core Architecture & UI Framework"
+type: "concept"
+status: "active"
+tags: ["concepts"]
+color_id: "5"
+---
+
 # Project Ganymede: Core Architecture & UI Framework
 
 ## 1. The Core Philosophy

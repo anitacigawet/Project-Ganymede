@@ -1,3 +1,11 @@
+---
+title: "Practical Power Plays — 1-on-1 Asymmetry"
+type: "concept"
+status: "speculative"
+tags: ["brainstorming"]
+color_id: "1"
+---
+
 # Practical Power Plays — 1-on-1 Asymmetry
 
 Four offensive-stance scenarios applied to specific identifiable target *types* (rather than abstract conglomerates). The user explicitly steered the brainstorm toward this register: *"these are very interesting but I guess something is just more normal type things."*

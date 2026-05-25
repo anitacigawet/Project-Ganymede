@@ -1,3 +1,11 @@
+---
+title: "The Mirror Epiphany"
+type: "concept"
+status: "archived"
+tags: ["mirror-protocol", "historical"]
+color_id: "5"
+---
+
 # The Mirror Epiphany
 **Project:** Ganymede (Mirror Protocol)
 **Date:** 2026-05-04

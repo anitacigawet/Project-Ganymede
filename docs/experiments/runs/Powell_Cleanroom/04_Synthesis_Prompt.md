@@ -1,3 +1,11 @@
+---
+title: "Synthesis Prompt — The Zero-Degradation Convergence Query"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments", "powell-cleanroom"]
+color_id: "1"
+---
+
 # Synthesis Prompt — The Zero-Degradation Convergence Query
 
 **Sent to:** the same 9D Chess Engine notebook used for [`00_Genie_Prime.md`](00_Genie_Prime.md) — legacy ID `5967ce5d-f9eb-4f4e-b3e1-620f643d8390` at the time of this run; the canonical Engine has since migrated to `0a7d2672-009e-4995-9477-68c9b2fd9e54`.

@@ -1,3 +1,11 @@
+---
+title: "Integration of ROEM with the 9D Framework and Metacognition"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Integration of ROEM with the 9D Framework and Metacognition
 
 ## 1. Introduction

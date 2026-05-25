@@ -1,3 +1,11 @@
+---
+title: "Musk vs. Altman Polymarket Run"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Musk vs. Altman Polymarket Run
 
 **Date:** late in the architecture session, post-Genie demonstration.

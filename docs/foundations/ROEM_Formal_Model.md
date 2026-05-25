@@ -1,3 +1,11 @@
+---
+title: "The Reverse Observer Effect Model (ROEM)"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # The Reverse Observer Effect Model (ROEM)
 
 ## 1. Introduction

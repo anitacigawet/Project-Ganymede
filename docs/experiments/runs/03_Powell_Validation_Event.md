@@ -1,3 +1,11 @@
+---
+title: "Experiment 03 — The Powell Validation Event (high-level summary)"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Experiment 03 — The Powell Validation Event (high-level summary)
 
 > **📁 Full reproducible run folder: [`Powell_Cleanroom/`](Powell_Cleanroom/)** — Genie Prime, Architectural Blueprint, Oracle prompts, 4 Truth Packets, synthesis prompt, Engine resolution, and blind-validation audit. **That folder supersedes this file** for any reproducibility / methodology purpose. This file is preserved as the original high-level run summary.

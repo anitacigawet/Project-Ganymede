@@ -1,3 +1,11 @@
+---
+title: "Brainstorming"
+type: "cluster-head"
+status: "speculative"
+tags: ["brainstorming", "cluster-head"]
+color_id: "1"
+---
+
 # Brainstorming
 
 Ideas surfaced during the architecture conversation that are interesting enough to preserve but **not committed to**. None of these are roadmap items. They are riffs the user wanted to keep visible without locking in. Each entry has been mined from the original session, de-fluffed, and noted with the framing context — particularly where the dramatic vocabulary needs nuance.

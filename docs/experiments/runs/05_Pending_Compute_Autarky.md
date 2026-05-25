@@ -1,3 +1,11 @@
+---
+title: "Experiment 05 — Pending: Compute Autarky Collision"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Experiment 05 — Pending: Compute Autarky Collision
 
 **Status:** ⏸ Pending. Proposed by the Umpire as the next "maximum extent" test. Not yet initiated.

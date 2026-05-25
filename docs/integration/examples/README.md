@@ -1,3 +1,11 @@
+---
+title: "Example Consumers"
+type: "cluster-head"
+status: "active"
+tags: ["integration", "examples", "cluster-head"]
+color_id: "2"
+---
+
 # Example Consumers
 
 Real projects that use Ganymede's [v2 API](../consuming_the_v2_api.md). Each example is a write-up of a consumer's integration shape — the scenario it constructs, how it builds its Truth Packets, what pathway it picks, and how it presents the result.

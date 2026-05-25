@@ -1,3 +1,11 @@
+---
+title: "Other Riffs"
+type: "concept"
+status: "speculative"
+tags: ["brainstorming"]
+color_id: "1"
+---
+
 # Other Riffs
 
 Standalone scenario ideas, utility concepts, and methodology riffs that surfaced during brainstorming but don't fit cleanly into the other brainstorming docs. None of these are committed to.

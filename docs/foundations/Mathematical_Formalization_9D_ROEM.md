@@ -1,3 +1,11 @@
+---
+title: "Mathematical Formalization and Axiomatic Foundation of the 9D Framework and ROEM"
+type: "concept"
+status: "core"
+tags: ["foundations", "9d-framework"]
+color_id: "4"
+---
+
 # Mathematical Formalization and Axiomatic Foundation of the 9D Framework and ROEM
 
 ## 1. Introduction

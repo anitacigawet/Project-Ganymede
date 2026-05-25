@@ -1,6 +1,14 @@
+---
+title: "PKI Authentication Oracle Persona"
+type: "protocol"
+status: "active"
+tags: ["protocols", "operational"]
+color_id: "6"
+---
+
 # PKI Authentication Oracle Persona
 
-The exact persona contract every ephemeral PKI Oracle is locked into during Phase 0 of the Master Workflow. This is the reference spec — the canonical source of truth is the `configure_pki_oracle` method in `ganymede-backend/app/services/notebooklm_service.py`.
+The exact persona contract every ephemeral PKI Oracle is locked into during Phase 0 of the Master Workflow. This is the reference spec — the canonical source of truth is the `configure_pki_oracle` method (and the `PKI_ORACLE_PERSONA` constant it applies) in `ganymede-backend/app/services/notebooklm/client.py`.
 
 ## The persona prompt (verbatim)
 
@@ -35,7 +43,7 @@ CORE DIRECTIVES:
 
 ## Configured runtime parameters
 
-In `notebooklm_service.py`:
+In `notebooklm/client.py` (via `configure_persona`):
 
 ```python
 await self.client.chat.configure(
@@ -50,7 +58,7 @@ await self.client.chat.configure(
 
 ## How to extend or change the persona
 
-If you need to add a directive (e.g. require a confidence rating, change the citation format, add a refusal protocol for sensitive topics), edit the string in `configure_pki_oracle` in `notebooklm_service.py` and update the verbatim block above.
+If you need to add a directive (e.g. require a confidence rating, change the citation format, add a refusal protocol for sensitive topics), edit the `PKI_ORACLE_PERSONA` constant in `notebooklm/client.py` and update the verbatim block above.
 
 **Do not** add directives that grant the Oracle creative latitude. Anything that softens "ZERO HALLUCINATION" or "NO NARRATIVE FLUFF" breaks the contract that the synthesis stage relies on.
 

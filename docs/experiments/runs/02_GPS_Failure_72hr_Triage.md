@@ -1,3 +1,11 @@
+---
+title: "Experiment 02 — GPS Failure (72-hour Triage)"
+type: "history-record"
+status: "active"
+tags: ["run", "experiments"]
+color_id: "1"
+---
+
 # Experiment 02 — GPS Failure (72-hour Triage)
 
 **Scenario:** "The sudden, absolute failure of all satellite-based GPS systems globally for 72 hours."

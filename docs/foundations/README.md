@@ -1,3 +1,11 @@
+---
+title: "Foundations"
+type: "cluster-head"
+status: "core"
+tags: ["foundations", "9d-framework", "cluster-head"]
+color_id: "4"
+---
+
 # Foundations
 
 The upstream theoretical material that the [9D-Chess research project](https://github.com/anitacigawet/9D-Chess) produced — imported here as reference substrate for [[Project Ganymede]]. These docs are not Project Ganymede's own work; they are the *prior* theoretical apparatus this project operationalizes.

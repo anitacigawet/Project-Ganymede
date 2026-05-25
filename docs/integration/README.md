@@ -1,3 +1,11 @@
+---
+title: "Integration"
+type: "cluster-head"
+status: "active"
+tags: ["integration", "api", "cluster-head"]
+color_id: "2"
+---
+
 # Integration
 
 Ganymede is designed as an **open primitive**, not an opinionated wrapper. The v2 API exposes raw access to the strategic-physics framework: any consumer composes its own scenarios, picks its pathway, ships its own pre-harvested Truth Packets, and decides its own UI (or no UI). Each consuming project knows its domain better than Ganymede possibly could; Ganymede's job is to provide a clean session-based API and stay out of the way.
