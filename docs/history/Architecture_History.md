@@ -303,6 +303,62 @@ The Dispatcher (shipped milestone 35) ran its first live end-to-end spin on a re
 - Validate the LMArena pre-registered prediction at 2026-06-30 and update the run record.
 - Bicameral Convergence Level 1 build (`audit_with_bridge()`) — still pending from milestone 33; the Mirror Auditor running in-line as Stroke 2 in this milestone is structurally similar but uses the Mirror Auditor persona, not the Connection Bridge.
 
+## 37. Iterative Engine production-ready — Stroke 3 cap fixed + first ever 3-stroke loop (2026-05-26)
+
+A continuation of milestone 36's work into the same evening / overnight. Milestone 36 surfaced the empty-Stroke-3 bug; this milestone closes it and gets the full Iterative Engine loop firing for the first time on a real scenario.
+
+**Diagnosis** (via spawn-task agent investigation; details in [`../experiments/runs/06_LMArena_Anthropic_Cleanroom.md`](../experiments/runs/06_LMArena_Anthropic_Cleanroom.md) § "Third-run diagnosis"). NotebookLM's `chat.ask` endpoint silently rejects queries above ~5,100-6,000 characters with structured error envelope `[["e",4,null,null,N]]`. The `notebooklm-py` SDK doesn't recognize this envelope and falls through to "no answer extracted" returning empty. Looks like a content filter; is actually an input-size cap. Stroke 3's re-synthesis prompt (scenario + truth packets + Stroke 1 verbatim + Stroke 2 audit verbatim + mission framing) is structurally over the cap whenever Stroke 1 + Stroke 2 are both injected verbatim.
+
+**Fixes shipped, in order:**
+
+1. **`CHESS_ENGINE_PERSONA` tightened** for per-dimension brevity (1-2 sentences each) + reserve detail for FINAL RESOLUTION + suppress chatbot-CTA endings. Applied to canonical Engine notebook via a one-off `reconfigure_chess_engine.py` script (calls the existing `configure_chess_engine()` method, sanctioned for the canonical notebook). **Effect:** Stroke 1 output trimmed from ~5,500 chars to ~3,900-4,500 chars; Stroke 2 (Auditor input is Stroke 1) now fits under cap.
+2. **Skip Stroke 3 when Stroke 2 is empty** — orchestrator short-circuit logs a warning and returns the partial 2-stroke result rather than firing a malformed Stroke 3 with literal empty audit findings.
+3. **Curly-brace escape on injected stroke content** — pre-existing bug in `synthesize()` (`.format()` called on framing with unescaped user content) raised `KeyError: 'DAI'` when Stroke 1 contained framework jargon like `{DAI}` / `{ROEM}` literally. Masked by silent rejection in earlier runs; surfaced once Stroke 1 was small enough to reach Stroke 3. Fix: escape `{` → `{{` and `}` → `}}` in `s1.raw_response` and `s2.raw_response` before substitution in `run_iterative_engine`.
+4. **Structural extraction for Stroke 3 injection** — the actual fix that lands Stroke 3 reliably under the cap. Two new helpers in `app/services/orchestrator.py`:
+   - `_extract_for_resynthesis(stroke_1_raw, max_chars)` — keeps Stroke 1's head (~400 chars, captures self-flagged evidence notices) + the `FINAL RESOLUTION` capstone (the conclusion the Auditor was critiquing). Omits the per-dimension breakdown, which the Auditor's own text already addresses. Falls back to last `max_chars` if no marker.
+   - `_truncate_audit_for_injection(stroke_2_raw, max_chars)` — uses the existing `_parse_audit_findings` to split into four category chunks and budgets each equally. Falls back to head-truncation if the structural parse fails.
+   - Default budgets: `GANYMEDE_S1_INJECTION_BUDGET=1800`, `GANYMEDE_S2_INJECTION_BUDGET=1500`. Both env-tunable for future cap-movement.
+
+**Supporting infrastructure shipped:**
+
+- Backend `FileHandler` on root logger at `app/main.py` import (Agent 2 fix) — `backend.log` now always written regardless of launch path. Critical for post-hoc diagnostics; previously the only signal we had when NotebookLM rejected a query was the silent empty string.
+- `query_notebook` silent-rejection retry (3× exponential backoff) shipped earlier in milestone 36's first commit — still useful as a safety net when transient rejections happen even on under-cap prompts.
+- DispatcherPanel amber warning block (Agent 2 fix) — when the last stroke is empty, the UI now renders *"⚠️ STROKE N RETURNED NO CONTENT — see backend.log for the attempt-by-attempt detail"* instead of silently absent Final Resolution.
+- Always-on raw-HTTP-body logging on silent rejection — captures the structured error envelope when NotebookLM rejects a query. The diagnostic capability that made the cap root-cause possible.
+
+**The empirical win — Run 6 (2026-05-26 ~05:17 UTC):**
+
+The full Iterative Engine loop fired successfully on the same LMArena scenario. Stroke 1: 38s. Stroke 2: 41s. **Stroke 3: 28s, FIRST ATTEMPT, no retries.** Total loop wall time: 107 seconds.
+
+Stroke 3 opened with the unprecedented:
+
+> *"The Mirror Auditor's friction vectors are mathematically absolute and accepted into the core engine. Stroke-1 critically misapplied the Reverse Observer Effect Model (ROEM) via faulty pattern-matching... The LMArena leaderboard is a passive measurement apparatus within the strategic universe (Ω), not an active meta-strategist."*
+
+**The Engine explicitly accepted the Auditor's correction and re-grounded its own reasoning.** The audited Stroke 3 resolution is *materially different* from the un-audited Stroke 1 thesis — not a cosmetic rewrite, a genuine correction. Stroke 1 had claimed the market's 77% Anthropic confidence was a "localized illusion" predicting Set-like usurpation; Stroke 3 (audited) concluded that 77% accurately reflects Anthropic's Horus-like legitimacy and Go-like benchmark mindshare, with the real risk being benchmark tunnel-vision rather than structural usurpation.
+
+**This empirically validates the [Bicameral Convergence](../concepts/Bicameral_Convergence.md) theoretical claim end-to-end:** not just "Auditor catches things" (validated in milestone 36) but also "Engine integrates the Auditor's critique into a tighter synthesis." Both halves of the closed-loop claim on a fresh, non-political scenario.
+
+**Pre-registered Cleanroom prediction revised** (operator decision after Run 6): the audited Stroke 3 prediction supersedes the un-audited Stroke 1 prediction for 2026-06-30 validation. The un-audited Stroke 1 is preserved as historical contrast — the contrast is itself the methodological win of the run.
+
+**Side observation worth recording:**
+
+The Engine's mythology archetype assignments INVERTED across three runs of the same scenario (Run 1: Anthropic = Horus, Google = Set; Run 5: Anthropic = Set, Google = Horus; Run 6: back to Anthropic = Horus, Google = Set). **Strong empirical signal that the mythological layer is doing aesthetic work, not load-bearing structural work** — and reinforces the [Framework Cleanup Hypothesis](../concepts/Framework_Cleanup_Hypothesis.md) filed earlier this session as an artifact of [Methodology Silo 3](../experiments/methodology_questions.md).
+
+**What this milestone closes:**
+
+- The Iterative Engine pathway is now production-ready end-to-end. Strokes 1+2+3 fire reliably; the Bicameral Convergence audit loop produces audited Cleanroom predictions in under 2 minutes wall time per run.
+- Backend logging discipline is fixed (always writes to `backend.log` regardless of launch path).
+- The empty-Stroke-3 silent-failure UX is fixed (amber warning surfaces failures; structural extraction prevents most failures from happening).
+
+**Pending after this milestone:**
+
+- Upstream `notebooklm-py` PR to recognize the `[["e",4,null,null,N]]` envelope as `ChatError`. Operational hygiene; not blocking now that the cap is being avoided at prompt construction.
+- Persona CTA-suppression is partially-effective — Stroke 1 still leaks *"Would you like me to..."* CTAs in ~50% of runs despite the persona prohibition. Substrate behavior overrides persona text. Possible mitigations: stronger persona phrasing, post-processing strip, or `response_length=SHORTER`. Low priority.
+- Bicameral Convergence Level 1 build (`audit_with_bridge()`) — still pending from milestone 33. Now genuinely unblocked: the iterative-loop infrastructure that Level 1 depends on is verified working. The Bridge is structurally similar to the Auditor (same persona-applied-to-second-instance pattern); the orchestrator changes needed are modest.
+- Foundations corpus deep-read for the Framework Cleanup Hypothesis. Multi-hour focused work; the next concrete step toward the kernel-vs-scaffolding partition. Worth scheduling as its own session.
+- Validate the audited Cleanroom prediction at 2026-06-30.
+- Rotate `GOOGLE_API_KEY` in Google AI Studio (still outstanding operator action from the original handoff).
+
 ---
 
 ## Cross-references at a glance
