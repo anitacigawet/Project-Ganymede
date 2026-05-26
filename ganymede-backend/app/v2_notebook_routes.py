@@ -28,6 +28,9 @@ Endpoint set:
   Deep Research (long-running, returns task_id):
     POST /api/v2/notebooks/{id}/research
 
+  Bridge provisioning (long-running, returns task_id):
+    POST /api/v2/bridge/provision                  Create + foundations + packets + persona
+
   Task lifecycle:
     GET    /api/v2/tasks/{task_id}                 Status / result / error
     DELETE /api/v2/tasks/{task_id}                 Cancel an in-flight task
@@ -42,12 +45,14 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.contracts import TruthPacket
 from app.services.background_tasks import BackgroundTask, registry as task_registry
 
 logger = logging.getLogger(__name__)
@@ -679,3 +684,228 @@ async def list_tasks() -> TaskListResponse:
     return TaskListResponse(
         tasks=[TaskStatusResponse(**t.to_dict()) for t in tasks],
     )
+
+
+# ---------------------------------------------------------------------------
+# Bridge provisioning helper — Bicameral Convergence Level 1 setup.
+#
+# /api/v2/sessions/{id}/bridge-audit (in v2_routes.py) requires a pre-
+# provisioned Bridge notebook. Without help, the caller has to: create the
+# notebook + upload all 13 foundations corpus files + upload the scenario's
+# Truth Packets + remember to apply the persona — ~15+ NotebookLM calls and
+# multiple endpoint hits.
+#
+# This helper bundles all of that into one background-task call. Caller
+# polls the returned task_id; on completion, task.result.notebook_id is
+# ready to pass to /bridge-audit directly.
+# ---------------------------------------------------------------------------
+
+
+# Default location of the foundations corpus, relative to this file.
+# Resolve once at import; can be overridden via GANYMEDE_FOUNDATIONS_DIR.
+#   __file__ = .../ganymede-backend/app/v2_notebook_routes.py
+#   .parent  = .../ganymede-backend/app
+#   .parent  = .../ganymede-backend
+#   .parent  = .../Project Ganymede  (the project root)
+_DEFAULT_FOUNDATIONS_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "docs" / "foundations"
+)
+
+
+def _foundations_dir() -> Path:
+    """Resolved foundations corpus directory. Env-overridable for tests."""
+    override = os.environ.get("GANYMEDE_FOUNDATIONS_DIR")
+    return Path(override) if override else _DEFAULT_FOUNDATIONS_DIR
+
+
+class BridgeProvisionRequest(BaseModel):
+    """Provision a Bridge notebook in one background-task call.
+
+    Bundles four steps that otherwise require ~15 separate HTTP requests:
+
+      1. Create a new (non-canonical) NotebookLM notebook.
+      2. Upload the foundations corpus (``docs/foundations/`` — every
+         ``.md`` / ``.pdf`` / ``.txt`` file except ``README.md``).
+      3. Upload the supplied Truth Packets (each written to a temp ``.md``
+         file with the packet's subject as title and source_label as
+         attribution, then uploaded).
+      4. Apply the Connection Bridge persona via
+         ``configure_connection_bridge``.
+
+    On completion, ``task.result.notebook_id`` is ready to pass directly
+    to ``POST /api/v2/sessions/{id}/bridge-audit``. See
+    ``docs/concepts/Bicameral_Convergence.md`` for the architectural framing.
+
+    Operational cost: ~15+ NotebookLM calls total (one per foundation file
+    + one per Truth Packet + one persona apply + one notebook create).
+    With the 8s cooldown floor this is typically 3-5 minutes wall time.
+    The Truth-Packet upload calls are serialised through the cooldown
+    gate; the wrapper handles retry on transient failures.
+    """
+    model_config = ConfigDict(extra="forbid")
+    title: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Notebook title. Defaults to "
+            "'Bridge — <first truth_packet subject>' if omitted. "
+            "Truncated to 200 chars."
+        ),
+    )
+    truth_packets: list[TruthPacket] = Field(
+        min_length=1,
+        description=(
+            "Truth Packets to upload to the Bridge notebook. Should "
+            "match the substrate the Engine reasoned over for the "
+            "scenario being audited — typically the same packet list "
+            "you'd pass to /api/v2/sessions/{id}/iterate or /synthesize."
+        ),
+    )
+    include_foundations: bool = Field(
+        default=True,
+        description=(
+            "Whether to also upload the docs/foundations/ corpus. "
+            "Defaults to True (the expected case for actual Bridge use). "
+            "Set False only for testing, or if foundations are pre-loaded "
+            "via a different mechanism."
+        ),
+    )
+
+
+@router.post(
+    "/bridge/provision",
+    response_model=TaskSubmittedResponse,
+    status_code=202,
+)
+async def bridge_provision(req: BridgeProvisionRequest) -> TaskSubmittedResponse:
+    """Provision a Bridge notebook end-to-end. Returns 202 + task_id immediately.
+
+    Poll ``GET /api/v2/tasks/{task_id}`` until ``status == 'completed'`` or
+    ``'error'``. On completion, ``result`` contains:
+
+    .. code-block:: json
+
+        {
+          "notebook_id": "<uuid>",
+          "title": "Bridge — Scenario",
+          "foundations_uploaded": 13,
+          "truth_packets_uploaded": 1,
+          "sources_total": 14,
+          "bridge_persona_applied": true
+        }
+
+    The ``notebook_id`` is then passed directly to
+    ``POST /api/v2/sessions/{id}/bridge-audit``.
+
+    Errors (raised inside the task and surfaced via task.error_message):
+        ``RuntimeError`` if the foundations directory isn't found and
+        ``include_foundations=True`` (caller should set
+        ``GANYMEDE_FOUNDATIONS_DIR`` or use the default project layout).
+        Any NotebookLM upload / create / persona-apply failure surfaces
+        with its original exception type.
+
+    Note: notebook lifecycle is NOT auto-managed. On task error the
+    partial notebook (if create succeeded) is NOT auto-deleted — caller
+    can clean up via ``DELETE /api/v2/notebooks/{id}`` if desired, or
+    inspect for debugging. This is intentional: a partial-upload notebook
+    may still be useful to retry against.
+    """
+    svc = _get_svc()
+
+    title = (req.title or f"Bridge — {req.truth_packets[0].subject[:60]}")[:200]
+
+    task_context: dict[str, Any] = {
+        "title": title,
+        "truth_packet_subjects": [tp.subject for tp in req.truth_packets],
+        "truth_packet_count": len(req.truth_packets),
+        "include_foundations": req.include_foundations,
+    }
+
+    # Capture by value into the closure so the request body can be GC'd.
+    truth_packets = list(req.truth_packets)
+    include_foundations = req.include_foundations
+
+    async def _run() -> dict[str, Any]:
+        # Resolve foundations dir first — fail fast if missing and required.
+        foundations_dir: Optional[Path] = None
+        if include_foundations:
+            foundations_dir = _foundations_dir()
+            if not foundations_dir.is_dir():
+                raise RuntimeError(
+                    f"Foundations directory not found: {foundations_dir}. "
+                    f"Set the GANYMEDE_FOUNDATIONS_DIR env var or ensure the "
+                    f"default project layout (docs/foundations/) is intact."
+                )
+
+        notebook_id = await svc.create_notebook(title)
+        logger.info(
+            "bridge_provision: created notebook %s (title=%r)",
+            notebook_id, title,
+        )
+
+        foundations_uploaded = 0
+        if foundations_dir is not None:
+            # Upload .md / .pdf / .txt files in sorted order, skip README.md
+            # (which is a meta-description of the corpus, not part of it).
+            uploadable = [
+                p for p in sorted(foundations_dir.iterdir())
+                if p.is_file()
+                and p.suffix.lower() in {".md", ".pdf", ".txt"}
+                and p.name.lower() != "readme.md"
+            ]
+            for file_path in uploadable:
+                logger.info(
+                    "bridge_provision: uploading foundation %s (%d/%d)",
+                    file_path.name,
+                    foundations_uploaded + 1,
+                    len(uploadable),
+                )
+                await svc.upload_file(notebook_id, str(file_path))
+                foundations_uploaded += 1
+
+        # Truth Packets: write each to a temp .md, upload, clean up at end.
+        packets_uploaded = 0
+        with tempfile.TemporaryDirectory(prefix="ganymede_bridge_packets_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            for i, tp in enumerate(truth_packets, start=1):
+                # Build a safe filename from the subject; cap length.
+                safe = "".join(
+                    c if c.isalnum() or c in "._- " else "_" for c in tp.subject
+                ).strip()[:80] or f"packet_{i}"
+                tmp_path = tmpdir_path / f"{safe}.md"
+                content = (
+                    f"# {tp.subject}\n\n"
+                    f"Source: {tp.source_label or 'unspecified'}\n\n"
+                    f"{tp.content}\n"
+                )
+                tmp_path.write_text(content, encoding="utf-8")
+                logger.info(
+                    "bridge_provision: uploading truth packet %r (%d/%d)",
+                    tp.subject, i, len(truth_packets),
+                )
+                await svc.upload_file(notebook_id, str(tmp_path))
+                packets_uploaded += 1
+
+        logger.info("bridge_provision: applying Bridge persona to %s", notebook_id)
+        await svc.configure_connection_bridge(notebook_id)
+
+        logger.info(
+            "bridge_provision: done. notebook=%s, foundations=%d, packets=%d",
+            notebook_id, foundations_uploaded, packets_uploaded,
+        )
+        return {
+            "notebook_id": notebook_id,
+            "title": title,
+            "foundations_uploaded": foundations_uploaded,
+            "truth_packets_uploaded": packets_uploaded,
+            "sources_total": foundations_uploaded + packets_uploaded,
+            "bridge_persona_applied": True,
+        }
+
+    task = await task_registry().submit(
+        kind="bridge_provision",
+        coro_factory=_run,
+        notebook_id=None,  # not known until _run starts
+        context=task_context,
+    )
+    return _submitted_response(task)

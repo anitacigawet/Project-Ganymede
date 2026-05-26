@@ -403,10 +403,16 @@ wielding the same corpus for a different output task — which works.
 **Pending after Level 1 method ship:**
 
 - A first end-to-end exercise of ``audit_with_bridge()`` on the LMArena
-  scenario from Run 06. Requires operator-assisted setup of a Bridge
-  notebook (create notebook + upload foundations corpus + upload LMArena
-  Truth Packet, then call). Estimated ~15+ NotebookLM calls for setup
-  + 1 for the audit query. Worth doing in a dedicated session.
+  scenario from Run 06. The setup friction has been collapsed by the
+  ``POST /api/v2/bridge/provision`` helper (shipped 2026-05-26) — one
+  HTTP call that bundles notebook-create + foundations corpus upload
+  + Truth Packet upload + Bridge persona apply as a single background
+  task. Wall time still ~3-5 min (14 NotebookLM calls under the 8s
+  cooldown), but the operator only has to make TWO HTTP calls instead
+  of ~15: ``POST /bridge/provision`` (returns task_id), poll until
+  ``task.result.notebook_id`` is populated, then ``POST
+  /sessions/{id}/bridge-audit`` with that notebook_id. Suitable for
+  autonomous-monitorable execution.
 - Wiring ``audit_with_bridge()`` into ``run_iterative_engine`` as an
   optional Stroke 2b (alongside the Mirror Auditor) when the operator
   passes ``include_bridge=True`` and provides a ``bridge_notebook_id``.

@@ -316,7 +316,20 @@ Response:
 
 The returned stroke is recorded as `pathway: "mirror_audit"` (structurally an audit stroke, same shape as a Mirror Auditor stroke). Distinguishable from Mirror Auditor strokes by inspection of `raw_response` — Bridge enumerates connections, Auditor enumerates fault categories. `audit_findings` is intentionally `null` (the four-category parser doesn't apply to Bridge output).
 
-**Typical caller flow:**
+**Typical caller flow (with the provision helper — recommended):**
+
+```
+1. POST /api/v2/sessions                                  # create session
+2. POST /api/v2/sessions/{id}/synthesize                  # Stroke 1
+3. POST /api/v2/bridge/provision                          # ← helper (returns task_id)
+4. GET  /api/v2/tasks/{task_id}  (poll until completed)   # task.result.notebook_id is the Bridge ID
+5. POST /api/v2/sessions/{id}/bridge-audit                # ← this endpoint, pass that notebook_id
+6. DELETE /api/v2/notebooks/{bridge_nb}                   # cleanup (optional, but recommended if single-use)
+```
+
+Step 3 (`/bridge/provision`) bundles foundations upload + Truth Packet upload + Bridge persona apply into one background task — ~3-5 min wall time for ~14 NotebookLM calls.
+
+**Manual flow (if you want full control over what gets uploaded):**
 
 ```
 1. POST /api/v2/sessions                                  # create session
@@ -324,17 +337,75 @@ The returned stroke is recorded as `pathway: "mirror_audit"` (structurally an au
 3. POST /api/v2/notebooks                                 # create Bridge notebook
 4. POST /api/v2/notebooks/{nb}/sources/file  (×N)         # foundations corpus
 5. POST /api/v2/notebooks/{nb}/sources/file  (×M)         # scenario Truth Packets
-6. POST /api/v2/sessions/{id}/bridge-audit                # ← this endpoint
-7. DELETE /api/v2/notebooks/{nb}                          # cleanup (optional)
+6. POST /api/v2/notebooks/{nb}/configure-persona          # apply Bridge persona
+7. POST /api/v2/sessions/{id}/bridge-audit                # ← this endpoint
+8. DELETE /api/v2/notebooks/{nb}                          # cleanup (optional)
 ```
 
-Steps 3-5 are ~15+ NotebookLM calls (1 per file + 1 per create); this endpoint itself is 1 call. For ad-hoc single audits the setup is meaningful overhead; for long-lived scenarios where the same Bridge notebook is reused across many audits, the setup amortises well.
+Steps 3-6 in the manual flow are ~15+ NotebookLM calls; this endpoint itself is 1 call. For ad-hoc single audits, prefer the helper. For long-lived scenarios where the same Bridge notebook is reused across many audits, either flow works since the setup amortises.
 
 Errors:
 - `404` — session not found
 - `409` — session not running
 - `422` — `bridge_notebook_id` is a canonical ID, or no prior stroke and no `target_text` supplied
 - `500` — orchestrator failure (session transitions to error state)
+
+### `POST /api/v2/bridge/provision`
+
+Provision a Bridge notebook in one background-task call. Bundles four steps that otherwise require ~15 separate HTTP requests:
+
+1. Create a new (non-canonical) NotebookLM notebook.
+2. Upload the foundations corpus (`docs/foundations/` — every `.md` / `.pdf` / `.txt` file except `README.md`; 13 files in the current corpus).
+3. Upload the supplied Truth Packets (each written to a temp `.md` file with the packet's subject as title + source_label as attribution).
+4. Apply the Connection Bridge persona via `configure_connection_bridge`.
+
+Returns 202 + `task_id` immediately. The actual work runs as a background task — caller polls `GET /api/v2/tasks/{task_id}` until completion.
+
+Request:
+```json
+{
+  "title": null,
+  "truth_packets": [
+    { "subject": "Scenario", "content": "Will Anthropic still be ranked #1...", "source_label": "Operator-supplied" }
+  ],
+  "include_foundations": true
+}
+```
+
+- `title` (optional): notebook title. Defaults to `"Bridge — <first truth_packet subject>"`. Truncated to 200 chars.
+- `truth_packets` (required): list of Truth Packets to upload. Should match the substrate the Engine reasoned over for the scenario being audited.
+- `include_foundations` (optional, default true): whether to also upload `docs/foundations/` corpus. Set false only for testing or if foundations are pre-loaded elsewhere.
+
+Response (202):
+```json
+{
+  "task_id": "...",
+  "kind": "bridge_provision",
+  "notebook_id": null,
+  "status": "running",
+  "poll_url": "/api/v2/tasks/..."
+}
+```
+
+`notebook_id` is `null` at submit time (the notebook hasn't been created yet). Once `task.status == "completed"`, `task.result.notebook_id` is the Bridge notebook ID — pass that to `/api/v2/sessions/{id}/bridge-audit`.
+
+On completion, `task.result`:
+```json
+{
+  "notebook_id": "<uuid>",
+  "title": "Bridge — Scenario",
+  "foundations_uploaded": 13,
+  "truth_packets_uploaded": 1,
+  "sources_total": 14,
+  "bridge_persona_applied": true
+}
+```
+
+Operational cost: ~14 NotebookLM calls (one create + one per foundation file + one per Truth Packet + one persona apply). With the 8s cooldown floor, typically 3-5 minutes wall time.
+
+Notes:
+- The foundations directory defaults to `docs/foundations/` relative to the project root. Override via the `GANYMEDE_FOUNDATIONS_DIR` env var if your deployment lays out files differently.
+- On task error (any upload or create failure), the partial notebook is **not** auto-deleted — caller can clean up via `DELETE /api/v2/notebooks/{id}` or keep it for debugging.
 
 ### `POST /api/v2/sessions/{id}/complete`
 
