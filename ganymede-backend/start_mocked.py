@@ -14,7 +14,7 @@ import logging
 
 import uvicorn
 
-from app.services import notebooklm_service as nbsvc
+from app.services import notebooklm as nbsvc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 
 if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')

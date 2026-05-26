@@ -1,23 +1,29 @@
 'use client';
 
+/**
+ * DevOverlay — the Cortex Clipboard.
+ *
+ * Two-stage manual handoff between the 9D-Chess Engine and the GSS 3D viz:
+ *   1. Strategic Pre-Processor — Gemini-Pro-ready prompt block; user copies
+ *      this and runs it against Gemini Pro manually (Hard Guardrail #4).
+ *   2. Simulation Listener — user pastes the GSS JSON Gemini returned;
+ *      "Apply To Topology" deserialises and hands off to PhysicsCanvas.
+ *
+ * Controlled component: parent owns ``promptBlock`` and ``isOpen``. The
+ * RunnerPanel fills the prompt block and opens the overlay in one step
+ * via the parent's state, then the user copies → pastes → applies.
+ */
+
 import React, { useState } from 'react';
 import { Terminal, Copy, X, Play } from 'lucide-react';
 
 import { GSSState } from '../types/ganymede';
 
-interface DevOverlayProps {
-  onApplyGSS: (config: GSSState) => void;
-}
-
-export function DevOverlay({ onApplyGSS }: DevOverlayProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  const [promptBlock, setPromptBlock] = useState(
-`# SYSTEM DIRECTIVE
+const DEFAULT_PROMPT_BLOCK = `# SYSTEM DIRECTIVE
 You are the Ganymede Compiler. Your task is to visualize and model the strategic landscape based on the following factual 9D analysis and the suggested visualization parameters from the Umpire.
 
 # INSTRUCTION
-Based on the specific strategy provided by the Umpire, provide the final simulation parameters in our standardized GSS (Ganymede Strategic Schema) JSON format. 
+Based on the specific strategy provided by the Umpire, provide the final simulation parameters in our standardized GSS (Ganymede Strategic Schema) JSON format.
 
 # OUTPUT FORMAT (Strict JSON Only)
 {
@@ -28,13 +34,32 @@ Based on the specific strategy provided by the Umpire, provide the final simulat
     { "node_id": "...", "type": "Industrial_Sink", "draw_rate": 400000, "luminosity": 0.95, "coordinates": { "x": 0, "y": 0, "z": 0 } }
   ],
   "physics_logic": { "gravity_well_depth_formula": "Inverted_Radial_Decay", "failure_threshold": -4.5 }
-}`
-  );
-  
+}`;
+
+const DEFAULT_JSON_PLACEHOLDER = `{
+  "metadata": { "compiler_version": "G-3.0", "classification": "STRATEGIC_SITREP", "timestamp": "..." },
+  "environmental_baseline": { "ambient_depletion": 2.4, "unit": "ft/yr" },
+  "legislative_framework": { "bill_id": "...", "mitigation_coefficient": 0.15, "status": "Active" },
+  "topological_entities": [ ... ],
+  "physics_logic": { "gravity_well_depth_formula": "Inverted_Radial_Decay", "failure_threshold": -4.5 }
+}`;
+
+interface DevOverlayProps {
+  onApplyGSS: (config: GSSState) => void;
+  /** Controlled open state. Parent sets true when handing off from RunnerPanel. */
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Controlled prompt block — Runner fills this when it has an Engine resolution. */
+  promptBlock?: string;
+}
+
+export function DevOverlay({ onApplyGSS, isOpen, onOpenChange, promptBlock }: DevOverlayProps) {
   const [jsonInput, setJsonInput] = useState('');
 
+  const displayedPromptBlock = promptBlock && promptBlock.length > 0 ? promptBlock : DEFAULT_PROMPT_BLOCK;
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(promptBlock);
+    navigator.clipboard.writeText(displayedPromptBlock);
   };
 
   const handleApply = () => {
@@ -45,15 +70,15 @@ Based on the specific strategy provided by the Umpire, provide the final simulat
       } else {
         alert('JSON must conform to the Ganymede Strategic Schema (GSS).');
       }
-    } catch (e) {
+    } catch {
       alert('Invalid JSON formatting. Ensure it is strict JSON.');
     }
   };
 
   if (!isOpen) {
     return (
-      <button 
-        onClick={() => setIsOpen(true)}
+      <button
+        onClick={() => onOpenChange(true)}
         className="absolute bottom-6 right-6 z-50 p-4 bg-slate-900/80 hover:bg-slate-800 backdrop-blur-xl border border-slate-700/50 rounded-full text-indigo-400 hover:text-indigo-300 shadow-2xl transition-all"
         title="Open Cortex Clipboard"
       >
@@ -69,19 +94,22 @@ Based on the specific strategy provided by the Umpire, provide the final simulat
           <Terminal className="w-4 h-4" />
           <span className="font-bold tracking-wider uppercase text-xs">Cortex Clipboard</span>
         </div>
-        <button onClick={() => setIsOpen(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
+        <button onClick={() => onOpenChange(false)} className="text-slate-500 hover:text-slate-300 transition-colors">
           <X className="w-5 h-5" />
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-8 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-        
+
         {/* Output from Backend */}
         <div className="space-y-3">
           <div className="flex justify-between items-end">
             <div>
-              <h3 className="text-xs text-slate-400 uppercase tracking-widest font-semibold">1. Strategic Pre-Processor</h3>
-              <p className="text-[10px] text-slate-500 mt-1">Copy this structured prompt to Gemini Pro.</p>
+              <h3 className="text-xs text-slate-400 uppercase tracking-widest font-semibold">1. Schema Reference</h3>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Generic GSS scaffold for reference. The Live Runner has its own
+                "Copy Engine Output" button — you drive Gemini freely from there.
+              </p>
             </div>
             <button onClick={handleCopy} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-500/30 rounded text-indigo-300 hover:text-indigo-200 transition-colors text-xs">
               <Copy className="w-3 h-3" /> Copy Block
@@ -89,7 +117,7 @@ Based on the specific strategy provided by the Umpire, provide the final simulat
           </div>
           <textarea
             readOnly
-            value={promptBlock}
+            value={displayedPromptBlock}
             className="w-full h-64 bg-slate-900 border border-slate-800 rounded-md p-3 text-slate-300 text-xs resize-none focus:outline-none shadow-inner"
           />
         </div>
@@ -100,15 +128,15 @@ Based on the specific strategy provided by the Umpire, provide the final simulat
         <div className="space-y-3">
           <div>
             <h3 className="text-xs text-emerald-500 uppercase tracking-widest font-semibold">2. Simulation Listener</h3>
-            <p className="text-[10px] text-slate-500 mt-1">Paste the JSON output from Gemini Pro here.</p>
+            <p className="text-[10px] text-slate-500 mt-1">Paste the GSS JSON output from Gemini Pro here.</p>
           </div>
           <textarea
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
-            placeholder={'{\n  "stress": 85,\n  "blindness": 40,\n  "description": "Water scarcity trap identified..."\n}'}
+            placeholder={DEFAULT_JSON_PLACEHOLDER}
             className="w-full h-48 bg-slate-900 border border-slate-800 rounded-md p-3 text-emerald-400 text-xs resize-none focus:outline-none focus:border-emerald-500/50 shadow-inner"
           />
-          <button 
+          <button
             onClick={handleApply}
             className="w-full py-3 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-md flex items-center justify-center gap-2 transition-colors uppercase tracking-widest text-xs font-bold"
           >

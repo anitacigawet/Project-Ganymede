@@ -1,7 +1,7 @@
 import asyncio
 import os
 import tempfile
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 
 async def main():
     print("Initializing NotebookLM Service...")

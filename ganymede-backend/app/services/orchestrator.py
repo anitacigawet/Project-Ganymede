@@ -32,7 +32,7 @@ from app.contracts import (
     TruthPacket,
     utcnow,
 )
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 from app.services.session import Session
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,39 @@ most critical, high-impact subjects that require factual verification to
 understand the cascading failure points.
 
 Output the Breakdown and the Hit List clearly.
+"""
+
+
+TRIAGE_TEMPLATE_STRUCTURED = """\
+SITUATION INGESTION: {scenario}
+
+MISSION:
+Perform a 9D Strategic Breakdown of this situation. Identify the core
+subjects, entities, and dimensions involved.
+
+After the breakdown, produce a Strategic Hit List of research subjects
+for our PKI Oracle swarm. Each subject becomes its own deep-research
+Oracle. To prevent swarm sprawl, LIMIT to the top {max_subjects} most
+critical high-impact subjects.
+
+OUTPUT FORMAT (MANDATORY):
+First, your free-form 9D Strategic Breakdown as prose.
+
+Then, AT THE END of your response, emit the Hit List as a JSON object
+delimited EXACTLY by the markers shown — no markdown fences, no
+extra prose between markers:
+
+<HIT_LIST_JSON>
+{{"subjects":[
+  {{"name":"<3-7 word subject label>","surgical_prompt":"<plain-language research question — 1-3 sentences, what facts to gather and from what domain. NO 9D jargon (no ROEM, DAP, SDS, Strategic Lasso, Convergence Theorem) — phrase it the way you would ask a research assistant.>"}}
+]}}
+</HIT_LIST_JSON>
+
+The JSON must contain EXACTLY {max_subjects} subject objects. The
+surgical_prompt for each must be plain English suitable for a research
+assistant — names of entities to research, factual questions to answer,
+domains to consult. The Deep Research engine reads these prompts
+verbatim; jargon will produce empty results.
 """
 
 DEFAULT_GO_SIGNAL = (
@@ -177,6 +210,26 @@ class GanymedeOrchestrator:
         return await self.svc.query_chess_engine(rendered)
 
     # -------------------------------------------------------- Phase 2: Swarm
+
+    async def _cleanup_failed_oracle(self, notebook_id: str) -> None:
+        """Best-effort delete of a failed oracle's notebook.
+
+        Run after Deep Research or harvest fails inside :meth:`run_universal_loop`
+        so the dead notebook does not clutter the user's NotebookLM dashboard
+        (counting against quota with no truth packet to show for it).
+
+        Errors are swallowed — cleanup failure must not cascade into the
+        parent flow's exception handling.  The delete itself goes through
+        the cooldown gate.
+        """
+        try:
+            await self.svc.delete_notebook(notebook_id)
+            logger.info("Cleaned up failed oracle notebook %s", notebook_id)
+        except Exception as exc:
+            logger.warning(
+                "Could not delete failed oracle notebook %s: %s",
+                notebook_id, exc,
+            )
 
     async def create_oracle(
         self,
@@ -595,6 +648,276 @@ class GanymedeOrchestrator:
         )
         results.append(s3)
         return results
+
+    # =====================================================================
+    # Full Universal Logic Loop — Phase 1 (Triage) → Phase 2 (Oracle swarm
+    # with programmatic Deep Research + Import) → Phase 3 (Synthesis).
+    #
+    # This is the "type a question, get a real resolution" path the
+    # original Powell / Tokenized Land / Giant-Slayer runs proved out
+    # interactively. The session emits structured events at every phase
+    # boundary so WS subscribers render live progress.
+    #
+    # Long: each Oracle is one notebook create + persona config + Deep
+    # Research run (5-20min) + programmatic source import + harvest. With
+    # the gate's 8s cooldown and 3 default subjects, expect 15-60 min
+    # wall time per full run.
+    # =====================================================================
+
+    async def run_universal_loop(
+        self,
+        session: Session,
+        *,
+        max_subjects: int = 3,
+        deep_research_timeout: float = 1800.0,
+        max_sources_per_oracle: int = 30,
+        research_mode: str = "deep",
+    ) -> StrokeResult:
+        """Phase 1 (Triage) → Phase 2 (per-subject Oracle harvest with
+        programmatic Deep Research) → Phase 3 (Synthesis).
+
+        Emits, in order:
+            - BLUEPRINT_READY      after Phase 1, payload contains the full
+                                   blueprint text + the parsed Hit List
+            - ORACLE_REQUEST       per subject before the Oracle is created
+            - ORACLE_CREATED       per subject once the notebook exists
+            - ORACLE_HARVESTED     per subject after the Truth Packet is read
+            - STROKE_STARTED / SYNTHESIS_COMPLETE / STROKE_COMPLETED   for
+                                   the Phase-3 synthesis (via
+                                   run_synthesis_stroke)
+
+        The Engine never sees an empty truth_packet list — if an Oracle's
+        research or harvest fails the failure text becomes the packet, so
+        the synthesis prompt is honest about what was gathered.
+
+        Returns the final Phase-3 StrokeResult. Caller invokes
+        :meth:`Session.complete` afterward.
+        """
+        if session.status != "running":
+            raise RuntimeError(
+                f"Session {session.id} is not running (status={session.status})"
+            )
+        if session.pathway not in (Pathway.CLEANROOM, Pathway.GENIE, Pathway.OFFENSIVE):
+            raise ValueError(
+                f"run_universal_loop does not support pathway "
+                f"{session.pathway.value} — Mirror Audit operates on supplied "
+                f"prior_resolution and does not spawn Oracles."
+            )
+
+        # ---------------- Phase 1: Triage ---------------------------------
+
+        scenario_text = scenario_to_synthesis_text(session.scenario, session.pathway)
+        triage_prompt = TRIAGE_TEMPLATE_STRUCTURED.format(
+            scenario=scenario_text, max_subjects=max_subjects
+        )
+        logger.info(
+            "Session %s: Phase 1 triage (max_subjects=%d)",
+            session.id, max_subjects,
+        )
+        triage_raw = await self.svc.query_chess_engine(triage_prompt)
+        blueprint_text, subjects = parse_triage_hit_list(triage_raw)
+        await session.emit(
+            SessionEventType.BLUEPRINT_READY,
+            payload={
+                "blueprint": blueprint_text,
+                "subjects": subjects,
+                "subject_count": len(subjects),
+                "parse_ok": len(subjects) > 0,
+            },
+        )
+
+        if not subjects:
+            # Triage produced no parseable subjects. Synthesise on the
+            # blueprint itself as a single Truth Packet so we still return
+            # 9D-shaped content rather than failing the run.
+            logger.warning(
+                "Session %s: Phase 1 returned no parseable subjects; "
+                "synthesising on the blueprint alone",
+                session.id,
+            )
+            fallback_packets = [
+                TruthPacket(
+                    subject="Triage Blueprint (no Hit List parseable)",
+                    content=blueprint_text,
+                    source_label="UL Loop fallback — Engine triage only",
+                )
+            ]
+            return await self.run_synthesis_stroke(session, fallback_packets)
+
+        # ---------------- Phase 2: per-subject Oracle harvest --------------
+
+        harvested: dict[str, str] = {}
+        for subject_data in subjects:
+            subject = (subject_data.get("name") or "subject").strip()
+            surgical_prompt = (subject_data.get("surgical_prompt") or "").strip()
+            if not surgical_prompt:
+                logger.warning(
+                    "Session %s: subject %r has no surgical_prompt; skipping",
+                    session.id, subject,
+                )
+                harvested[subject] = "SKIPPED: no surgical_prompt provided"
+                continue
+
+            await session.emit(
+                SessionEventType.ORACLE_REQUEST,
+                payload={
+                    "subject": subject,
+                    "surgical_prompt": surgical_prompt,
+                },
+            )
+
+            try:
+                oracle = await self.create_oracle(subject, surgical_prompt)
+            except Exception as exc:
+                logger.exception("Session %s: create_oracle failed for %s",
+                                 session.id, subject)
+                harvested[subject] = f"ORACLE CREATION FAILED: {exc}"
+                continue
+
+            await session.emit(
+                SessionEventType.ORACLE_CREATED,
+                payload={
+                    "subject": subject,
+                    "notebook_id": oracle.notebook_id,
+                    "full_name": oracle.full_name,
+                },
+            )
+
+            # Deep Research + programmatic import. This is the previously-
+            # manual "click Import in the NotebookLM UI" step, now handled
+            # by notebooklm-py's research.import_sources().
+            imported_count = 0
+            try:
+                research = await self.svc.run_deep_research(
+                    notebook_id=oracle.notebook_id,
+                    query=surgical_prompt,
+                    source="web",
+                    mode=research_mode,
+                    auto_import=True,
+                    max_sources=max_sources_per_oracle,
+                    timeout=deep_research_timeout,
+                )
+                imported_count = len(research.get("imported", []) or [])
+            except Exception as exc:
+                logger.exception("Session %s: Deep Research failed for %s",
+                                 session.id, subject)
+                harvested[subject] = f"DEEP RESEARCH FAILED: {exc}"
+                # Orphan-cleanup: the notebook was created above but has no
+                # imported sources and never produced a truth packet.  Delete
+                # it so it does not clutter the user's NotebookLM dashboard.
+                await self._cleanup_failed_oracle(oracle.notebook_id)
+                await session.emit(
+                    SessionEventType.ORACLE_HARVESTED,
+                    payload={
+                        "subject": subject,
+                        "notebook_id": oracle.notebook_id,
+                        "status": "research_failed",
+                        "error": str(exc),
+                    },
+                )
+                continue
+
+            # Harvest the Truth Packet — Oracle now has imported sources to
+            # draw from, so its answer is hash-cited per PKI persona.
+            try:
+                packet = await self.harvest(oracle)
+            except Exception as exc:
+                logger.exception("Session %s: harvest failed for %s",
+                                 session.id, subject)
+                packet = f"HARVEST FAILED: {exc}"
+                # Same orphan-cleanup as the research-failed path.  The
+                # notebook does have imported sources at this point, but no
+                # truth packet was harvested — keeping it around just for
+                # the sources is not worth the dashboard clutter.
+                await self._cleanup_failed_oracle(oracle.notebook_id)
+
+            harvested[subject] = packet
+            await session.emit(
+                SessionEventType.ORACLE_HARVESTED,
+                payload={
+                    "subject": subject,
+                    "notebook_id": oracle.notebook_id,
+                    "sources_imported": imported_count,
+                    "packet_chars": len(packet),
+                    "status": "ok",
+                },
+            )
+
+        # ---------------- Phase 3: Synthesis -------------------------------
+
+        truth_packets = [
+            TruthPacket(
+                subject=name,
+                content=content,
+                source_label=f"UL Loop Oracle ({name})",
+            )
+            for name, content in harvested.items()
+        ]
+        logger.info(
+            "Session %s: Phase 3 synthesis with %d Truth Packet(s)",
+            session.id, len(truth_packets),
+        )
+        return await self.run_synthesis_stroke(session, truth_packets)
+
+
+# ---------------------------------------------------------------------------
+# Hit-list parser
+#
+# The TRIAGE_TEMPLATE_STRUCTURED asks the Engine to emit a JSON object
+# delimited by <HIT_LIST_JSON>...</HIT_LIST_JSON> markers. Real-world
+# Engine output sometimes wraps it in fences or shifts the markers; this
+# parser is defensive — tries the marker block first, then any object
+# containing a "subjects" array, before giving up.
+# ---------------------------------------------------------------------------
+
+def parse_triage_hit_list(triage_response: str) -> tuple[str, list[dict]]:
+    """Extract (blueprint_text, parsed_subjects) from a structured triage.
+
+    Returns the full triage_response as blueprint_text (the Engine's prose
+    is informative on its own), plus a list of ``{name, surgical_prompt}``
+    dicts. Returns an empty list if no JSON could be extracted — the
+    caller should fall back to triage-only synthesis.
+    """
+    import json
+    import re
+
+    # Try the marked block first.
+    marker_match = re.search(
+        r"<HIT_LIST_JSON>\s*(\{.*?\})\s*</HIT_LIST_JSON>",
+        triage_response,
+        re.DOTALL,
+    )
+    candidates: list[str] = []
+    if marker_match:
+        candidates.append(marker_match.group(1))
+
+    # Fallback: any JSON object that contains "subjects": [
+    for m in re.finditer(
+        r"\{[^{}]*\"subjects\"\s*:\s*\[.*?\][^{}]*\}",
+        triage_response,
+        re.DOTALL,
+    ):
+        candidates.append(m.group(0))
+
+    for cand in candidates:
+        try:
+            data = json.loads(cand)
+        except json.JSONDecodeError:
+            continue
+        subjects = data.get("subjects")
+        if isinstance(subjects, list):
+            cleaned: list[dict] = []
+            for s in subjects:
+                if not isinstance(s, dict):
+                    continue
+                name = (s.get("name") or "").strip()
+                prompt = (s.get("surgical_prompt") or s.get("prompt") or "").strip()
+                if name and prompt:
+                    cleaned.append({"name": name, "surgical_prompt": prompt})
+            if cleaned:
+                return triage_response, cleaned
+
+    return triage_response, []
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import sys
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 
 # Force UTF-8 for printing to avoid encoding errors on Windows
 if sys.platform == 'win32':

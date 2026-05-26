@@ -13,9 +13,9 @@ Design notes:
       list will be backed by an ``asyncio.Queue`` for WebSocket
       streaming, but for now consumers retrieve events by polling
       :meth:`Session.events`.
-    - The cooldown gate (``_GATE`` in ``notebooklm_service``) handles all
-      NotebookLM rate limiting transparently. The Session does not need
-      to think about it.
+    - The cooldown gate (``_GATE`` in ``app.services.notebooklm.cooldown``)
+      handles all NotebookLM rate limiting transparently. The Session does
+      not need to think about it.
 
 See :doc:`docs/integration/module_design.md` for the full API design.
 """

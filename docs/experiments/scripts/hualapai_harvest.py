@@ -1,6 +1,6 @@
 import asyncio
 import os
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 
 async def main():
     svc = NotebookLMService()
