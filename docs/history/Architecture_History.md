@@ -269,6 +269,40 @@ A documentation-only session focused on absorbing external critique and identify
 - Dispatcher / Intent Router frontend (sequenced behind documentation work).
 - Optional: a terminology audit on framework-primitive definitions (GLOSSARY.md, OVERVIEW.md architecture diagram, the prediction_cleanroom + genie_protocol diagrams) — broaden adversarial vocabulary that's bled out of its proper Offensive Architect register into the universal physics docs. Specific substitution list and the rationale live in the 2026-05-25 doc-analysis conversation.
 
+## 36. First live Dispatcher spin — Cleanroom on LMArena prediction (2026-05-25)
+
+The Dispatcher (shipped milestone 35) ran its first live end-to-end spin on a real Cleanroom-shape question. The operator typed *"Will Anthropic still be ranked #1 on the LMArena public AI model leaderboard at the end of June 2026? Polymarket is currently pricing Anthropic at 77% and Google at 20% to hold the top spot."* into the Ask box; the Dispatcher classified Cleanroom at 100% confidence; the iterative 3-stroke loop fired.
+
+**Validated:**
+
+- Dispatcher end-to-end (POST `/api/v2/dispatch` → frontend review of extracted parameters → POST `/api/v2/sessions` → `/iterate` → `/complete`)
+- Engine Stroke 1 produced rich 9-dimensional analysis (~4,500 chars) — all 9 dimensions named, ROEM invoked, Strategic Lasso / SDS framing applied. Bottom-line prediction: Set-like usurpation of Anthropic by Google or another lab before 2026-06-30, against the 77% Anthropic market consensus.
+- **Mirror Auditor Stroke 2 caught all 4 documented fault categories with substantive critiques on a fresh scenario** (Pattern-Matching, Confidence-Evidence Gaps, Dimensional Greeds, Rigidity Errors). Most important catch: Stroke 1's confident prediction is mythology-grounded rather than evidence-grounded. This is the **empirical confirmation of the [Bicameral Convergence](../concepts/Bicameral_Convergence.md) audit-by-second-instance claim generalising beyond the [Amnesia validation](../experiments/runs/Mirror_Validation_Amnesia.md)** — the Auditor works on fresh scenarios as an in-line Stroke-2, not just on canned legacy substrates.
+- Wall time under 5 minutes (5× faster than the docs' 5–15 min expectation) — suggests either fewer cooldown gates than expected or shorter NotebookLM response times than the v2 API docs estimate.
+
+**Failed:**
+
+- **Stroke 3 re-synthesis returns `raw_response.length == 0`.** No Final Resolution rendered. The iterative loop is currently shipping a 2-stroke effective output rather than the designed 3-stroke. Root cause not diagnosed in-session — the current backend process is not writing to `backend.log` (most recent entries from a 2026-05-23 launch), so post-hoc diagnostics require either tee-ing the current process's stdout or reproducing the bug with a fresh `run_dev.bat`-launched backend. Spawned task for investigation.
+- DispatcherPanel's "Final resolution" rendering condition only fires when `finalText` differs from the last stroke's raw_response; when both are empty, the user sees no error — just an absent Final Resolution box. UX bug to address alongside the Stroke 3 root cause.
+
+**Pre-registered prediction (timestamped 2026-05-25 ~03:05 UTC, low confidence):** the market's 77% Anthropic confidence on LMArena #1 at end-of-June 2026 may be over-priced. Expect at least one of: non-Anthropic lab holds #1 for some 24-hour window in the interval, Anthropic price crosses below 65%, or end-of-June resolution isn't Anthropic. If none happen, the framework-level intuition was wrong on this scenario. Validation date 2026-06-30. **This is the first Cleanroom run to actually exercise the pre-registration discipline** flagged as the open methodology problem in `pathways/prediction_cleanroom.md`.
+
+**Also shipped this session before the run:**
+
+- `docs/brainstorming/Palantir_For_Ganymede.md` — preserves the operator's pitched reframing of Ganymede as a Palantir-style intelligence-fusion engine on bounded domains, with an honest take on why sports specifically is a weaker fit than the reframing implies (market efficiency, latency mismatch, framework mismatch) and a table of alternative domains (single-company strategic dossier, geopolitical case study, industry investigation, legal/regulatory case prediction, corporate-event prediction) where the structural-reasoning strength is load-bearing rather than beside the point.
+- Operator preference saved to memory: **politics is radioactive for scenario selection**, including Polymarket prices on political questions treated as themselves potentially adversarially pushed. This rule directly shaped the scenario pick — the initial Iran ceasefire candidates (highest Polymarket volume) were excluded; the AI-model-race question substituted as the closest non-political analog with multi-actor structural dynamics.
+
+**Run record:** [`../experiments/runs/06_LMArena_Anthropic_Cleanroom.md`](../experiments/runs/06_LMArena_Anthropic_Cleanroom.md).
+
+**Pending after this milestone:**
+
+- Diagnose and fix the Stroke 3 empty-response bug.
+- Fix backend logging discipline so post-hoc diagnostics work (tee current process stdout to `backend.log`, or always launch via `run_dev.bat` which uses `log_runner.py`).
+- Make DispatcherPanel render an error when Stroke 3 is empty rather than silently absent.
+- Update the DispatcherPanel placeholder examples to remove the FOMC and "regulatory team blocking" examples (politics-radioactive rule); replace with non-political Cleanroom and Offensive Architect examples (spawned task).
+- Validate the LMArena pre-registered prediction at 2026-06-30 and update the run record.
+- Bicameral Convergence Level 1 build (`audit_with_bridge()`) — still pending from milestone 33; the Mirror Auditor running in-line as Stroke 2 in this milestone is structurally similar but uses the Mirror Auditor persona, not the Connection Bridge.
+
 ---
 
 ## Cross-references at a glance

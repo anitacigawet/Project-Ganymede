@@ -17,15 +17,56 @@ import logging
 import os
 from typing import Optional
 
+# Load .env (sibling of this folder's parent — ganymede-backend/.env) before
+# any module that reads env vars at import time. GeminiService reads
+# GOOGLE_API_KEY; NotebookLM client reads various NOTEBOOKLM_* tunables.
+# Silent no-op if python-dotenv isn't installed or no .env exists.
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.services.notebooklm_service import NotebookLMService
+from app.services.notebooklm import NotebookLMService
 from app.services.orchestrator import GanymedeOrchestrator
 
-logging.basicConfig(level=logging.INFO)
+# Always-on file logging. Without this, the app's logging only ends up in
+# backend.log if the backend was launched via run_dev.bat (which routes
+# uvicorn through log_runner.py). A direct ``uvicorn app.main:app`` launch
+# would lose every log line to the console only, blocking post-hoc bug
+# diagnostics — observed concretely on the 2026-05-25 first live Dispatcher
+# spin, where the Stroke 3 empty-response bug was un-diagnosable until the
+# backend was restarted through run_dev.bat.
+#
+# By installing a FileHandler on the root logger here (in app code, not the
+# launcher) backend.log gets writes regardless of how uvicorn was started.
+# log_runner.py's stdout tee remains useful for capturing uvicorn's own
+# access logs (which don't propagate to the root logger by default), but is
+# no longer load-bearing for app diagnostics.
+_LOG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend.log")
+)
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_log_handlers: list[logging.Handler] = [logging.StreamHandler()]
+try:
+    _log_handlers.append(logging.FileHandler(_LOG_PATH, encoding="utf-8"))
+except OSError as _log_exc:
+    # Filesystem trouble (read-only mount, missing dir, etc.) must not kill
+    # the app — degrade to console-only logging and report once at startup.
+    logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT)
+    logging.getLogger(__name__).warning(
+        "Could not open %s for logging: %s — continuing with console only.",
+        _LOG_PATH, _log_exc,
+    )
+else:
+    logging.basicConfig(level=logging.INFO, format=_LOG_FORMAT, handlers=_log_handlers)
+
 logger = logging.getLogger(__name__)
+logger.info("Backend logging: writing to %s", _LOG_PATH)
 
 app = FastAPI(
     title="Project Ganymede Backend",
@@ -66,8 +107,10 @@ orchestrator = GanymedeOrchestrator(notebooklm_svc)
 # Imported here (not at module top) to avoid a circular import — v2_routes
 # imports ``orchestrator`` from this module.
 from app.v2_routes import router as v2_router  # noqa: E402
+from app.v2_notebook_routes import router as v2_notebook_router  # noqa: E402
 
 app.include_router(v2_router)
+app.include_router(v2_notebook_router)
 
 
 # ---------------------------------------------------------------------------

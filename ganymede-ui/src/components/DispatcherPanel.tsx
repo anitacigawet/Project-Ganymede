@@ -310,10 +310,10 @@ export function DispatcherPanel({
             onChange={(e) => setText(e.target.value)}
             placeholder={
               'In plain language. For example:\n' +
-              '  "Will the FOMC cut rates at the June meeting?"\n' +
+              '  "Will Anthropic still hold the #1 spot on LMArena at end of June 2026?"\n' +
               '  "I run a small consultancy with no marketing budget; how do I take share from an entrenched competitor?"\n' +
               '  "Audit this analysis: <paste the text>"\n' +
-              '  "How do I outmaneuver the regulatory team blocking my product launch?"'
+              '  "How do I outmaneuver an entrenched market leader before they recognize me as a threat?"'
             }
             rows={8}
             className="w-full resize-none rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed"
@@ -486,6 +486,24 @@ export function DispatcherPanel({
               </pre>
             </div>
           ))}
+
+          {strokes.length > 0 && !strokes[strokes.length - 1]?.raw_response?.trim() && (
+            <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-amber-200">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle size={14} />
+                <span className="text-xs font-semibold uppercase tracking-wide">
+                  Stroke {strokes[strokes.length - 1]?.stroke_number} returned no content
+                </span>
+              </div>
+              <p className="text-[11px] leading-relaxed opacity-90">
+                The NotebookLM call completed but produced an empty response.
+                Most often this is a silent rejection (rate-limit or content
+                filter); the backend retries up to 3 times before giving up.
+                See <code className="font-mono">ganymede-backend/backend.log</code> for the
+                attempt-by-attempt detail.
+              </p>
+            </div>
+          )}
 
           {finalText && finalText !== strokes[strokes.length - 1]?.raw_response && (
             <div className="rounded-lg border border-emerald-700/60 bg-emerald-950/20 px-4 py-3">
