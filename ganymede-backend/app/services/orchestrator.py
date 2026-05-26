@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
+import re
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -36,6 +38,27 @@ from app.services.notebooklm import NotebookLMService
 from app.services.session import Session
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Iterative-Engine Stroke-3 injection budgets.
+#
+# NotebookLM's chat.ask endpoint silently rejects queries above ~5,100-6,000
+# characters (returns structured error envelope [["e",4,null,null,N]] which
+# the SDK falls through to "no answer extracted"). Stroke 3's re-synthesis
+# prompt embeds scenario + truth packets + Stroke 1 + Stroke 2 audit + mission
+# framing — combined size routinely exceeds the cap when Stroke 1 and 2 are
+# injected verbatim. Structural extraction (FINAL RESOLUTION from Stroke 1 +
+# audit category headers from Stroke 2) keeps the load-bearing content while
+# staying under the cap. Both budgets are env-tunable for tuning + future
+# adjustment if the cap moves.
+#
+# Total budget headroom: scenario (~200) + packets (~500) + S1 budget +
+# S2 budget + mission framing (~700) should sum to under 5,000.
+# ---------------------------------------------------------------------------
+
+_S1_INJECTION_BUDGET = int(os.environ.get("GANYMEDE_S1_INJECTION_BUDGET", "1800"))
+_S2_INJECTION_BUDGET = int(os.environ.get("GANYMEDE_S2_INJECTION_BUDGET", "1500"))
 
 
 # ---------------------------------------------------------------------------
@@ -651,18 +674,31 @@ class GanymedeOrchestrator:
 
         # Stroke 3: synthesis (re-fire with audit as friction)
         framing = ITERATIVE_RESYNTHESIS_TEMPLATE
-        # The re-synthesis prompt embeds Stroke 1's text + the audit
-        # findings. Built into the framing template; the truth_packets
-        # passed here are the same originals (the Engine still needs
-        # them for context, even on the re-fire).
-        #
-        # Escape any literal { } characters in the stroke outputs before
-        # injection — synthesize() will call .format(scenario=..., packets_block=...)
-        # on this framing string, so unescaped framework jargon like
-        # "{DAI}" or "{ROEM}" in the Engine's response would otherwise
-        # raise KeyError when .format() tries to substitute them.
-        s1_escaped = s1.raw_response.replace("{", "{{").replace("}", "}}")
-        s2_escaped = s2.raw_response.replace("{", "{{").replace("}", "}}")
+        # Structural extraction to keep the Stroke 3 prompt under the
+        # NotebookLM input cap (~5,100-6,000 chars; see Run 06's third-
+        # run diagnosis). Stroke 1's load-bearing content is its FINAL
+        # RESOLUTION section (the conclusion the Auditor was critiquing)
+        # plus any evidence-limitation notice it self-flagged at the head;
+        # the per-dimension breakdown is well-covered by the Auditor's
+        # own text. Stroke 2 (audit) is already nicely structured into
+        # four category chunks — we keep all four but budget each.
+        s1_extracted = _extract_for_resynthesis(s1.raw_response, max_chars=_S1_INJECTION_BUDGET)
+        s2_extracted = _truncate_audit_for_injection(s2.raw_response, max_chars=_S2_INJECTION_BUDGET)
+        logger.info(
+            "Session %s Stroke 3 injection budgets: S1 %d→%d chars (budget %d), S2 %d→%d chars (budget %d)",
+            session.id,
+            len(s1.raw_response), len(s1_extracted), _S1_INJECTION_BUDGET,
+            len(s2.raw_response), len(s2_extracted), _S2_INJECTION_BUDGET,
+        )
+
+        # Escape any literal { } characters in the extracted stroke text
+        # before injection — synthesize() will call .format(scenario=...,
+        # packets_block=...) on this framing string, so unescaped
+        # framework jargon like "{DAI}" or "{ROEM}" in the Engine's
+        # response would otherwise raise KeyError when .format() tries
+        # to substitute them.
+        s1_escaped = s1_extracted.replace("{", "{{").replace("}", "}}")
+        s2_escaped = s2_extracted.replace("{", "{{").replace("}", "}}")
         framing_with_audit = framing.replace(
             "{stroke_1_response}", s1_escaped
         ).replace(
@@ -1008,7 +1044,6 @@ def _parse_audit_findings(raw: str) -> Optional[list[str]]:
     headers; if the response doesn't match the expected structure it
     returns None and the caller falls back to displaying raw_response.
     """
-    import re
     # Match patterns like "1. RIGIDITY", "2.", or "**1. RIGIDITY**"
     pattern = re.compile(
         r"(?:^|\n)\**\s*([1-4])\.\s",
@@ -1025,6 +1060,110 @@ def _parse_audit_findings(raw: str) -> Optional[list[str]]:
         if chunk:
             findings.append(chunk)
     return findings if findings else None
+
+
+def _extract_for_resynthesis(stroke_1_raw: str, max_chars: int) -> str:
+    """Extract head + final-resolution capstone of a Stroke 1 output for
+    Stroke 3 friction-injection.
+
+    Stroke 3's job is to re-synthesize given the Auditor's critique of
+    Stroke 1's conclusion. The load-bearing parts are:
+      (a) any self-flagged evidence-limitation or framing notice at
+          Stroke 1's head (the Engine sometimes opens with a notice
+          like "data does not exist within the established source
+          archives; independent verification advised"),
+      (b) Stroke 1's FINAL RESOLUTION section — the conclusion the
+          Auditor was critiquing.
+
+    The per-dimension breakdown in the middle is well-covered by the
+    Auditor's audit text itself, so we omit it for budget. If the
+    Engine's output doesn't have a recognizable FINAL RESOLUTION
+    marker, we fall back to the last ``max_chars`` of the raw text
+    (conclusion is at the end either way).
+
+    Strategy:
+      1. Find a FINAL [...] RESOLUTION marker (case-insensitive).
+      2. Head: first ~400 chars (captures evidence-flag notices).
+      3. Capstone: from marker to end.
+      4. Join with a "[per-dimension breakdown omitted for budget]" separator.
+      5. If still over budget, head-trim the capstone (keep bottom line).
+    """
+    if not stroke_1_raw:
+        return ""
+
+    HEAD_BUDGET = 400
+    SEPARATOR = "\n\n[per-dimension breakdown omitted for re-synthesis budget]\n\n"
+
+    # Look for a FINAL ... RESOLUTION-style marker (works for the Engine's
+    # observed outputs: "**Final 9D Resolution via ROEM:**", "Final 9D
+    # Resolution:", "FINAL 9D RESOLUTION", "Final Resolution:", etc.)
+    pattern = re.compile(
+        r"^\s*\**\s*(?:final|FINAL)\b[^\n]*(?:resolution|RESOLUTION)\b.*$",
+        re.MULTILINE,
+    )
+    match = pattern.search(stroke_1_raw)
+
+    if not match:
+        # No marker — return the last max_chars (conclusion is at end).
+        if len(stroke_1_raw) <= max_chars:
+            return stroke_1_raw.strip()
+        return stroke_1_raw[-max_chars:].strip()
+
+    capstone_start = match.start()
+
+    # If capstone marker is inside the head budget, just return the
+    # whole tail (no separator needed; head and capstone overlap).
+    if capstone_start < HEAD_BUDGET:
+        capstone = stroke_1_raw[capstone_start:].strip()
+        if len(capstone) <= max_chars:
+            return capstone
+        return capstone[-max_chars:].strip()
+
+    head = stroke_1_raw[:HEAD_BUDGET].strip()
+    capstone = stroke_1_raw[capstone_start:].strip()
+
+    capstone_budget = max_chars - len(head) - len(SEPARATOR)
+    if capstone_budget < 200:
+        # Head is eating the whole budget; just return capstone trimmed.
+        return capstone[-max_chars:].strip() if len(capstone) > max_chars else capstone
+
+    if len(capstone) > capstone_budget:
+        # Keep the LAST capstone_budget chars (bottom-line at the end).
+        capstone = capstone[-capstone_budget:].strip()
+
+    return head + SEPARATOR + capstone
+
+
+def _truncate_audit_for_injection(stroke_2_raw: str, max_chars: int) -> str:
+    """Truncate Mirror Auditor output for Stroke 3 injection.
+
+    Uses :func:`_parse_audit_findings` to split into the four category
+    chunks, then budgets each equally. The category HEADER + first
+    sentences are the most informative; truncate each chunk from its
+    end. If the structural parse fails, head-truncate the raw text.
+    """
+    if not stroke_2_raw:
+        return ""
+
+    findings = _parse_audit_findings(stroke_2_raw)
+    if findings is None:
+        # Parse failed — head-truncate the raw text.
+        if len(stroke_2_raw) <= max_chars:
+            return stroke_2_raw.strip()
+        return stroke_2_raw[:max_chars].rstrip() + "\n[… truncated for budget …]"
+
+    # Budget each finding. Reserve ~10 chars per joiner between chunks.
+    joiner = "\n\n"
+    overhead = len(joiner) * max(0, len(findings) - 1)
+    per_finding_budget = max(200, (max_chars - overhead) // len(findings))
+
+    truncated = []
+    for f in findings:
+        if len(f) <= per_finding_budget:
+            truncated.append(f)
+        else:
+            truncated.append(f[:per_finding_budget].rstrip() + " […]")
+    return joiner.join(truncated)
 
 
 # ---------------------------------------------------------------------------
