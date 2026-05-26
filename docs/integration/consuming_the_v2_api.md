@@ -287,6 +287,55 @@ Errors:
 - `409` — session not running
 - `422` — non-iterative session, or `max_strokes` out of range
 
+### `POST /api/v2/sessions/{id}/bridge-audit`
+
+Run one Connection Bridge audit stroke against a Stroke 1 (or arbitrary target) text — Bicameral Convergence Level 1. The Bridge enumerates *missed connections* between Truth Packets that the Engine's synthesis didn't draw, an orthogonal lens to the Mirror Auditor's fault-mode catches.
+
+Unlike `/iterate` (which fires the Mirror Auditor inline on a canonical notebook), the Bridge has no canonical notebook ID — its persona is applied per-call to a caller-supplied non-canonical notebook. The caller is responsible for creating + provisioning that notebook before this endpoint can be invoked.
+
+Request:
+```json
+{
+  "bridge_notebook_id": "<notebook-uuid>",
+  "target_text": null,
+  "scenario_context": null
+}
+```
+
+- `bridge_notebook_id` (required): a non-canonical notebook with the foundations corpus + the scenario's Truth Packets pre-loaded. Passing a canonical ID (Engine / Mirror Auditor / Legacy) returns 422.
+- `target_text` (optional): the analysis text to audit. Defaults to the most recent stroke's `raw_response`.
+- `scenario_context` (optional): override for the scenario framing. Defaults to derived from the session's scenario.
+
+Response:
+```json
+{
+  "stroke": { /* StrokeResult — pathway=mirror_audit, audit_findings=null */ },
+  "state": { /* updated SessionStateResponse */ }
+}
+```
+
+The returned stroke is recorded as `pathway: "mirror_audit"` (structurally an audit stroke, same shape as a Mirror Auditor stroke). Distinguishable from Mirror Auditor strokes by inspection of `raw_response` — Bridge enumerates connections, Auditor enumerates fault categories. `audit_findings` is intentionally `null` (the four-category parser doesn't apply to Bridge output).
+
+**Typical caller flow:**
+
+```
+1. POST /api/v2/sessions                                  # create session
+2. POST /api/v2/sessions/{id}/synthesize                  # Stroke 1
+3. POST /api/v2/notebooks                                 # create Bridge notebook
+4. POST /api/v2/notebooks/{nb}/sources/file  (×N)         # foundations corpus
+5. POST /api/v2/notebooks/{nb}/sources/file  (×M)         # scenario Truth Packets
+6. POST /api/v2/sessions/{id}/bridge-audit                # ← this endpoint
+7. DELETE /api/v2/notebooks/{nb}                          # cleanup (optional)
+```
+
+Steps 3-5 are ~15+ NotebookLM calls (1 per file + 1 per create); this endpoint itself is 1 call. For ad-hoc single audits the setup is meaningful overhead; for long-lived scenarios where the same Bridge notebook is reused across many audits, the setup amortises well.
+
+Errors:
+- `404` — session not found
+- `409` — session not running
+- `422` — `bridge_notebook_id` is a canonical ID, or no prior stroke and no `target_text` supplied
+- `500` — orchestrator failure (session transitions to error state)
+
 ### `POST /api/v2/sessions/{id}/complete`
 
 Finalize the session. Returns the FinalResolution. Idempotent.

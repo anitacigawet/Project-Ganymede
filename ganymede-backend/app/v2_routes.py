@@ -14,6 +14,7 @@ Endpoint set:
     GET  /api/v2/sessions/{id}                Get session state
     POST /api/v2/sessions/{id}/synthesize     Run a synthesis stroke
     POST /api/v2/sessions/{id}/iterate        Run full Iterative Engine loop
+    POST /api/v2/sessions/{id}/bridge-audit   Bicameral Convergence Level 1
     POST /api/v2/sessions/{id}/complete       Finalize the session
     GET  /api/v2/sessions/{id}/events         Get all events emitted so far
     WS   /api/v2/sessions/{id}/events/stream  Live event push
@@ -153,6 +154,62 @@ class IterateRequest(BaseModel):
 class IterateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     strokes: list[StrokeResult]
+    state: SessionStateResponse
+
+
+class BridgeAuditRequest(BaseModel):
+    """Run a single Connection Bridge audit stroke against a Stroke 1 (or
+    arbitrary target) text. Bicameral Convergence Level 1.
+
+    The Bridge enumerates *missed connections* between Truth Packets that
+    the Engine's synthesis didn't draw — an orthogonal lens to the Mirror
+    Auditor's fault-mode enumeration. See
+    ``docs/concepts/Bicameral_Convergence.md`` for the architectural
+    framing.
+
+    The caller must provide ``bridge_notebook_id`` for a non-canonical
+    notebook with the foundations corpus + the scenario's Truth Packets
+    pre-loaded. Setup flow (typically via the ``/api/v2/notebooks/*``
+    endpoints): create a notebook, upload foundations + Truth Packets,
+    then pass the resulting ID here. The Bridge persona is re-applied
+    at call time (idempotent), so the notebook doesn't need to have been
+    pre-configured as a Bridge.
+
+    Operational cost: one NotebookLM query call (gated by the cooldown).
+    The setup cost — creating + uploading sources — is borne separately
+    and is typically ~15+ calls.
+    """
+    model_config = ConfigDict(extra="forbid")
+    bridge_notebook_id: str = Field(
+        min_length=1,
+        description=(
+            "Notebook ID to use as the Bridge. Must NOT be one of the "
+            "canonical IDs (CHESS_ENGINE_ID, MIRROR_AUDITOR_ID, "
+            "LEGACY_ENGINE_ID). The notebook should already have the "
+            "foundations corpus + scenario Truth Packets uploaded."
+        ),
+    )
+    target_text: Optional[str] = Field(
+        default=None,
+        description=(
+            "The analysis text to bridge-audit. Defaults to the most "
+            "recent stroke's raw_response (the natural Stroke 1 → Bridge "
+            "audit pattern). Pass an explicit value to audit something "
+            "other than the most recent stroke."
+        ),
+    )
+    scenario_context: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional override for the scenario framing. Defaults to "
+            "derived from the session's scenario."
+        ),
+    )
+
+
+class BridgeAuditResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    stroke: StrokeResult
     state: SessionStateResponse
 
 
@@ -470,6 +527,78 @@ async def iterate_session(
         raise HTTPException(status_code=500, detail=str(exc))
 
     return IterateResponse(strokes=strokes, state=_state(session))
+
+
+@router.post(
+    "/sessions/{session_id}/bridge-audit",
+    response_model=BridgeAuditResponse,
+)
+async def bridge_audit_session(
+    session_id: str,
+    req: BridgeAuditRequest,
+) -> BridgeAuditResponse:
+    """Run one Connection Bridge audit stroke — Bicameral Convergence Level 1.
+
+    Structural sibling of the Mirror Auditor's audit (which is invoked
+    inline as Stroke 2 of ``/iterate``). The Bridge runs on a
+    caller-supplied non-canonical notebook and enumerates *missed
+    connections* between Truth Packets that the Engine's synthesis didn't
+    draw — an orthogonal lens to the Auditor's fault-mode catches.
+
+    Typical caller flow:
+        1. POST /api/v2/sessions  (create session)
+        2. POST /api/v2/sessions/{id}/synthesize  (run Stroke 1)
+        3. POST /api/v2/notebooks  (create Bridge notebook)
+        4. POST /api/v2/notebooks/{id}/sources/file  (upload foundations
+           corpus, repeat per source file)
+        5. POST /api/v2/notebooks/{id}/sources/file  (upload scenario
+           Truth Packets, repeat per packet)
+        6. POST /api/v2/sessions/{id}/bridge-audit  ← this endpoint
+           (Bridge persona is auto-applied; one audit query fires)
+        7. POST /api/v2/notebooks/{id} DELETE  (clean up Bridge notebook
+           — optional, but recommended if the notebook isn't reused)
+
+    Setup steps 3-5 are ~15+ NotebookLM calls; this endpoint itself is
+    1 call. For ad-hoc audits the setup is meaningful overhead; for
+    long-lived scenarios the same Bridge notebook can be reused across
+    many audits.
+
+    Errors:
+        404 if the session doesn't exist.
+        409 if the session is not running.
+        422 if ``bridge_notebook_id`` is one of the canonical IDs (Engine,
+            Auditor, Legacy), or if there's no prior stroke and no
+            ``target_text`` was supplied.
+        500 on unexpected orchestrator failure (the session is also
+            transitioned to error state internally).
+    """
+    session = _require_session(session_id)
+    orch = _get_orchestrator()
+
+    if session.status != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session {session_id} is not running (status={session.status})",
+        )
+
+    try:
+        stroke = await orch.audit_with_bridge(
+            session,
+            bridge_notebook_id=req.bridge_notebook_id,
+            target_text=req.target_text,
+            scenario_context=req.scenario_context,
+        )
+    except ValueError as exc:
+        # Canonical notebook ID supplied, or no prior stroke + no
+        # target_text. Both are caller errors — 422 Unprocessable Entity.
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        logger.exception("bridge_audit_session failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return BridgeAuditResponse(stroke=stroke, state=_state(session))
 
 
 class RunFullLoopRequest(BaseModel):
