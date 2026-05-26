@@ -61,6 +61,18 @@ _QUERY_BACKOFF_BASE = float(
     os.environ.get("GANYMEDE_NOTEBOOKLM_QUERY_BACKOFF", "30.0")
 )
 
+# Diagnostic: when set to a truthy value, log the full constructed query
+# (truncated to ``_LOG_FULL_PROMPT_MAX_CHARS``) and (always-on) the first
+# 1000 chars of NotebookLM's raw HTTP response on silent rejection. Used to
+# diagnose silent-rejection root causes — see
+# docs/experiments/runs/06_LMArena_Anthropic_Cleanroom.md.
+_LOG_FULL_PROMPTS = os.environ.get("GANYMEDE_LOG_FULL_PROMPTS", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+_LOG_FULL_PROMPT_MAX_CHARS = int(
+    os.environ.get("GANYMEDE_LOG_FULL_PROMPT_MAX_CHARS", "32000")
+)
+
 
 # ---------------------------------------------------------------------------
 # Persona text — kept in code so ``configure_*`` methods are idempotent.
@@ -81,7 +93,11 @@ CORE DIRECTIVES:
 
 CHESS_ENGINE_PERSONA = (
     "You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. "
-    "Respond with supreme order and precision."
+    "Respond with supreme order and precision. "
+    "Be concise: keep per-dimension analysis to one or two sentences each, "
+    "and reserve detailed reasoning for the final resolution section. "
+    "Do not end responses with offers to continue, clarifying questions, "
+    "or invitations for follow-up."
 )
 
 
@@ -316,6 +332,22 @@ class NotebookLMService(_StudioMixin, _ResearchMixin):
                 "Querying notebook %s (attempt %d/%d): %s",
                 notebook_id, attempt, _QUERY_MAX_ATTEMPTS, query[:80],
             )
+            if _LOG_FULL_PROMPTS:
+                if len(query) <= _LOG_FULL_PROMPT_MAX_CHARS:
+                    logger.info(
+                        "query_notebook FULL PROMPT (notebook=%s, attempt=%d, "
+                        "chars=%d):\n%s",
+                        notebook_id, attempt, len(query), query,
+                    )
+                else:
+                    logger.info(
+                        "query_notebook FULL PROMPT (notebook=%s, attempt=%d, "
+                        "chars=%d, TRUNCATED to %d):\n%s\n[... %d chars omitted]",
+                        notebook_id, attempt, len(query),
+                        _LOG_FULL_PROMPT_MAX_CHARS,
+                        query[:_LOG_FULL_PROMPT_MAX_CHARS],
+                        len(query) - _LOG_FULL_PROMPT_MAX_CHARS,
+                    )
             result = await self.client.chat.ask(notebook_id, query)
             answer = result.answer or ""
 
@@ -328,10 +360,15 @@ class NotebookLMService(_StudioMixin, _ResearchMixin):
                     )
                 return answer
 
+            # Empty answer — log NotebookLM's raw HTTP body so we can tell
+            # whether this is a safety block, an error code, or genuinely
+            # empty content. AskResult.raw_response holds the first 1000
+            # chars of the response body.
+            raw_response_snippet = getattr(result, "raw_response", None) or "(unavailable)"
             logger.warning(
                 "query_notebook: notebook %s silent rejection (empty answer) "
-                "on attempt %d/%d",
-                notebook_id, attempt, _QUERY_MAX_ATTEMPTS,
+                "on attempt %d/%d. Raw HTTP body (first 1000 chars): %r",
+                notebook_id, attempt, _QUERY_MAX_ATTEMPTS, raw_response_snippet,
             )
             if attempt < _QUERY_MAX_ATTEMPTS:
                 backoff = _QUERY_BACKOFF_BASE * attempt

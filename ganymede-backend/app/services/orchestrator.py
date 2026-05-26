@@ -631,17 +631,43 @@ class GanymedeOrchestrator:
         if max_strokes < 3:
             return results
 
+        # Skip Stroke 3 when Stroke 2 produced empty content. The
+        # ITERATIVE_RESYNTHESIS_TEMPLATE injects Stroke 2's text as
+        # the audit-findings section — an empty audit would produce
+        # "AUDIT FINDINGS:\n=====\n\n=====" asking the Engine to
+        # integrate nothing. The prompt would also still embed Stroke 1
+        # verbatim, putting the combined size at risk of NotebookLM's
+        # input cap regardless. Surface the partial 2-stroke result and
+        # let the caller decide via the empty-stroke warning UI.
+        if not s2.raw_response.strip():
+            logger.warning(
+                "Session %s: Stroke 2 returned empty audit (likely NotebookLM "
+                "input-size cap on Stroke-1-as-audit-target). Skipping Stroke 3 "
+                "— no friction to inject. Iterative loop completes with 2 strokes; "
+                "the empty-stroke UI warning will surface this to the operator.",
+                session.id,
+            )
+            return results
+
         # Stroke 3: synthesis (re-fire with audit as friction)
         framing = ITERATIVE_RESYNTHESIS_TEMPLATE
         # The re-synthesis prompt embeds Stroke 1's text + the audit
         # findings. Built into the framing template; the truth_packets
         # passed here are the same originals (the Engine still needs
         # them for context, even on the re-fire).
+        #
+        # Escape any literal { } characters in the stroke outputs before
+        # injection — synthesize() will call .format(scenario=..., packets_block=...)
+        # on this framing string, so unescaped framework jargon like
+        # "{DAI}" or "{ROEM}" in the Engine's response would otherwise
+        # raise KeyError when .format() tries to substitute them.
+        s1_escaped = s1.raw_response.replace("{", "{{").replace("}", "}}")
+        s2_escaped = s2.raw_response.replace("{", "{{").replace("}", "}}")
         framing_with_audit = framing.replace(
-            "{stroke_1_response}", s1.raw_response
+            "{stroke_1_response}", s1_escaped
         ).replace(
             "{audit_findings}",
-            s2.raw_response,
+            s2_escaped,
         )
         s3 = await self.run_synthesis_stroke(
             session, truth_packets, framing=framing_with_audit

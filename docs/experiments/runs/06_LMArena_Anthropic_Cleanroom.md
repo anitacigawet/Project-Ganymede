@@ -176,14 +176,138 @@ Backend was restarted to pick up the new code; the same scenario was re-run iter
 
 **Updated pre-registered prediction (timestamped 2026-05-25 ~03:50 UTC):** unchanged from first run — Stroke 3 still empty so we still don't have the audited Final Resolution. The framework-level intuition that the market's 77% Anthropic confidence may be over-priced stands; the Mirror Auditor's correction (the eventual outcome is mostly about *who builds the better model*, which Polymarket pricing doesn't directly observe) is now the *more interesting* framing. We commit to the same low-confidence prediction as the first run; the Auditor's "functionally superior product" critique is added to the validation criteria for 2026-06-30 — if the market converges on Anthropic well below 77% because of an actual model-quality shift rather than a market-confidence wobble, the Auditor's framing was the load-bearing insight.
 
+## Third-run diagnosis (2026-05-25 ~21:10 UTC) — root cause is NotebookLM input-size cap
+
+After Agent 2's observability+graceful-degradation work, a third run was triggered with new diagnostic logging in `client.py:query_notebook`:
+
+- **`GANYMEDE_LOG_FULL_PROMPTS=1`** env flag → log the full constructed prompt (up to 32k chars) on every call.
+- **Always-on** → on silent rejection (HTTP 200 + empty answer), log the first 1000 chars of NotebookLM's raw HTTP body (via `notebooklm-py`'s `AskResult.raw_response`).
+
+Result this run:
+
+| Stroke | Prompt size | Outcome | Duration | Notes |
+| --- | --- | --- | --- | --- |
+| 1 — Cleanroom synthesis | 790 chars | substantive | 50s | 5,583 chars of output — *larger than either prior run's Stroke 1* (4,563 / ~3,200) |
+| 2 — Mirror Auditor | **6,087 chars** | **EMPTY** | 95s (3 attempts) | New failure! Prior runs succeeded here. Stroke 1 being 22% larger pushed Stroke 2's prompt past the cap. |
+| 3 — re-synthesis | 6,509 chars | EMPTY | 95s (3 attempts) | As before. Also: prompt contained `AUDIT FINDINGS: ===== ===== ` (Stroke 2's empty raw_response cascaded in as literal-empty audit content). |
+
+### The raw HTTP body NotebookLM is returning on the failure path
+
+All six failed attempts (Stroke 2 × 3 + Stroke 3 × 3) returned this exact response structure:
+
+```
+)]}'
+38
+[["wrb.fr",null,null,null,null,[3]]]
+58
+[["di",698],["af.httprm",697,"-7223453274813813006",43]]
+25
+[["e",4,null,null,133]]
+```
+
+Decoded:
+- `wrb.fr` envelope with `item[2]==null` (no JSON answer string) and `item[5]==[3]` (error indicator instead of `UserDisplayableError` payload).
+- Diagnostic info chunk (`di`/`af.httprm` — internal Google telemetry).
+- Error chunk: `["e", 4, null, null, 133]` — error type 4, sub-code 133.
+
+This is **a structured error response**, not a content filter, not a safety block, not a quota hit. NotebookLM is explicitly telling us the request is invalid via the Google internal RPC error scheme; the `notebooklm-py` SDK's `_raise_if_rate_limited` only recognizes the `type.googleapis.com/.../UserDisplayableError` envelope and so falls through silently. The SDK logs `No answer extracted from response (6 lines parsed)` — those 6 lines are exactly the 6 lines above.
+
+### Triangulating the cap
+
+Cross-referencing prompt sizes across the three runs (Stroke 2's prompt = audit template + Stroke 1's raw_response + scenario context ≈ Stroke 1 size + ~530 chars overhead):
+
+| Source | Stroke 2 prompt size | Outcome |
+| --- | --- | --- |
+| Run 1 | ~5,100 chars (4,563-char Stroke 1) | ✅ Substantive |
+| Run 2 | ~3,770 chars (3,237-char Stroke 1) | ✅ Substantive |
+| Run 3 | 6,087 chars (5,583-char Stroke 1) | ❌ Empty (error 4/133) |
+| Run 1 Stroke 3 | ~7,700 chars | ❌ Empty |
+| Run 2 Stroke 3 | ~6,000+ chars | ❌ Empty |
+| Run 3 Stroke 3 | 6,509 chars | ❌ Empty |
+
+**The cap on the per-query input to NotebookLM's chat API sits somewhere between ~5,100 chars (last known success) and ~6,087 chars (first observed failure).** Plausibly a clean number like 6,000 chars or a token-equivalent around 1,500. Above the cap, requests fail with error `4/133`.
+
+### Why Stroke 3 fails *every* run
+
+Stroke 3's `ITERATIVE_RESYNTHESIS_TEMPLATE` is structurally large: scenario + truth packets + verbatim Stroke 1 output + verbatim Stroke 2 audit output + mission framing. Even when Stroke 1 is small enough for Stroke 2 to succeed, the Stroke 3 re-synthesis prompt — which carries both prior outputs — blows past the cap. **The cap, not "audit jargon content filter," is the root cause.**
+
+### What this falsifies from the prior hypotheses
+
+The earlier hypothesis list ranked "audit-injection content trips a content filter" first. That hypothesis was reasonable but is now ruled out — the structured error code 4/133 is returned for any prompt over the cap, including one where the audit injection is *empty* (run 3 Stroke 3 had a literal empty audit block).
+
+Hypothesis 2 (prompt length exceeds an undocumented soft cap) is **confirmed**. Hypothesis 3 (chat-context state) is ruled out by SDK inspection — every `chat.ask` call generates a fresh `conversation_id` UUID, so Strokes 1/3 do not share chat context. Hypothesis 4 (per-session rate limit) is ruled out by the error code being deterministic and content-conditional (small prompts always succeed, large prompts always fail, regardless of timing).
+
+### Implications & next steps
+
+1. **Primary fix — truncate or summarize Stroke 1 output before injecting it as audit target / re-synthesis context.** Aim for a budget of ~4,500 chars per injected output to leave headroom under the cap. This should be operator-tunable since the cap may move with Google updates.
+2. **Secondary fix — short-circuit Stroke 3 when Stroke 2 is empty.** Today the orchestrator faithfully constructs a Stroke 3 prompt with `AUDIT FINDINGS:\n=====\n\n=====` (the empty Stroke 2 raw_response between markers). Even if the cap weren't an issue, an empty-audit re-synthesis is semantically broken — the Engine is asked to integrate findings that don't exist. Better: detect the empty Stroke 2 in `run_iterative_engine`, log it, and skip Stroke 3 with a clear "stroke 2 returned empty, skipping re-synthesis" stroke result rather than firing a malformed Stroke 3.
+3. **Tertiary fix — patch `notebooklm-py`'s error parsing.** Add detection of the `[3]` / `[["e", 4, null, null, N]]` structure so future devs see a real `ChatError` instead of an empty answer. PR upstream when ready.
+4. **Methodological consequence.** The 9D Chess Engine's default response length sits at the cap. To make the iterative loop reliable, either (a) reduce the Engine's per-stroke verbosity (a `response_length=DEFAULT` is already configured but the Engine is producing 5,500+ chars regardless — likely the persona's "supreme order and precision" overrides this), or (b) truncate / chunk before injection. Option (b) is more honest to the Engine's natural output.
+
+### The actual third-run Stroke 1 (the only substantive output, for the record)
+
+The third-run Stroke 1 is the cleanest of the three so far — different opening, different mythology emphasis (Dimensions 1-9 in numbered form), and ends with a self-flagged offer (`"Shall I initialize a Bayesian Network projection to map the specific probabilistic triggers for a 'Set-like' market disruption prior to the end of June?"`). Bottom-line claim is the same as runs 1 and 2: market is structurally underpricing the disruption probability. Without a Stroke 2 audit or Stroke 3 re-synthesis, this is again an unaudited thesis — see the pre-registered prediction above; it stands.
+
+## Fourth + fifth-run verification (2026-05-25 ~21:50 UTC) — three more fixes shipped end-to-end
+
+After the third-run root-cause diagnosis, three further fixes shipped in the same session to address what could be addressed without the full structural-extraction work:
+
+1. **Engine persona tightened for brevity + CTA suppression.** Updated `CHESS_ENGINE_PERSONA` in `app/services/notebooklm/client.py` from the original 2-line persona (*"You are the infallible 9D-Chess Umpire and Theoretical Physics Engine. Respond with supreme order and precision."*) to add: *"Be concise: keep per-dimension analysis to one or two sentences each, and reserve detailed reasoning for the final resolution section. Do not end responses with offers to continue, clarifying questions, or invitations for follow-up."* Applied to the canonical Engine notebook via a one-off `reconfigure_chess_engine.py` script (calls the existing `configure_chess_engine()` method, which is sanctioned for the canonical notebook).
+2. **Skip Stroke 3 when Stroke 2 is empty.** Added a short-circuit in `app/services/orchestrator.py:run_iterative_engine` after the Stroke 2 append, before the Stroke 3 framing build. When `s2.raw_response.strip()` is empty (Stroke 2 hit the cap), log a warning and return early with the partial 2-stroke result. The amber UI warning surfaces the partial state to the operator. Didn't trigger this run (Stroke 2 succeeded) but is in place for future runs.
+3. **Curly-brace escape on injected stroke content.** Found a pre-existing bug surfaced by the smaller Stroke 1: `synthesize()` calls `.format(scenario=..., packets_block=...)` on the framing string at `orchestrator.py:345`. The Engine's outputs contain framework jargon like `{DAI}` and `{ROEM}` literally, and these were being interpreted as format placeholders after `.replace()` injection — raising `KeyError: 'DAI'` on Stroke 3. Fix: escape `{` → `{{` and `}` → `}}` in `s1.raw_response` and `s2.raw_response` before injection in `run_iterative_engine`. After substitution `.format()` correctly treats them as literal braces.
+
+### Run 4 (post-persona-tightening + skip-empty-Stroke-2 fix)
+
+Same scenario, fresh run after persona reapplied and backend reloaded.
+
+| Stroke | Outcome | Notes |
+| --- | --- | --- |
+| 1 — synthesis | substantive, ~4,680 chars | Down from previous ~5,500-char range. Per-dimension breakdown still present but tighter. Persona-tightening confirmed working at the corpus-grounded output level. |
+| 2 — Mirror Auditor | substantive, **5,214 chars** | Just under the cap. Previously this run's Stroke 2 had been over-cap (third-run diagnosis showed 6,087 chars at one point); the smaller Stroke 1 brought the Auditor's input back under the threshold. |
+| 3 — re-synthesis | **HTTP 500: `{"detail":"'DAI'"}`** | Format-string KeyError on `{DAI}` — exactly the kind of pre-existing bug that was masked by the silent-rejection failure mode in earlier runs. Surfaced because the format-escape fix wasn't yet in place. |
+
+### Run 5 (post format-escape fix)
+
+Re-run after the curly-brace escape fix landed.
+
+| Stroke | Outcome | Notes |
+| --- | --- | --- |
+| 1 — synthesis | substantive, more concise still | Per-dimension D1-D9 in 1-2 sentences each as the persona instructs. **Crucially, the mythology assignments INVERTED across runs again** — this run had Anthropic as Set (disruptive) and Google as Horus (legitimate order), opposite of the original run's assignment. The Engine is internally inconsistent about which side IS which archetype across runs of the same scenario — strong empirical signal that the mythological layer is doing aesthetic work, not load-bearing (see [`../../concepts/Framework_Cleanup_Hypothesis.md`](../../concepts/Framework_Cleanup_Hypothesis.md)). |
+| 2 — Mirror Auditor | substantive, **sharpest critique yet** | All four categories triggered. Standout catches: (Pattern-Matching) *"forces the scenario into a pre-existing 'hidden strategist vs. trapped actor' template... Google is one of the most highly scrutinized and heavily observed public companies in the world, and both entities are actively reacting to the exact same public benchmarks."* (Confidence-Evidence Gaps) *"The conclusion claims absolute predictive certainty ('mathematical inevitability') based entirely on abstract analogies. The analytical framework relies on conceptual metaphors, not deterministic physics or actuarial math capable of guaranteeing a specific website ranking on a specific date."* — the Auditor is now explicitly calling out the framework's tendency to substitute aesthetic narrative for empirical reasoning. **The Auditor is restating the [Framework Cleanup Hypothesis](../../concepts/Framework_Cleanup_Hypothesis.md) from inside the run.** |
+| 3 — re-synthesis | empty, **still over cap** | Stroke 3 prompt = 7,152 chars (over the ~5,100-6,000 cap even with the smaller Stroke 1 + smaller Stroke 2). All three retry attempts returned empty (silent rejection, structured error 4/132 → 4/133 across attempts). The amber UI warning block rendered correctly. Format-escape fix is verified working — no more KeyError. The remaining gap is the structural-extraction work (Option B in the followups). |
+
+### What this verifies vs. what remains
+
+**Verified working end-to-end under load:**
+
+- Persona tightening reduces Stroke 1 output length enough for Stroke 2 to fit (Run 4 + Run 5 both)
+- Persona's CTA-suppression instruction is in place (NotebookLM still occasionally leaks default CTAs, but the persona prohibition is there as the first line of defense)
+- Curly-brace escape on injected stroke content (Run 5 reached Stroke 3 cleanly instead of KeyError-ing)
+- Silent-rejection retry + exponential backoff (Run 5 fired 3 attempts with structured error logging)
+- Always-on raw-HTTP-body logging on empty answer (Run 5's backend.log captured full envelope per attempt — `[["e",4,null,null,N]]`)
+- Skip-Stroke-3-on-empty-Stroke-2 short-circuit (code in place; not exercised this run since Stroke 2 didn't empty)
+- Amber UI warning block surfaces empty Stroke 3 to the operator (Run 5 renders the warning correctly)
+- The pre-registered Cleanroom prediction is now backed by a complete Stroke 1 + Stroke 2 audit pair — even without Stroke 3, the audited reasoning is on record (the Auditor's catches strengthen the "framework intuition without evidence" framing)
+
+**Still not fixed (deferred):**
+
+- Stroke 3 prompt still exceeds the cap. Need structural extraction (Option B): pull `FINAL 9D RESOLUTION` section from Stroke 1 + parse Mirror Auditor's four category headers from Stroke 2, build a leaner Stroke 3 prompt. Estimated <6,000 chars achievable with structural extraction. Filed as separate followup; not session-blocking since Strokes 1+2 + audit are the iterative loop's main value-add.
+- Upstream `notebooklm-py` patch to recognize the `[["e", 4, null, null, N]]` envelope as `ChatError` instead of falling through to "no answer extracted." Operational hygiene; not blocking.
+
 ## Followups
 
-- ~~Investigate Stroke 3 empty bug~~ ✓ Observability + graceful-degradation shipped (Agent 2 changes). Underlying deterministic NotebookLM refusal: new spawned task.
+- ~~Investigate Stroke 3 empty bug~~ ✓ Observability + graceful-degradation shipped (Agent 2 changes). Underlying deterministic NotebookLM refusal: also diagnosed (third-run section above).
 - ~~Replace FOMC placeholder in DispatcherPanel~~ ✓ Shipped (Agent 1). Verified in this run — the new placeholder example is the very scenario we just ran.
-- **NEW:** root-cause investigation of NotebookLM's deterministic Stroke 3 refusal (spawned task — see new chip).
+- ~~Root-cause investigation of NotebookLM's deterministic Stroke 3 refusal~~ ✓ Confirmed: input prompt size cap around 5,100-6,000 chars, returns structured error 4/133 above. Three implementation followups:
+  - ~~Engine persona tightened for brevity + CTA suppression~~ ✓ **Shipped + verified in Run 4 / Run 5.** Stroke 1 reduced from ~5,500 to ~4,500-4,680 chars; per-dimension breakdown is now 1-2 sentences as instructed. Applied via `reconfigure_chess_engine.py` script.
+  - ~~Skip Stroke 3 when Stroke 2 is empty~~ ✓ **Shipped** in `orchestrator.py:run_iterative_engine`. Logs a warning + returns early with the partial 2-stroke result. Didn't trigger Run 5 (Stroke 2 succeeded) but in place.
+  - ~~Curly-brace escape on injected stroke content~~ ✓ **Shipped + verified in Run 5.** Pre-existing format-string KeyError bug that was masked by silent rejection in earlier runs.
+  - **REMAINING: Truncate Stroke 1 / Stroke 2 before re-synthesis injection via structural extraction (Option B).** Stroke 3 prompt is still 7,152 chars even with the smaller Strokes 1+2. Pull `FINAL 9D RESOLUTION` section + Auditor category headers structurally to land under the cap. Filed as next-session work.
+  - **REMAINING: Patch `notebooklm-py` upstream** to recognize the `[["e", 4, null, null, N]]` envelope as `ChatError`. Upstream PR candidate; not session-blocking.
+- Diagnostic logging (`GANYMEDE_LOG_FULL_PROMPTS=1` + always-on raw-HTTP-body on silent rejection) is left enabled in this branch for now. Once the structural-extraction fix lands, the env flag can be removed from `.env` (the always-on raw-body-on-empty logging should stay — it costs ~1KB per failure and is the only signal we have when NotebookLM rejects a request).
 - Validate Cleanroom prediction at 2026-06-30 (still on the calendar).
 - Rotate the GOOGLE_API_KEY in Google AI Studio (operator action — flagged in handoff because the key was pasted into chat during the Dispatcher build session).
-- Commit all session work to git (Palantir brainstorm, Run 06 with this update, milestone 36, both agents' fixes).
+- ~~Commit all session work to git~~ ✓ Will commit at session end including this fourth/fifth-run verification + the four code changes shipped this session.
 
 ## Related
 
