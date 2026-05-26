@@ -604,6 +604,177 @@ class GanymedeOrchestrator:
         )
         return stroke
 
+    async def audit_with_bridge(
+        self,
+        session: Session,
+        bridge_notebook_id: str,
+        *,
+        target_text: Optional[str] = None,
+        scenario_context: Optional[str] = None,
+    ) -> StrokeResult:
+        """Run one audit stroke against the Connection Bridge.
+
+        Bicameral Convergence Level 1 — the orchestrator method that has
+        been pending since milestone 33. Structural sibling of
+        :meth:`run_audit_stroke` but uses the Connection Bridge persona
+        (applied per-call via ``configure_connection_bridge``) on a
+        caller-supplied non-canonical notebook. The Bridge enumerates
+        *missed connections* between Truth Packets that the Engine's
+        synthesis didn't draw — an orthogonal lens to the Mirror
+        Auditor's fault-mode enumeration.
+
+        See ``docs/concepts/Bicameral_Convergence.md`` for the architectural
+        framing and ``docs/protocols/Connection_Bridge_Persona.md`` for the
+        Bridge persona itself. Level 1 was validated on the Amnesia
+        substrate 2026-05-22 (3 missed bridges, entirely orthogonal to the
+        Mirror Auditor's findings on the same scenario) — this method is
+        the productionisation of that validation.
+
+        Caller responsibilities (NOT handled by this method):
+            * ``bridge_notebook_id`` must be a non-canonical notebook with
+              the foundations corpus + the scenario's Truth Packets already
+              loaded (the same substrate the Engine reasoned over). Setup
+              flow: create notebook via ``svc.create_notebook``, upload
+              foundations + Truth Packets via ``svc.upload_source``, then
+              pass the resulting ID here.
+            * The notebook is NOT automatically deleted. Caller manages
+              lifecycle (typically: create per-session, audit, delete via
+              ``svc.delete_notebook``).
+            * Passing one of the canonical notebook IDs (Engine, Auditor,
+              Legacy) raises ValueError — the Bridge persona cannot be
+              written to canonical notebooks (per the protected-ID
+              contract in ``notebooklm/client.py:configure_persona``).
+
+        Args:
+            session: the active Session. Bridge audit is recorded as the
+                next stroke in sequence.
+            bridge_notebook_id: notebook ID with foundations + scenario
+                Truth Packets loaded; Bridge persona will be (re-)applied.
+            target_text: the analysis text to bridge-audit. If None,
+                defaults to the most recent stroke's ``raw_response``
+                (the natural Stroke 1 → Bridge audit pattern).
+            scenario_context: optional context describing the original
+                scenario. Defaults to derived from ``session.scenario``.
+
+        Returns:
+            StrokeResult with ``pathway=MIRROR_AUDIT`` (structurally an
+            audit stroke, same as Mirror Auditor stroke). Distinguishable
+            from Mirror Auditor strokes by inspection of ``raw_response``
+            (Bridge enumerates connections, Auditor enumerates fault
+            categories). ``audit_findings`` is left None — the four-
+            category parser doesn't apply to Bridge output.
+
+        Operational cost notes:
+            One NotebookLM query call (gated by the cooldown). Setup cost
+            (creating the notebook + uploading foundations + Truth Packets)
+            is borne by the caller and is typically ~15+ NotebookLM calls
+            with the current 8s cooldown — budget accordingly. For ad-hoc
+            single audits, this is meaningful overhead; for long-lived
+            scenarios where the same Bridge notebook is reused across
+            many audits, amortises well.
+        """
+        if session.status != "running":
+            raise RuntimeError(
+                f"Session {session.id} is not running (status={session.status})"
+            )
+
+        # Guard against accidentally applying Bridge persona to a canonical
+        # notebook. The persona-config endpoint blocks this anyway, but
+        # catching it here gives a clearer error message.
+        canonicals = {
+            self.svc.CHESS_ENGINE_ID,
+            self.svc.MIRROR_AUDITOR_ID,
+            self.svc.LEGACY_ENGINE_ID,
+        }
+        if bridge_notebook_id in canonicals:
+            raise ValueError(
+                f"Bridge cannot be applied to canonical notebook "
+                f"{bridge_notebook_id}. Create a separate notebook with the "
+                f"foundations corpus + scenario Truth Packets loaded; pass "
+                f"that notebook's ID."
+            )
+
+        if target_text is None:
+            if not session.strokes:
+                raise ValueError(
+                    f"Session {session.id}: cannot bridge-audit — no prior "
+                    f"stroke to audit and no target_text supplied"
+                )
+            target_text = session.strokes[-1].raw_response
+        if scenario_context is None:
+            try:
+                scenario_context = scenario_to_synthesis_text(
+                    session.scenario, session.pathway
+                )
+            except ValueError:
+                scenario_context = (
+                    session.scenario.prior_resolution
+                    or session.scenario.extra_context
+                    or "(no scenario context provided)"
+                )
+
+        stroke_number = len(session.strokes) + 1
+        await session.emit(
+            SessionEventType.STROKE_STARTED,
+            payload={
+                "kind": "bridge_audit",
+                "auditing_stroke": stroke_number - 1 or None,
+                "bridge_notebook_id": bridge_notebook_id,
+            },
+            stroke_number=stroke_number,
+        )
+
+        # Re-apply Bridge persona (idempotent). This is the lever that
+        # makes the supplied notebook BE a Bridge for the duration of
+        # this call — without it, the notebook would respond per whatever
+        # persona was last configured on it.
+        await self.svc.configure_connection_bridge(bridge_notebook_id)
+
+        prompt = BRIDGE_AUDIT_TEMPLATE.format(
+            scenario_context=scenario_context.strip(),
+            analysis_under_audit=target_text.strip(),
+        )
+
+        started = utcnow()
+        logger.info(
+            "Session %s stroke %d: bridge-audit %d-char target on notebook %s",
+            session.id, stroke_number, len(target_text), bridge_notebook_id,
+        )
+        try:
+            raw = await self.svc.query_notebook(bridge_notebook_id, prompt)
+        except Exception as exc:
+            await session.fail(str(exc), exc_type=type(exc).__name__)
+            raise
+
+        completed = utcnow()
+        stroke = StrokeResult(
+            stroke_number=stroke_number,
+            pathway=Pathway.MIRROR_AUDIT,  # structurally an audit stroke
+            raw_response=raw,
+            # Bridge output is connection-enumeration, not fault-category
+            # enumeration. The _parse_audit_findings four-category parser
+            # doesn't apply — leave audit_findings None and let consumers
+            # read raw_response directly.
+            started_at=started,
+            completed_at=completed,
+        )
+        await session.record_stroke(stroke)
+        await session.emit(
+            SessionEventType.SYNTHESIS_COMPLETE,
+            payload={
+                "stroke_number": stroke_number,
+                "response_chars": len(raw),
+                "kind": "bridge_audit",
+            },
+            stroke_number=stroke_number,
+        )
+        await session.emit(
+            SessionEventType.STROKE_COMPLETED,
+            payload={"duration_seconds": stroke.duration_seconds},
+            stroke_number=stroke_number,
+        )
+        return stroke
+
     async def run_iterative_engine(
         self,
         session: Session,
@@ -1003,6 +1174,38 @@ ANALYSIS UNDER AUDIT (verbatim output from the other instance):
 =====
 
 Per your operational rules, audit this analysis. Identify rigidity errors, pattern-matching, confidence-evidence gaps, and dimensional greeds. If sound, say so. Surgical plain language; no 9D jargon; no counter-strategy."""
+
+
+# ---------------------------------------------------------------------------
+# Connection Bridge audit prompt — Bicameral Convergence Level 1.
+#
+# Structural sibling of AUDIT_TEMPLATE but invokes the Connection Bridge
+# persona (configured via NotebookLMService.configure_connection_bridge on
+# a per-call notebook). The Bridge enumerates *missed connections* between
+# Truth Packets that the Engine's synthesis didn't draw — orthogonal lens
+# to the Mirror Auditor's fault-mode enumeration.
+#
+# Validated 2026-05-22 on the Amnesia substrate (3 missed bridges, entirely
+# orthogonal to the Mirror Auditor's findings on the same scenario). See
+# docs/concepts/Bicameral_Convergence.md and docs/protocols/Connection_Bridge_Persona.md.
+# ---------------------------------------------------------------------------
+
+BRIDGE_AUDIT_TEMPLATE = """\
+You are receiving a Stroke-1 resolution from another 9D-Chess instance.
+
+Your job is to identify CONNECTIONS between the Truth Packets — or between Truth Packets and the foundations corpus — that the synthesis above did NOT draw, but that the substrate would support.
+
+ORIGINAL SCENARIO THE ANALYSIS WAS RESPONDING TO:
+{scenario_context}
+
+ANALYSIS UNDER AUDIT (verbatim output from the other instance):
+=====
+{analysis_under_audit}
+=====
+
+Per your Connection Bridge operational rules, enumerate the missed connections. For each: be specific about WHICH packets (or packet + foundations axiom) connect, WHAT the connection is, and WHY the synthesis above missed it. Surgical plain language. No 9D jargon. Do not produce a counter-strategy or corrected resolution — your job is connection identification only.
+
+If the synthesis drew all available connections that the substrate supports, say so."""
 
 
 # ---------------------------------------------------------------------------

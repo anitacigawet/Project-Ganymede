@@ -363,10 +363,16 @@ wielding the same corpus for a different output task — which works.
 
 - **Multi-scenario robustness.** Single test on Amnesia. The Powell-sound
   test (does Bridge produce "Total missed bridges: 0" on known-sound
-  Engine output?) is the next experiment.
-- **Level 2 (mirror-bounce loop).** Not yet built. Requires
-  ``audit_with_bridge()`` and ``run_bicameral_loop()`` orchestrator
-  methods, plus convergence-criterion implementation.
+  Engine output?) is the next experiment. The LMArena scenario from
+  Run 06 is another natural test substrate now that ``audit_with_bridge()``
+  is shipped — comparing Bridge findings vs. the Mirror Auditor's catches
+  on the same Stroke 1 would test the orthogonal-lenses claim on a fresh
+  non-Amnesia substrate.
+- **Level 2 (mirror-bounce loop).** Not yet built. ``audit_with_bridge()``
+  is shipped (2026-05-26, milestone 37 continuation — see below); the
+  remaining piece is ``run_bicameral_loop()`` orchestrator method plus
+  convergence-criterion implementation plus the five mandatory operator
+  control surfaces.
 - **Level 3 (substrate expansion).** Not yet built. Requires the
   bridge-triggers-Oracle-spawn decision logic, gated by operator approval.
 
@@ -374,10 +380,41 @@ wielding the same corpus for a different output task — which works.
 
 - Persona constant ``CONNECTION_BRIDGE_PERSONA`` and
   ``configure_connection_bridge(notebook_id)`` method in
-  ``app/services/notebooklm/client.py``.
+  ``app/services/notebooklm/client.py`` (milestone 33).
 - Persona doc at
-  [`../protocols/Connection_Bridge_Persona.md`](../protocols/Connection_Bridge_Persona.md).
-- This concept doc, updated with the validation result.
+  [`../protocols/Connection_Bridge_Persona.md`](../protocols/Connection_Bridge_Persona.md)
+  (milestone 33).
+- This concept doc, updated with the validation result (milestone 33,
+  re-updated 2026-05-26).
+- **``audit_with_bridge(session, bridge_notebook_id, ...)`` orchestrator
+  method** at ``app/services/orchestrator.py`` (2026-05-26, continuation
+  of milestone 37). Structural sibling of ``run_audit_stroke``. Takes a
+  caller-supplied non-canonical notebook (Bridge has no canonical ID per
+  spec), re-applies the persona idempotently, fires one Stroke against
+  the supplied notebook with the ``BRIDGE_AUDIT_TEMPLATE`` prompt,
+  records the result as a Pathway.MIRROR_AUDIT stroke (structurally an
+  audit). Distinguishable from Mirror Auditor strokes by ``raw_response``
+  shape — Bridge enumerates connections, Auditor enumerates fault
+  categories.
+- ``BRIDGE_AUDIT_TEMPLATE`` prompt constant, structural sibling of
+  ``AUDIT_TEMPLATE``, asks for connection enumeration rather than fault
+  enumeration.
+
+**Pending after Level 1 method ship:**
+
+- A first end-to-end exercise of ``audit_with_bridge()`` on the LMArena
+  scenario from Run 06. Requires operator-assisted setup of a Bridge
+  notebook (create notebook + upload foundations corpus + upload LMArena
+  Truth Packet, then call). Estimated ~15+ NotebookLM calls for setup
+  + 1 for the audit query. Worth doing in a dedicated session.
+- Wiring ``audit_with_bridge()`` into ``run_iterative_engine`` as an
+  optional Stroke 2b (alongside the Mirror Auditor) when the operator
+  passes ``include_bridge=True`` and provides a ``bridge_notebook_id``.
+  Architecturally an iterate-loop-config decision; deferred.
+- Powell-sound robustness test (does Bridge produce "no missed bridges"
+  on known-sound Engine output?).
+- ``run_bicameral_loop()`` and the five mandatory operator control
+  surfaces for Level 2.
 
 ## Related docs
 
