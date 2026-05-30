@@ -407,21 +407,39 @@ Run 7 of the LMArena scenario in [`../experiments/runs/06_LMArena_Anthropic_Clea
 
 **Pending after Level 1 method ship:**
 
-- A first end-to-end exercise of ``audit_with_bridge()`` on the LMArena
-  scenario from Run 06. The setup friction has been collapsed by the
-  ``POST /api/v2/bridge/provision`` helper (shipped 2026-05-26) — one
-  HTTP call that bundles notebook-create + foundations corpus upload
-  + Truth Packet upload + Bridge persona apply as a single background
-  task. Wall time still ~3-5 min (14 NotebookLM calls under the 8s
-  cooldown), but the operator only has to make TWO HTTP calls instead
-  of ~15: ``POST /bridge/provision`` (returns task_id), poll until
-  ``task.result.notebook_id`` is populated, then ``POST
-  /sessions/{id}/bridge-audit`` with that notebook_id. Suitable for
-  autonomous-monitorable execution.
-- Wiring ``audit_with_bridge()`` into ``run_iterative_engine`` as an
-  optional Stroke 2b (alongside the Mirror Auditor) when the operator
-  passes ``include_bridge=True`` and provides a ``bridge_notebook_id``.
-  Architecturally an iterate-loop-config decision; deferred.
+- ~~A first end-to-end exercise of ``audit_with_bridge()`` on the LMArena
+  scenario from Run 06~~ — ✅ done, see Run 7 in [`../experiments/runs/06_LMArena_Anthropic_Cleanroom.md`](../experiments/runs/06_LMArena_Anthropic_Cleanroom.md) §
+  "Seventh-run — Bridge audit empirically validated on LMArena".
+- ~~Wiring ``audit_with_bridge()`` into ``run_iterative_engine`` as an
+  optional Stroke 2b alongside the Mirror Auditor~~ — ✅ **shipped
+  2026-05-26 (continuation of milestone 37)**. ``IterateRequest`` now
+  carries ``include_bridge: bool = True`` and optional
+  ``bridge_notebook_id``; ``run_iterative_engine`` fires Stroke 2b after
+  the Auditor when ``include_bridge=True``, with auto-provisioning when
+  no ``bridge_notebook_id`` is supplied. Stroke 3 prompt template was
+  split into two: ``ITERATIVE_RESYNTHESIS_TEMPLATE`` (Auditor-only,
+  historic) and ``ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE`` (Auditor +
+  Bridge, default). Stroke 3 budget split 900/600 Auditor/Bridge within
+  the existing 1500-char audit-injection budget, env-tunable via
+  ``GANYMEDE_S2_AUDITOR_BUDGET`` / ``GANYMEDE_S2_BRIDGE_BUDGET``. Bridge
+  failures fall back to historic 3-stroke gracefully (Auditor-only
+  Stroke 3) via a new ``fail_session_on_error`` flag on
+  ``audit_with_bridge``. New ``StrokeResult.audit_kind`` field
+  (``"mirror_auditor"`` | ``"bridge"`` | ``null``) lets UI consumers
+  render the two lenses distinctly. DispatcherPanel and RunnerPanel
+  both have a "+ Connection Bridge audit (Bicameral)" toggle defaulting
+  ON when iterative is enabled. **Backward-compat verified live**
+  (``include_bridge=false`` produces the historic 3-stroke shape in
+  93s, ``audit_kind`` correctly populated). **Bicameral end-to-end
+  verified live 2026-05-26** — 4 strokes in 319s, auto-provisioning
+  shipped 13 foundations + 1 truth packet + Bridge persona apply in
+  ~3 min, Stroke 2b produced structured *"Bridge 1 (STRUCTURAL)"*
+  enumeration with cross-source citations, Stroke 3 explicitly
+  accepted the Auditor's correction (*"The Stroke-1 analysis
+  committed a severe pattern-matching error… The Auditor accurately
+  identifies this failure"*) — the "Engine integrates audit" behavior
+  from Run 6 reproduced inside a Bicameral run with both lenses
+  injected into the prompt.
 - Powell-sound robustness test (does Bridge produce "no missed bridges"
   on known-sound Engine output?).
 - ``run_bicameral_loop()`` and the five mandatory operator control

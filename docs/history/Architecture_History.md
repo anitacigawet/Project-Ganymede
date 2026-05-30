@@ -359,6 +359,44 @@ The Engine's mythology archetype assignments INVERTED across three runs of the s
 - Validate the audited Cleanroom prediction at 2026-06-30.
 - Rotate `GOOGLE_API_KEY` in Google AI Studio (still outstanding operator action from the original handoff).
 
+## 38. Bridge wired into /iterate as Stroke 2b — Bicameral Convergence Level 1 is the production default (2026-05-26)
+
+A targeted follow-on to milestone 37. The `audit_with_bridge()` method shipped earlier in milestone 37 was reachable only via the standalone `POST /api/v2/sessions/{id}/bridge-audit` endpoint; this milestone wires it into the iterate loop so Bicameral Convergence is the production audit shape for every iterative run unless the caller explicitly opts out.
+
+**Architectural decisions** (operator chose, with delegation on Q1):
+
+- **Default ON in the contract** — `IterateRequest.include_bridge: bool = True`. Operator's framing: *"if having it on by default would make the quality of the analysis better, even though it will take slightly longer, I think I'm fine with making that sacrifice."* The orthogonal-lenses claim from Bicameral_Convergence was empirically validated on TWO substrates (Amnesia + LMArena Run 7); Bridge catching a substantive missed insight neither Stroke 1 nor Stroke 3 considered (Run 7 — Anthropic's metacognitive adaptation breaking the ROEM funnel mid-cycle) is the load-bearing evidence that justifies the cost.
+- **Both audits in Stroke 3, budget-split** — Auditor 900 chars + Bridge 600 chars within the existing 1,500-char audit-injection budget, env-tunable via `GANYMEDE_S2_AUDITOR_BUDGET` / `GANYMEDE_S2_BRIDGE_BUDGET`. Preserves the orthogonal-lenses claim that motivated Bicameral Convergence — losing one defeats the architecture.
+- **Separate stroke panels in the UI** — each stroke gets its own card (DispatcherPanel + RunnerPanel). Honest to the session data model (`session.strokes` is ordered).
+
+**Shipped:**
+
+- **Contract additions** in `app/contracts.py` — new `StrokeResult.audit_kind: Optional[str]` field (`"mirror_auditor"` | `"bridge"` | `None`). Synthesis strokes leave it null; audit strokes set it explicitly. Backward-compatible addition.
+- **`IterateRequest` extension** in `app/v2_routes.py` — `include_bridge: bool = True` and `bridge_notebook_id: Optional[str] = None`. Both pass through to `run_iterative_engine`.
+- **New `provision_bridge_notebook()` orchestrator method** in `app/services/orchestrator.py`. End-to-end Bridge-notebook provisioning (create + foundations + truth packets + persona) as a synchronous async call. The `POST /api/v2/bridge/provision` endpoint was refactored to delegate to this method (DRY); the background-task wrapper now just calls `orchestrator.provision_bridge_notebook(...)` instead of inlining the logic.
+- **`run_iterative_engine` rewired** for Bicameral Convergence Level 1:
+  - Branches on `include_bridge`: 4 stroke slots when on (S1, Auditor, Bridge, Resynth), 3 when off (historic).
+  - When `include_bridge=True` and no `bridge_notebook_id` is supplied, auto-provisions a fresh Bridge notebook inline (~3 min, 14 cooldown-gated NotebookLM calls).
+  - Stroke 2b fires `audit_with_bridge` against the same Stroke 1 target the Auditor saw (parallel-in-spirit, serial-in-execution to respect the cooldown gate).
+  - New `ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE` with two audit blocks (Auditor + Bridge) for Stroke 3 when both lenses fired; historic `ITERATIVE_RESYNTHESIS_TEMPLATE` stays in use when Bridge is off or its stroke produced empty content.
+  - New `_truncate_bridge_for_injection` helper (head-truncate; Bridge output doesn't follow the Auditor's four-numbered-category shape).
+- **`audit_with_bridge` soft-fail flag** — new `fail_session_on_error: bool = True` parameter. Default True preserves the standalone `/bridge-audit` endpoint's contract (Bridge failure marks the session failed). `run_iterative_engine` passes `False` so a Bridge transient falls back to historic Auditor-only Stroke 3 rather than killing the whole iterate run and severing WS subscribers' connections.
+- **Frontend Stroke 2b rendering** in both `DispatcherPanel.tsx` and `RunnerPanel.tsx`. Audit strokes now distinguish Mirror Auditor (amber, "Audit Findings" enumeration via `audit_findings`) from Connection Bridge (cyan, "Missed Connections" via `raw_response`) using the new `audit_kind` field. Stroke 2b appears as its own card between Stroke 2 and Stroke 3.
+- **UI toggle** — "+ Connection Bridge audit (Bicameral)" checkbox in both panels, default ON when iterative is enabled, disabled when iterative is off. Operator can flip it off for the historic 3-stroke shape per run.
+
+**Smoke-test status:**
+
+- ✅ **Backward-compat verified live** — POST `/iterate` with `include_bridge=false` on a fresh session returned 3 strokes in 93s. `audit_kind` populated correctly: `null` on Stroke 1 (cleanroom), `"mirror_auditor"` on Stroke 2, `null` on Stroke 3 (cleanroom).
+- ✅ **Bicameral end-to-end verified live** (2026-05-26 ~08:27 UTC, session `f50c895e-...`) — POST `/iterate` with `include_bridge=true` and no `bridge_notebook_id` returned **4 strokes in 319s** (~5.3 min). Sequence: Stroke 1 (cleanroom, 2,915 chars, opens with self-flagged evidence notice), Stroke 2 (mirror_audit, `audit_kind="mirror_auditor"`, 1,804 chars, four-category catches), **Stroke 2b** (mirror_audit, `audit_kind="bridge"`, 2,989 chars, structured *"Bridge 1 (STRUCTURAL)"* enumeration with cross-source citations), Stroke 3 (cleanroom, 1,639 chars). The auto-provision step (notebook `7db6cb38-...`) ran cleanly: 13 foundations + 1 truth packet + Bridge persona apply in ~3 min. Backend log confirmed bicameral budgets: `S1 2915→1800 (budget 1800), Auditor 1796→913 (budget 900), Bridge 2989→627 (budget 600)`. **Stroke 3 explicitly accepts the Auditor's correction** with *"The Stroke-1 analysis committed a severe pattern-matching error by conflating a technical diagnostic procedure with the Reverse Observer Effect Model (ROEM). The Auditor accurately identifies this failure..."* — same "Engine integrates the audit" behavior empirically validated in Run 6, now reproduced on a Bicameral run with both lenses in the prompt. The orthogonal-lenses claim holds: Auditor caught the framework-overreach (ROEM misapplication); Bridge caught a missed connection (test scenario → foundations corpus's Simulation Framework, which Stroke 1 mapped to ROEM via pattern-matching).
+
+**Pending after this milestone:**
+
+- Powell-sound robustness test for the Bridge (existing pending item — does Bridge produce "0 missed bridges" on known-sound Engine output?).
+- Bicameral Convergence Level 2 (`run_bicameral_loop()` orchestrator method + 5 mandatory operator control surfaces — visual transparency events, cancel endpoint, inter-iteration delay, hard iteration cap, Oracle-spawn approval).
+- Foundations corpus deep-read for the Framework Cleanup Hypothesis (unchanged from milestone 37).
+- Bridge notebook lifecycle — auto-provisioned notebooks aren't auto-deleted after the iterate run. For long-lived ops, the operator can clean up via `DELETE /api/v2/notebooks/{id}`. Worth adding a `cleanup_bridge_notebook: bool = false` flag to `IterateRequest` later if accumulated test notebooks become a problem.
+- Validate the audited+Bridge-extended Cleanroom prediction at 2026-06-30.
+
 ---
 
 ## Cross-references at a glance
@@ -405,3 +443,6 @@ The Engine's mythology archetype assignments INVERTED across three runs of the s
 | Symbolic-logic thought paper (35) | [`../brainstorming/Symbolic_Logic_Bicameral.md`](../brainstorming/Symbolic_Logic_Bicameral.md) |
 | Project_In_My_Words personal-voice doc (35) | [`../Project_In_My_Words.md`](../Project_In_My_Words.md) |
 | Engine Persona (27) | [`../protocols/Engine_Persona.md`](../protocols/Engine_Persona.md) |
+| Bridge wired into /iterate as Stroke 2b (38) | `ganymede-backend/app/services/orchestrator.py` (`run_iterative_engine` + `provision_bridge_notebook`) + `ganymede-backend/app/v2_routes.py` (`IterateRequest`) + `ganymede-backend/app/contracts.py` (`StrokeResult.audit_kind`) + `ganymede-ui/src/components/DispatcherPanel.tsx` + `ganymede-ui/src/components/RunnerPanel.tsx` |
+| `ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE` (38) | `ganymede-backend/app/services/orchestrator.py` |
+| `audit_with_bridge` soft-fail flag (38) | `ganymede-backend/app/services/orchestrator.py` |

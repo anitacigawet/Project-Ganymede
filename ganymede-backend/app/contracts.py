@@ -181,6 +181,14 @@ class StrokeResult(BaseModel):
     the auditor persona's category sequence: rigidity, pattern-matching,
     confidence-evidence-gaps, dimensional-greeds."""
 
+    audit_kind: Optional[str] = None
+    """Distinguishes audit-style strokes (``pathway=mirror_audit``) by which
+    instance produced them. ``"mirror_auditor"`` for Mirror Auditor strokes,
+    ``"bridge"`` for Connection Bridge strokes (Bicameral Convergence Level 1).
+    None for non-audit strokes (cleanroom / genie / offensive synthesis).
+    Lets UI consumers render Auditor and Bridge strokes distinctly without
+    inspecting the stroke event payloads."""
+
     # Metadata
     started_at: datetime
     completed_at: datetime

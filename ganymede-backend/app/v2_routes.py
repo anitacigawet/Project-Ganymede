@@ -127,11 +127,12 @@ class IterateRequest(BaseModel):
     """Drive the full Iterative Engine multi-stroke loop in one call.
 
     The session must have been created with ``iterative=True`` and
-    ``max_strokes >= 2``. The server runs Stroke 1 (thesis synthesis),
-    Stroke 2 (Mirror Auditor audit), and Stroke 3 (friction-injected
-    re-synthesis) in sequence, emitting STROKE_STARTED/STROKE_COMPLETED
-    events on the session as it goes. WebSocket subscribers see each
-    stroke land in real time.
+    ``max_strokes >= 2``. With Bridge enabled (default) the server runs
+    Stroke 1 (thesis synthesis), Stroke 2 (Mirror Auditor audit), Stroke
+    2b (Connection Bridge audit), and Stroke 3 (friction-injected
+    re-synthesis with BOTH audits in the prompt) in sequence. With
+    ``include_bridge=False`` the loop reverts to the historic 3-stroke
+    shape (Stroke 1 → Auditor → re-synthesis with Auditor-only friction).
 
     The HTTP request blocks until the loop terminates (or fails) — for
     UI consumers, prefer subscribing to the WS stream so the UI can
@@ -146,7 +147,30 @@ class IterateRequest(BaseModel):
         description=(
             "Cap on strokes for this loop. Defaults to the session's own "
             "``max_strokes``. Pass a smaller value (e.g. 2) to stop after "
-            "the audit stroke without re-synthesis."
+            "the audit stroke without re-synthesis. NOTE: with Bridge "
+            "enabled the loop has 4 stroke slots (S1, Auditor, Bridge, "
+            "re-synth); ``max_strokes`` caps at that number too."
+        ),
+    )
+    include_bridge: bool = Field(
+        default=True,
+        description=(
+            "Run the Connection Bridge as Stroke 2b alongside the Mirror "
+            "Auditor. Default True — Bicameral Convergence Level 1 is "
+            "the production audit shape. Adds ~3-5 min wall time (Bridge "
+            "notebook provisioning + 1 audit query) and ~14 NotebookLM "
+            "calls per run. Set False for the historic 3-stroke shape."
+        ),
+    )
+    bridge_notebook_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Existing Bridge notebook ID to reuse. Optional. When None and "
+            "``include_bridge=True``, the orchestrator auto-provisions a "
+            "fresh Bridge notebook inline (synchronous; adds ~3 min to the "
+            "iterate response). Reusing a Bridge notebook across runs is "
+            "faster but only valid if the substrate (foundations + Truth "
+            "Packets) hasn't changed. Must NOT be a canonical notebook ID."
         ),
     )
 
@@ -516,6 +540,8 @@ async def iterate_session(
             session,
             truth_packets=req.truth_packets,
             max_strokes=max_strokes,
+            include_bridge=req.include_bridge,
+            bridge_notebook_id=req.bridge_notebook_id,
         )
     except ValueError as exc:
         # Non-iterative session or max_strokes out of range

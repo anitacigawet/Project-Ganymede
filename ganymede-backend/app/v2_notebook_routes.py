@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
 from pathlib import Path
 from typing import Any, Optional
 
@@ -810,8 +809,6 @@ async def bridge_provision(req: BridgeProvisionRequest) -> TaskSubmittedResponse
     inspect for debugging. This is intentional: a partial-upload notebook
     may still be useful to retry against.
     """
-    svc = _get_svc()
-
     title = (req.title or f"Bridge — {req.truth_packets[0].subject[:60]}")[:200]
 
     task_context: dict[str, Any] = {
@@ -824,83 +821,19 @@ async def bridge_provision(req: BridgeProvisionRequest) -> TaskSubmittedResponse
     # Capture by value into the closure so the request body can be GC'd.
     truth_packets = list(req.truth_packets)
     include_foundations = req.include_foundations
+    # Apply the env-var resolution at submit time (vs deferring to the
+    # orchestrator method's default) so a missing dir fails fast on the
+    # background task instead of partway through 14 upload calls.
+    explicit_foundations_dir = _foundations_dir() if include_foundations else None
 
     async def _run() -> dict[str, Any]:
-        # Resolve foundations dir first — fail fast if missing and required.
-        foundations_dir: Optional[Path] = None
-        if include_foundations:
-            foundations_dir = _foundations_dir()
-            if not foundations_dir.is_dir():
-                raise RuntimeError(
-                    f"Foundations directory not found: {foundations_dir}. "
-                    f"Set the GANYMEDE_FOUNDATIONS_DIR env var or ensure the "
-                    f"default project layout (docs/foundations/) is intact."
-                )
-
-        notebook_id = await svc.create_notebook(title)
-        logger.info(
-            "bridge_provision: created notebook %s (title=%r)",
-            notebook_id, title,
+        from app.main import orchestrator as _orch
+        return await _orch.provision_bridge_notebook(
+            truth_packets=truth_packets,
+            title=title,
+            include_foundations=include_foundations,
+            foundations_dir=explicit_foundations_dir,
         )
-
-        foundations_uploaded = 0
-        if foundations_dir is not None:
-            # Upload .md / .pdf / .txt files in sorted order, skip README.md
-            # (which is a meta-description of the corpus, not part of it).
-            uploadable = [
-                p for p in sorted(foundations_dir.iterdir())
-                if p.is_file()
-                and p.suffix.lower() in {".md", ".pdf", ".txt"}
-                and p.name.lower() != "readme.md"
-            ]
-            for file_path in uploadable:
-                logger.info(
-                    "bridge_provision: uploading foundation %s (%d/%d)",
-                    file_path.name,
-                    foundations_uploaded + 1,
-                    len(uploadable),
-                )
-                await svc.upload_file(notebook_id, str(file_path))
-                foundations_uploaded += 1
-
-        # Truth Packets: write each to a temp .md, upload, clean up at end.
-        packets_uploaded = 0
-        with tempfile.TemporaryDirectory(prefix="ganymede_bridge_packets_") as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            for i, tp in enumerate(truth_packets, start=1):
-                # Build a safe filename from the subject; cap length.
-                safe = "".join(
-                    c if c.isalnum() or c in "._- " else "_" for c in tp.subject
-                ).strip()[:80] or f"packet_{i}"
-                tmp_path = tmpdir_path / f"{safe}.md"
-                content = (
-                    f"# {tp.subject}\n\n"
-                    f"Source: {tp.source_label or 'unspecified'}\n\n"
-                    f"{tp.content}\n"
-                )
-                tmp_path.write_text(content, encoding="utf-8")
-                logger.info(
-                    "bridge_provision: uploading truth packet %r (%d/%d)",
-                    tp.subject, i, len(truth_packets),
-                )
-                await svc.upload_file(notebook_id, str(tmp_path))
-                packets_uploaded += 1
-
-        logger.info("bridge_provision: applying Bridge persona to %s", notebook_id)
-        await svc.configure_connection_bridge(notebook_id)
-
-        logger.info(
-            "bridge_provision: done. notebook=%s, foundations=%d, packets=%d",
-            notebook_id, foundations_uploaded, packets_uploaded,
-        )
-        return {
-            "notebook_id": notebook_id,
-            "title": title,
-            "foundations_uploaded": foundations_uploaded,
-            "truth_packets_uploaded": packets_uploaded,
-            "sources_total": foundations_uploaded + packets_uploaded,
-            "bridge_persona_applied": True,
-        }
 
     task = await task_registry().submit(
         kind="bridge_provision",

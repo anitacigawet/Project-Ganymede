@@ -23,8 +23,10 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 from dataclasses import dataclass
-from typing import Optional, Union
+from pathlib import Path
+from typing import Any, Optional, Union
 
 from app.contracts import (
     Pathway,
@@ -59,6 +61,14 @@ logger = logging.getLogger(__name__)
 
 _S1_INJECTION_BUDGET = int(os.environ.get("GANYMEDE_S1_INJECTION_BUDGET", "1800"))
 _S2_INJECTION_BUDGET = int(os.environ.get("GANYMEDE_S2_INJECTION_BUDGET", "1500"))
+# Bicameral Convergence Level 1 — when Bridge is wired into the iterate loop,
+# we split the prior single audit budget into Auditor + Bridge slots. Auditor
+# tends to produce ~2,400 chars of four-category enumeration; Bridge produces
+# ~700-1,000 chars of connection enumeration on observed runs (Amnesia, LMArena).
+# 900 / 600 reflects that ratio while keeping the total at the historic 1,500
+# combined audit budget so Stroke 3's overall prompt size stays under cap.
+_S2_AUDITOR_BUDGET = int(os.environ.get("GANYMEDE_S2_AUDITOR_BUDGET", "900"))
+_S2_BRIDGE_BUDGET = int(os.environ.get("GANYMEDE_S2_BRIDGE_BUDGET", "600"))
 
 
 # ---------------------------------------------------------------------------
@@ -583,6 +593,7 @@ class GanymedeOrchestrator:
             pathway=Pathway.MIRROR_AUDIT,
             raw_response=raw,
             audit_findings=_parse_audit_findings(raw),
+            audit_kind="mirror_auditor",
             started_at=started,
             completed_at=completed,
         )
@@ -611,6 +622,7 @@ class GanymedeOrchestrator:
         *,
         target_text: Optional[str] = None,
         scenario_context: Optional[str] = None,
+        fail_session_on_error: bool = True,
     ) -> StrokeResult:
         """Run one audit stroke against the Connection Bridge.
 
@@ -743,7 +755,14 @@ class GanymedeOrchestrator:
         try:
             raw = await self.svc.query_notebook(bridge_notebook_id, prompt)
         except Exception as exc:
-            await session.fail(str(exc), exc_type=type(exc).__name__)
+            # fail_session_on_error=False is used by run_iterative_engine
+            # where Bridge is an OPTIONAL stroke — a Bridge failure should
+            # fall back to historic Auditor-only 3-stroke rather than kill
+            # the whole iterate run (and the WS subscribers' connections).
+            # The /bridge-audit standalone endpoint keeps the default
+            # (True) so its caller sees a clean session-fail on errors.
+            if fail_session_on_error:
+                await session.fail(str(exc), exc_type=type(exc).__name__)
             raise
 
         completed = utcnow()
@@ -755,6 +774,7 @@ class GanymedeOrchestrator:
             # enumeration. The _parse_audit_findings four-category parser
             # doesn't apply — leave audit_findings None and let consumers
             # read raw_response directly.
+            audit_kind="bridge",
             started_at=started,
             completed_at=completed,
         )
@@ -775,28 +795,177 @@ class GanymedeOrchestrator:
         )
         return stroke
 
+    async def provision_bridge_notebook(
+        self,
+        truth_packets: list[TruthPacket],
+        *,
+        title: Optional[str] = None,
+        include_foundations: bool = True,
+        foundations_dir: Optional[Path] = None,
+    ) -> dict[str, Any]:
+        """Create + populate + persona-lock a Connection Bridge notebook.
+
+        End-to-end Bridge-notebook provisioning bundled as one async call.
+        Same logic as the ``POST /api/v2/bridge/provision`` endpoint, but
+        callable from inside the orchestrator (specifically from
+        :meth:`run_iterative_engine` when it needs to auto-provision before
+        Stroke 2b).
+
+        Steps:
+          1. Create a new (non-canonical) NotebookLM notebook.
+          2. Upload ``docs/foundations/`` corpus (every .md/.pdf/.txt
+             except README.md) when ``include_foundations=True``.
+          3. Write each Truth Packet to a temp .md and upload it as a
+             source (so the Bridge notebook reasons over the same
+             substrate as the Engine).
+          4. Apply the Connection Bridge persona via
+             :meth:`NotebookLMService.configure_connection_bridge`.
+
+        Returns a dict shaped like the v2 /bridge/provision task result:
+        ``{notebook_id, title, foundations_uploaded, truth_packets_uploaded,
+        sources_total, bridge_persona_applied}``.
+
+        Operational cost: ~14 cooldown-gated NotebookLM calls (1 create +
+        13 foundation files + N truth packets + 1 persona apply). With the
+        8s cooldown floor this is typically 3-5 minutes wall time. Caller
+        is responsible for the notebook lifecycle afterward (cleanup via
+        :meth:`NotebookLMService.delete_notebook` if single-use).
+
+        Raises:
+            RuntimeError: if ``include_foundations=True`` and the
+                foundations directory can't be located.
+        """
+        title = (
+            title or f"Bridge — {truth_packets[0].subject[:60]}"
+        )[:200]
+
+        # Resolve foundations dir — fail fast if missing and required.
+        resolved_foundations: Optional[Path] = None
+        if include_foundations:
+            if foundations_dir is not None:
+                resolved_foundations = Path(foundations_dir)
+            elif env := os.environ.get("GANYMEDE_FOUNDATIONS_DIR"):
+                resolved_foundations = Path(env)
+            else:
+                # Default: docs/foundations/ relative to this file.
+                # __file__ = .../ganymede-backend/app/services/orchestrator.py
+                # parents:  0=services 1=app 2=ganymede-backend 3=Project Ganymede
+                resolved_foundations = (
+                    Path(__file__).resolve().parents[3]
+                    / "docs" / "foundations"
+                )
+            if not resolved_foundations.is_dir():
+                raise RuntimeError(
+                    f"Foundations directory not found: {resolved_foundations}. "
+                    f"Set GANYMEDE_FOUNDATIONS_DIR or pass foundations_dir."
+                )
+
+        notebook_id = await self.svc.create_notebook(title)
+        logger.info(
+            "provision_bridge_notebook: created notebook %s (title=%r)",
+            notebook_id, title,
+        )
+
+        foundations_uploaded = 0
+        if resolved_foundations is not None:
+            # Upload .md / .pdf / .txt in sorted order, skip README.md
+            # (which is a meta-description of the corpus, not part of it).
+            uploadable = [
+                p for p in sorted(resolved_foundations.iterdir())
+                if p.is_file()
+                and p.suffix.lower() in {".md", ".pdf", ".txt"}
+                and p.name.lower() != "readme.md"
+            ]
+            for file_path in uploadable:
+                logger.info(
+                    "provision_bridge_notebook: uploading foundation %s (%d/%d)",
+                    file_path.name,
+                    foundations_uploaded + 1,
+                    len(uploadable),
+                )
+                await self.svc.upload_file(notebook_id, str(file_path))
+                foundations_uploaded += 1
+
+        # Truth Packets: write each to a temp .md, upload, clean up at end.
+        packets_uploaded = 0
+        with tempfile.TemporaryDirectory(prefix="ganymede_bridge_packets_") as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            for i, tp in enumerate(truth_packets, start=1):
+                # Build a safe filename from the subject; cap length.
+                safe = "".join(
+                    c if c.isalnum() or c in "._- " else "_" for c in tp.subject
+                ).strip()[:80] or f"packet_{i}"
+                tmp_path = tmpdir_path / f"{safe}.md"
+                content = (
+                    f"# {tp.subject}\n\n"
+                    f"Source: {tp.source_label or 'unspecified'}\n\n"
+                    f"{tp.content}\n"
+                )
+                tmp_path.write_text(content, encoding="utf-8")
+                logger.info(
+                    "provision_bridge_notebook: uploading truth packet %r (%d/%d)",
+                    tp.subject, i, len(truth_packets),
+                )
+                await self.svc.upload_file(notebook_id, str(tmp_path))
+                packets_uploaded += 1
+
+        logger.info(
+            "provision_bridge_notebook: applying Bridge persona to %s",
+            notebook_id,
+        )
+        await self.svc.configure_connection_bridge(notebook_id)
+
+        logger.info(
+            "provision_bridge_notebook: done. notebook=%s, foundations=%d, packets=%d",
+            notebook_id, foundations_uploaded, packets_uploaded,
+        )
+        return {
+            "notebook_id": notebook_id,
+            "title": title,
+            "foundations_uploaded": foundations_uploaded,
+            "truth_packets_uploaded": packets_uploaded,
+            "sources_total": foundations_uploaded + packets_uploaded,
+            "bridge_persona_applied": True,
+        }
+
     async def run_iterative_engine(
         self,
         session: Session,
         truth_packets: list[TruthPacket],
         *,
         max_strokes: int = 3,
+        include_bridge: bool = True,
+        bridge_notebook_id: Optional[str] = None,
     ) -> list[StrokeResult]:
         """Run the full Iterative Engine multi-stroke loop on a session.
 
-        Stroke 1: synthesis (canonical Engine)
-        Stroke 2: audit (Mirror Auditor reviews Stroke 1)
-        Stroke 3: re-synthesis (canonical Engine, friction-injected with
-                  audit findings)
+        With ``include_bridge=True`` (default — Bicameral Convergence Level 1
+        as production audit shape):
+            Stroke 1: synthesis (canonical Engine)
+            Stroke 2: Mirror Auditor reviews Stroke 1
+            Stroke 2b: Connection Bridge audits Stroke 1 (orthogonal lens)
+            Stroke 3: re-synthesis with BOTH audits as friction
 
-        Stops at ``max_strokes`` (default 3 for a full thesis-antithesis-
-        synthesis cycle). For ``max_strokes=1`` this degrades to a single
-        synthesis stroke (same as ``run_synthesis_stroke`` directly).
-        For ``max_strokes=2`` it does synthesis + audit but no
-        re-synthesis.
+        With ``include_bridge=False`` (historic shape):
+            Stroke 1: synthesis (canonical Engine)
+            Stroke 2: Mirror Auditor reviews Stroke 1
+            Stroke 3: re-synthesis with Auditor-only friction
+
+        Stops at ``max_strokes``. With Bridge enabled, ``max_strokes=4``
+        runs the full bicameral loop; lower values stop earlier
+        (1=synth-only, 2=synth+auditor, 3=synth+auditor+bridge,
+        4=synth+auditor+bridge+resynth). Without Bridge, ``max_strokes=3``
+        is the full thesis-antithesis-synthesis cycle.
+
+        When ``include_bridge=True`` and ``bridge_notebook_id=None``, the
+        orchestrator auto-provisions a Bridge notebook inline via
+        :meth:`provision_bridge_notebook`. This adds ~3-5 min of wall time
+        (14 cooldown-gated NotebookLM calls) to the iterate response. Reuse
+        a Bridge notebook across runs by passing its ID to skip provisioning.
 
         The session must be created with ``iterative=True`` and
-        ``max_strokes >= 2`` for this to run usefully.
+        ``max_strokes >= 2`` (or ``>= 3`` for Bridge) for this to run
+        usefully.
 
         Returns the list of all StrokeResults produced. Caller invokes
         :meth:`Session.complete` afterward to finalize.
@@ -811,6 +980,19 @@ class GanymedeOrchestrator:
                 f"max_strokes ({max_strokes}) must be 1..{session.max_strokes}"
             )
 
+        # With Bridge wired in we have one extra stroke slot (Auditor +
+        # Bridge before re-synthesis instead of just Auditor). Adjust the
+        # re-synthesis stroke index accordingly so callers can pass
+        # max_strokes=3 for "stop before re-synthesis" with Bridge on.
+        if include_bridge:
+            # 1=S1, 2=Auditor, 3=Bridge, 4=re-synth
+            resynth_at = 4
+            bridge_at = 3
+        else:
+            # 1=S1, 2=Auditor, 3=re-synth
+            resynth_at = 3
+            bridge_at = None
+
         results: list[StrokeResult] = []
 
         # Stroke 1: thesis
@@ -819,10 +1001,63 @@ class GanymedeOrchestrator:
         if max_strokes < 2:
             return results
 
-        # Stroke 2: antithesis (audit)
+        # Stroke 2: antithesis (Mirror Auditor)
         s2 = await self.run_audit_stroke(session)
         results.append(s2)
-        if max_strokes < 3:
+
+        # Stroke 2b (only with include_bridge=True): orthogonal-lens audit
+        # via the Connection Bridge. Bridge gets the same Stroke 1 as the
+        # Auditor — both lenses fire on the same target, in parallel-in-spirit
+        # (but serial in execution to respect the cooldown gate).
+        s2b: Optional[StrokeResult] = None
+        if include_bridge and max_strokes >= bridge_at:
+            try:
+                if bridge_notebook_id is None:
+                    # Auto-provision. This is the slow path — ~3-5 min added
+                    # to the iterate response. Documented in the v2 API doc.
+                    logger.info(
+                        "Session %s: auto-provisioning Bridge notebook for Stroke 2b",
+                        session.id,
+                    )
+                    provision_result = await self.provision_bridge_notebook(
+                        truth_packets=truth_packets,
+                        title=f"Bridge — {session.id[:8]} iterate",
+                    )
+                    bridge_notebook_id = provision_result["notebook_id"]
+                    logger.info(
+                        "Session %s: Bridge notebook %s ready (%d foundations, %d packets)",
+                        session.id,
+                        bridge_notebook_id,
+                        provision_result["foundations_uploaded"],
+                        provision_result["truth_packets_uploaded"],
+                    )
+
+                # Bridge audits Stroke 1 — same target as the Auditor, so we
+                # pass target_text=s1.raw_response explicitly (otherwise the
+                # default-to-last-stroke logic would point at Stroke 2's text,
+                # which is not what we want). fail_session_on_error=False so
+                # a Bridge transient falls back to Auditor-only Stroke 3
+                # rather than killing the whole iterate run.
+                s2b = await self.audit_with_bridge(
+                    session,
+                    bridge_notebook_id=bridge_notebook_id,
+                    target_text=s1.raw_response,
+                    fail_session_on_error=False,
+                )
+                results.append(s2b)
+            except Exception:
+                # Bridge failures (either provisioning or audit query) must
+                # not kill the iterate run. Log and continue with
+                # auditor-only friction for Stroke 3 — the historic
+                # Iterative Engine shape is the graceful fallback.
+                logger.exception(
+                    "Session %s: Bridge stroke failed — continuing with "
+                    "Auditor-only friction for Stroke 3.",
+                    session.id,
+                )
+                s2b = None
+
+        if max_strokes < resynth_at:
             return results
 
         # Skip Stroke 3 when Stroke 2 produced empty content. The
@@ -837,47 +1072,78 @@ class GanymedeOrchestrator:
             logger.warning(
                 "Session %s: Stroke 2 returned empty audit (likely NotebookLM "
                 "input-size cap on Stroke-1-as-audit-target). Skipping Stroke 3 "
-                "— no friction to inject. Iterative loop completes with 2 strokes; "
+                "— no friction to inject. Iterative loop completes early; "
                 "the empty-stroke UI warning will surface this to the operator.",
                 session.id,
             )
             return results
 
-        # Stroke 3: synthesis (re-fire with audit as friction)
-        framing = ITERATIVE_RESYNTHESIS_TEMPLATE
+        # Stroke 3: re-synthesis with audit friction. Template + budget
+        # depend on whether Bridge fired.
+        bridge_in_loop = include_bridge and s2b is not None and s2b.raw_response.strip()
+
         # Structural extraction to keep the Stroke 3 prompt under the
         # NotebookLM input cap (~5,100-6,000 chars; see Run 06's third-
         # run diagnosis). Stroke 1's load-bearing content is its FINAL
-        # RESOLUTION section (the conclusion the Auditor was critiquing)
+        # RESOLUTION section (the conclusion the audits were critiquing)
         # plus any evidence-limitation notice it self-flagged at the head;
-        # the per-dimension breakdown is well-covered by the Auditor's
-        # own text. Stroke 2 (audit) is already nicely structured into
-        # four category chunks — we keep all four but budget each.
+        # the per-dimension breakdown is well-covered by the audit text.
         s1_extracted = _extract_for_resynthesis(s1.raw_response, max_chars=_S1_INJECTION_BUDGET)
-        s2_extracted = _truncate_audit_for_injection(s2.raw_response, max_chars=_S2_INJECTION_BUDGET)
-        logger.info(
-            "Session %s Stroke 3 injection budgets: S1 %d→%d chars (budget %d), S2 %d→%d chars (budget %d)",
-            session.id,
-            len(s1.raw_response), len(s1_extracted), _S1_INJECTION_BUDGET,
-            len(s2.raw_response), len(s2_extracted), _S2_INJECTION_BUDGET,
-        )
 
-        # Escape any literal { } characters in the extracted stroke text
-        # before injection — synthesize() will call .format(scenario=...,
-        # packets_block=...) on this framing string, so unescaped
-        # framework jargon like "{DAI}" or "{ROEM}" in the Engine's
-        # response would otherwise raise KeyError when .format() tries
-        # to substitute them.
-        s1_escaped = s1_extracted.replace("{", "{{").replace("}", "}}")
-        s2_escaped = s2_extracted.replace("{", "{{").replace("}", "}}")
-        framing_with_audit = framing.replace(
-            "{stroke_1_response}", s1_escaped
-        ).replace(
-            "{audit_findings}",
-            s2_escaped,
-        )
+        if bridge_in_loop:
+            # Bicameral: split the audit budget into Auditor + Bridge slots.
+            auditor_extracted = _truncate_audit_for_injection(
+                s2.raw_response, max_chars=_S2_AUDITOR_BUDGET,
+            )
+            bridge_extracted = _truncate_bridge_for_injection(
+                s2b.raw_response, max_chars=_S2_BRIDGE_BUDGET,
+            )
+            logger.info(
+                "Session %s Stroke 3 (bicameral) injection budgets: "
+                "S1 %d→%d (budget %d), Auditor %d→%d (budget %d), "
+                "Bridge %d→%d (budget %d)",
+                session.id,
+                len(s1.raw_response), len(s1_extracted), _S1_INJECTION_BUDGET,
+                len(s2.raw_response), len(auditor_extracted), _S2_AUDITOR_BUDGET,
+                len(s2b.raw_response), len(bridge_extracted), _S2_BRIDGE_BUDGET,
+            )
+            framing = ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE
+            # Escape any literal { } in the extracted stroke text before
+            # injection — synthesize() will call .format() on the framing,
+            # so unescaped framework jargon like "{DAI}" or "{ROEM}" in the
+            # Engine's response would otherwise raise KeyError.
+            s1_escaped = s1_extracted.replace("{", "{{").replace("}", "}}")
+            auditor_escaped = auditor_extracted.replace("{", "{{").replace("}", "}}")
+            bridge_escaped = bridge_extracted.replace("{", "{{").replace("}", "}}")
+            framing_filled = (
+                framing
+                .replace("{stroke_1_response}", s1_escaped)
+                .replace("{audit_findings}", auditor_escaped)
+                .replace("{bridge_findings}", bridge_escaped)
+            )
+        else:
+            # Historic shape: Auditor-only friction.
+            s2_extracted = _truncate_audit_for_injection(
+                s2.raw_response, max_chars=_S2_INJECTION_BUDGET,
+            )
+            logger.info(
+                "Session %s Stroke 3 injection budgets: S1 %d→%d chars (budget %d), "
+                "S2 %d→%d chars (budget %d)",
+                session.id,
+                len(s1.raw_response), len(s1_extracted), _S1_INJECTION_BUDGET,
+                len(s2.raw_response), len(s2_extracted), _S2_INJECTION_BUDGET,
+            )
+            framing = ITERATIVE_RESYNTHESIS_TEMPLATE
+            s1_escaped = s1_extracted.replace("{", "{{").replace("}", "}}")
+            s2_escaped = s2_extracted.replace("{", "{{").replace("}", "}}")
+            framing_filled = (
+                framing
+                .replace("{stroke_1_response}", s1_escaped)
+                .replace("{audit_findings}", s2_escaped)
+            )
+
         s3 = await self.run_synthesis_stroke(
-            session, truth_packets, framing=framing_with_audit
+            session, truth_packets, framing=framing_filled,
         )
         results.append(s3)
         return results
@@ -1237,6 +1503,42 @@ MISSION:
 Re-fire the synthesis. The Stroke-1 resolution above is your prior pass; the audit identifies specific failure modes in that pass. Recalibrate. The Stroke-3 resolution should be the move that survives BOTH the original physics AND the audit's friction. If the audit's findings are themselves mistaken, say so explicitly and explain why; otherwise integrate them into a tighter synthesis."""
 
 
+# ---------------------------------------------------------------------------
+# Bicameral Convergence Level 1 re-synthesis template.
+#
+# Used when the iterate loop runs with include_bridge=True. Same shape as
+# ITERATIVE_RESYNTHESIS_TEMPLATE but with a second audit block carrying the
+# Connection Bridge's missed-connection enumeration. The Engine is asked to
+# integrate BOTH lenses — fault-mode catches from the Auditor AND missed-
+# connection catches from the Bridge — into the re-synthesis.
+# ---------------------------------------------------------------------------
+
+ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE = """\
+ORIGINAL SCENARIO:
+{scenario}
+
+AUTHENTICATED TRUTH PACKETS (from PKI Oracle swarm):
+{packets_block}
+
+PRIOR ANALYSIS (Stroke 1 resolution from this Engine):
+=====
+{stroke_1_response}
+=====
+
+AUDITOR FINDINGS (Mirror Auditor — fault modes in the reasoning):
+=====
+{audit_findings}
+=====
+
+BRIDGE FINDINGS (Connection Bridge — connections the synthesis missed):
+=====
+{bridge_findings}
+=====
+
+MISSION:
+Re-fire the synthesis. The Stroke-1 resolution above is your prior pass. The Auditor block above identifies failure modes IN that reasoning; the Bridge block above identifies connections the reasoning MISSED. These are two orthogonal lenses — neither subsumes the other. The Stroke-3 resolution should be the move that survives BOTH the original physics AND both audit lenses' friction. If any finding is itself mistaken, say so explicitly and explain why; otherwise integrate them into a tighter synthesis."""
+
+
 def _parse_audit_findings(raw: str) -> Optional[list[str]]:
     """Best-effort extraction of the four-category fault list from a
     Mirror Auditor response.
@@ -1367,6 +1669,23 @@ def _truncate_audit_for_injection(stroke_2_raw: str, max_chars: int) -> str:
         else:
             truncated.append(f[:per_finding_budget].rstrip() + " […]")
     return joiner.join(truncated)
+
+
+def _truncate_bridge_for_injection(bridge_raw: str, max_chars: int) -> str:
+    """Truncate Connection Bridge output for Stroke 3 injection.
+
+    Bridge output doesn't follow the Auditor's four-numbered-category
+    shape — observed Bridge outputs are 2-4 short paragraphs of free-form
+    connection enumeration (often with bold "Evaluating X" / "Assessing Y"
+    sub-headers and packet citations like ``[103]``). Head-truncate to
+    budget; the bottom line of a Bridge response is rarely as load-bearing
+    as the Auditor's per-category catches, so trimming the tail is safe.
+    """
+    if not bridge_raw:
+        return ""
+    if len(bridge_raw) <= max_chars:
+        return bridge_raw.strip()
+    return bridge_raw[:max_chars].rstrip() + "\n[… truncated for budget …]"
 
 
 # ---------------------------------------------------------------------------

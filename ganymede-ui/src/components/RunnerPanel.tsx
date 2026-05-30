@@ -77,6 +77,9 @@ interface StrokeResult {
   incomprehensible_move?: string | null;
   final_resolution?: string | null;
   audit_findings?: string[] | null;
+  /** Which audit instance produced this stroke, when pathway is mirror_audit.
+   *  "mirror_auditor" or "bridge". Null for synthesis strokes. */
+  audit_kind?: 'mirror_auditor' | 'bridge' | null;
   started_at: string;
   completed_at: string;
 }
@@ -194,6 +197,11 @@ export function RunnerPanel({
 }: RunnerPanelProps) {
   const [pathway, setPathway] = useState<Pathway>('cleanroom');
   const [iterative, setIterative] = useState(false);
+  // Bicameral Convergence Level 1 — when iterative is on and Mirror Audit is
+  // not the pathway, the iterate loop also runs Connection Bridge as an
+  // orthogonal-lens audit (Stroke 2b). Default ON; toggle off for the
+  // historic 3-stroke shape. Adds ~3 min of Bridge-notebook provisioning.
+  const [includeBridge, setIncludeBridge] = useState(true);
   const [runMode, setRunMode] = useState<RunMode>('full_loop');
   const [maxSubjects, setMaxSubjects] = useState<number>(3);
   // Research mode for the Phase-2 Oracle harvest. 'deep' is the historic
@@ -569,10 +577,15 @@ export function RunnerPanel({
     const driveUrl = iterative
       ? `${backendUrl}/api/v2/sessions/${created.session_id}/iterate`
       : `${backendUrl}/api/v2/sessions/${created.session_id}/synthesize`;
+    // Bicameral Convergence — pass the Bridge toggle to /iterate. The
+    // /synthesize path is single-pass so the flag doesn't apply.
+    const driveBody = iterative
+      ? { truth_packets: packets, include_bridge: includeBridge }
+      : { truth_packets: packets };
     const driveResp = await fetch(driveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ truth_packets: packets }),
+      body: JSON.stringify(driveBody),
     });
     if (!driveResp.ok) {
       throw new Error(`Engine run failed: HTTP ${driveResp.status} ${await driveResp.text()}`);
@@ -787,6 +800,21 @@ export function RunnerPanel({
             />
             <span className={runMode !== 'synthesis' && pathway !== 'mirror_audit' ? 'text-slate-600' : ''}>
               Iterative Engine (3 strokes — synthesis mode only)
+            </span>
+          </label>
+          <label
+            className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none pl-5"
+            title="Connection Bridge runs as an orthogonal-lens audit alongside the Mirror Auditor (Bicameral Convergence Level 1). Adds ~3 min of Bridge-notebook provisioning per run."
+          >
+            <input
+              type="checkbox"
+              checked={includeBridge}
+              onChange={(e) => setIncludeBridge(e.target.checked)}
+              className="accent-cyan-500"
+              disabled={!iterative}
+            />
+            <span className={iterative ? 'text-slate-300' : 'text-slate-600'}>
+              + Connection Bridge audit (Bicameral)
             </span>
           </label>
           {pathway === 'mirror_audit' && (
@@ -1015,12 +1043,26 @@ function Field({ label, hint, value, onChange, rows = 4 }: FieldProps) {
 }
 
 function StrokeCard({ stroke }: { stroke: StrokeResult }) {
-  const isAudit = (stroke.audit_findings?.length ?? 0) > 0;
+  // Audit-style strokes (pathway=mirror_audit) split into Mirror Auditor and
+  // Connection Bridge by audit_kind. Auditor strokes carry a parsed
+  // audit_findings list (four fault categories); Bridge strokes leave that
+  // null and render raw_response directly (connection-enumeration prose).
+  const isAudit = stroke.pathway === 'mirror_audit';
+  const isBridge = isAudit && stroke.audit_kind === 'bridge';
+  const accentColor = isBridge ? 'cyan' : isAudit ? 'amber' : 'slate';
+  const auditLabel = isBridge ? 'Connection Bridge' : isAudit ? 'Mirror Auditor' : null;
   return (
-    <div className="rounded-md border border-slate-800 bg-slate-950/70 p-3 space-y-2 text-xs">
+    <div className={`rounded-md border bg-slate-950/70 p-3 space-y-2 text-xs ${
+      isBridge ? 'border-cyan-700/40' : isAudit ? 'border-amber-700/40' : 'border-slate-800'
+    }`}>
       <div className="flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-widest text-slate-500">
-          Stroke {stroke.stroke_number} · {stroke.pathway}
+        <div className="text-[10px] uppercase tracking-widest">
+          <span className="text-slate-500">Stroke {stroke.stroke_number} ·</span>{' '}
+          <span className={
+            isBridge ? 'text-cyan-300' : isAudit ? 'text-amber-300' : 'text-slate-500'
+          }>
+            {auditLabel ?? stroke.pathway}
+          </span>
         </div>
         <div className="text-[10px] text-slate-600">
           {Math.round(
@@ -1040,10 +1082,10 @@ function StrokeCard({ stroke }: { stroke: StrokeResult }) {
         <Section label="Final Resolution" body={stroke.final_resolution} accent />
       )}
 
-      {isAudit && stroke.audit_findings && (
+      {isAudit && !isBridge && (stroke.audit_findings?.length ?? 0) > 0 && (
         <div className="space-y-1.5">
           <div className="text-[10px] uppercase tracking-widest text-amber-400">Audit Findings</div>
-          {stroke.audit_findings.map((finding, i) => (
+          {stroke.audit_findings!.map((finding, i) => (
             <div key={i} className="text-slate-300 text-[11px] leading-relaxed border-l-2 border-amber-500/40 pl-2">
               {finding}
             </div>
@@ -1051,7 +1093,18 @@ function StrokeCard({ stroke }: { stroke: StrokeResult }) {
         </div>
       )}
 
-      <details className="text-[10px] text-slate-500">
+      {isAudit && isBridge && (
+        <div className="space-y-1.5">
+          <div className="text-[10px] uppercase tracking-widest text-cyan-400">Missed Connections</div>
+          <pre className="text-slate-300 text-[11px] leading-relaxed whitespace-pre-wrap font-sans border-l-2 border-cyan-500/40 pl-2">
+            {stroke.raw_response}
+          </pre>
+        </div>
+      )}
+
+      <details className={`text-[10px] ${
+        accentColor === 'cyan' ? 'text-cyan-700/70' : accentColor === 'amber' ? 'text-amber-700/70' : 'text-slate-500'
+      }`}>
         <summary className="cursor-pointer hover:text-slate-300">raw response</summary>
         <pre className="whitespace-pre-wrap break-words mt-1 text-slate-400 text-[10px]">
           {stroke.raw_response}

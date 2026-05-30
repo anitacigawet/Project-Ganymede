@@ -266,21 +266,31 @@ Request:
 ```json
 {
   "truth_packets": [ /* TruthPacket[] */ ],
-  "max_strokes": null
+  "max_strokes": null,
+  "include_bridge": true,
+  "bridge_notebook_id": null
 }
 ```
 
-`max_strokes` defaults to the session's own max_strokes. Pass a smaller value (e.g. 2) to stop after the audit stroke without re-synthesis.
+`max_strokes` defaults to the session's own max_strokes. With Bridge enabled the loop has 4 stroke slots (S1, Auditor, Bridge, re-synth); without Bridge it has the historic 3 (S1, Auditor, re-synth). Pass a smaller value to stop earlier.
+
+`include_bridge` (default `true`) controls whether the Connection Bridge runs as Stroke 2b — Bicameral Convergence Level 1 — alongside the Mirror Auditor. The Bridge enumerates *missed connections* between Truth Packets that the Engine's synthesis didn't draw; this is an orthogonal lens to the Auditor's fault-mode catches. When enabled, Stroke 3's re-synthesis prompt includes BOTH audit blocks (Auditor 900 chars + Bridge 600 chars within the existing 1500-char audit budget).
+
+`bridge_notebook_id` (optional) lets the caller supply a pre-provisioned Bridge notebook to skip the ~3-min provisioning step. When `include_bridge=true` and `bridge_notebook_id=null`, the orchestrator auto-provisions a fresh Bridge notebook inline via `provision_bridge_notebook` (14 cooldown-gated calls: 1 create + 13 foundations + N truth packets + 1 persona apply). For one-shot runs this is fine; for repeated runs on the same substrate, pass a notebook ID to amortise.
+
+**Bridge failures fall back to historic 3-stroke gracefully** — if provisioning or the Bridge audit query errors, the run continues with Auditor-only friction for Stroke 3. The session is NOT marked failed.
 
 Response:
 ```json
 {
-  "strokes": [ /* StrokeResult[] — ordered, length = max_strokes */ ],
+  "strokes": [ /* StrokeResult[] — ordered, length = max_strokes; with Bridge enabled, Stroke 2 has audit_kind="mirror_auditor" and Stroke 3 has audit_kind="bridge" */ ],
   "state": { /* updated SessionStateResponse */ }
 }
 ```
 
-The HTTP call blocks for the full loop duration (potentially several minutes). Stroke events fire on the session as each stroke completes — WS subscribers see them in real time.
+Each `StrokeResult` now carries an `audit_kind` field (`"mirror_auditor"` | `"bridge"` | `null`) so consumers can render Auditor and Bridge strokes distinctly without inspecting event payloads.
+
+The HTTP call blocks for the full loop duration. With Bridge auto-provisioning, expect ~5-7 minutes total wall time (vs ~2 min historic 3-stroke). Stroke events fire on the session as each stroke completes — WS subscribers see them in real time.
 
 Errors:
 - `404` — session not found

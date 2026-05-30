@@ -67,6 +67,9 @@ interface StrokeResult {
   incomprehensible_move?: string | null;
   final_resolution?: string | null;
   audit_findings?: string[] | null;
+  /** Which audit instance produced this stroke, when pathway is mirror_audit.
+   *  "mirror_auditor" or "bridge". Null for synthesis strokes. */
+  audit_kind?: 'mirror_auditor' | 'bridge' | null;
   started_at: string;
   completed_at: string;
 }
@@ -151,6 +154,7 @@ export function DispatcherPanel({
   const [strokes, setStrokes] = useState<StrokeResult[]>([]);
   const [finalText, setFinalText] = useState<string | null>(null);
   const [iterative, setIterative] = useState(true);
+  const [includeBridge, setIncludeBridge] = useState(true);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -247,14 +251,19 @@ export function DispatcherPanel({
         source_label: 'Dispatcher (operator-supplied)',
       };
 
-      // 3. Drive iterate or synthesize.
+      // 3. Drive iterate or synthesize. For iterate, pass the Bridge toggle
+      // through — backend default is ON but we send it explicitly so the
+      // operator's UI choice is what controls behavior.
       const endpoint = iterative
         ? `/api/v2/sessions/${sessionId}/iterate`
         : `/api/v2/sessions/${sessionId}/synthesize`;
+      const driveBody = iterative
+        ? { truth_packets: [truthPacket], include_bridge: includeBridge }
+        : { truth_packets: [truthPacket] };
       const driveRes = await fetch(`${backendUrl}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ truth_packets: [truthPacket] }),
+        body: JSON.stringify(driveBody),
       });
       if (!driveRes.ok) {
         const body = await driveRes.text();
@@ -283,7 +292,7 @@ export function DispatcherPanel({
       setErrorMessage(exc instanceof Error ? exc.message : String(exc));
       setPhase('error');
     }
-  }, [dispatch, editedScenario, text, iterative, onConfirm, backendUrl]);
+  }, [dispatch, editedScenario, text, iterative, includeBridge, onConfirm, backendUrl]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -318,16 +327,33 @@ export function DispatcherPanel({
             rows={8}
             className="w-full resize-none rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed"
           />
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={iterative}
-                onChange={(e) => setIterative(e.target.checked)}
-                className="accent-indigo-500"
-              />
-              Iterative 3-stroke run (Thesis → Audit → Synthesis)
-            </label>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={iterative}
+                  onChange={(e) => setIterative(e.target.checked)}
+                  className="accent-indigo-500"
+                />
+                Iterative run (Thesis → Audit → Synthesis)
+              </label>
+              <label
+                className={`flex items-center gap-2 text-xs cursor-pointer ${
+                  iterative ? 'text-slate-400' : 'text-slate-600'
+                }`}
+                title="Connection Bridge runs as an orthogonal-lens audit alongside the Mirror Auditor (Bicameral Convergence Level 1). Adds ~3 min of Bridge-notebook provisioning per run."
+              >
+                <input
+                  type="checkbox"
+                  checked={includeBridge}
+                  onChange={(e) => setIncludeBridge(e.target.checked)}
+                  disabled={!iterative}
+                  className="accent-indigo-500"
+                />
+                + Connection Bridge audit (Bicameral)
+              </label>
+            </div>
             <button
               onClick={submitDispatch}
               disabled={!text.trim()}
@@ -446,11 +472,21 @@ export function DispatcherPanel({
         <div className="flex flex-col items-center gap-3 py-12 text-slate-400">
           <Loader2 size={32} className="animate-spin text-indigo-400" />
           <p className="text-sm">
-            Engine running. {iterative ? '3-stroke loop' : 'Single-pass synthesis'} — several minutes.
+            Engine running.{' '}
+            {iterative
+              ? includeBridge
+                ? 'Bicameral 4-stroke loop'
+                : '3-stroke loop'
+              : 'Single-pass synthesis'}
+            {' '}— several minutes.
           </p>
           <p className="text-[10px] text-slate-600 max-w-md text-center leading-relaxed">
-            Each stroke includes an 8-second cooldown floor plus the Engine's response time. The
-            iterative loop fires three strokes back-to-back; the single-pass mode fires once.
+            Each stroke includes an 8-second cooldown floor plus the Engine&apos;s response time.{' '}
+            {iterative && includeBridge
+              ? 'Bicameral runs also provision a fresh Connection Bridge notebook (~3 min, 14 NotebookLM calls) before Stroke 2b fires.'
+              : iterative
+                ? 'The iterative loop fires three strokes back-to-back.'
+                : 'Single-pass mode fires once.'}
           </p>
         </div>
       )}
@@ -470,22 +506,44 @@ export function DispatcherPanel({
             </button>
           </div>
 
-          {strokes.map((s) => (
-            <div
-              key={s.stroke_number}
-              className="rounded-lg border border-slate-800 bg-slate-900/50 px-4 py-3"
-            >
-              <div className="flex items-center gap-2 border-b border-slate-800/60 pb-2 mb-2">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-400">
-                  Stroke {s.stroke_number}
-                </span>
-                <span className="text-[10px] text-slate-500">{s.pathway}</span>
+          {strokes.map((s) => {
+            // Per-stroke heading + accent. Audit strokes (mirror_audit
+            // pathway) split into Mirror Auditor vs Connection Bridge by
+            // audit_kind; synthesis strokes (Stroke 1 / Stroke 3) keep
+            // the indigo accent and the pathway label.
+            const isAudit = s.pathway === 'mirror_audit';
+            const isBridge = isAudit && s.audit_kind === 'bridge';
+            const accent = isBridge
+              ? 'text-cyan-300 border-cyan-700/50'
+              : isAudit
+                ? 'text-amber-300 border-amber-700/50'
+                : 'text-indigo-400 border-slate-800';
+            const headerLabel = isBridge
+              ? 'Connection Bridge'
+              : isAudit
+                ? 'Mirror Auditor'
+                : s.pathway;
+            return (
+              <div
+                key={s.stroke_number}
+                className={`rounded-lg border bg-slate-900/50 px-4 py-3 ${accent.split(' ')[1]}`}
+              >
+                <div className="flex items-center gap-2 border-b border-slate-800/60 pb-2 mb-2">
+                  <span
+                    className={`text-[10px] font-mono uppercase tracking-wider ${
+                      accent.split(' ')[0]
+                    }`}
+                  >
+                    Stroke {s.stroke_number}
+                  </span>
+                  <span className="text-[10px] text-slate-500">{headerLabel}</span>
+                </div>
+                <pre className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
+                  {s.raw_response}
+                </pre>
               </div>
-              <pre className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
-                {s.raw_response}
-              </pre>
-            </div>
-          ))}
+            );
+          })}
 
           {strokes.length > 0 && !strokes[strokes.length - 1]?.raw_response?.trim() && (
             <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-amber-200">
