@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-05-26 (post-milestone 39: P1-05 predictions bulletin board shipped).
+Last updated: 2026-05-26 (post-milestone 39 + P1-01 upstream PR drafted, awaiting submission).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -17,25 +17,43 @@ Last updated: 2026-05-26 (post-milestone 39: P1-05 predictions bulletin board sh
 
 The current chunk queue. Top item is the next thing to ship.
 
-### P1-01 · Upstream notebooklm-py PR for the `[["e",4,null,null,N]]` envelope
+### ~~P1-01 · Upstream notebooklm-py PR for the `[["e",4,null,null,N]]` envelope~~ ✅ DRAFTED 2026-05-26 (awaiting submission)
 
-The SDK's `decode_response` falls through to "no answer extracted" on
-this Google-internal RPC error structure, masking real failures as
-empty strings. The post-milestone-37 work added always-on raw-HTTP-body
-logging so the project sees the envelope, but the SDK still doesn't.
+**Status: drafted + tested locally. Awaiting operator submission to upstream.**
 
-**Done when:**
-- Pulled the upstream `notebooklm-py` repo as a worktree or sibling clone.
-- Patched `notebooklm/rpc/decoder.py` to recognize the envelope and
-  raise `ChatError` with a structured message.
-- Local test: feed a known-bad-prompt response through `decode_response`
-  and confirm `ChatError` is raised.
-- PR drafted (not necessarily submitted — operator decides on submit).
+Worked out the fix on the upstream `teng-lin/notebooklm-py` repo
+(cloned to sibling `../notebooklm-py-fork/`, branch
+`fix/chat-e-error-frame`, commit `17c92270`). Per repo conventions, the
+fix landed in `src/notebooklm/_chat_wire.py` (the code moved out of
+`decoder.py` during a recent refactor — `decoder.py` handles non-chat
+RPCs, `_chat_wire.py` handles the streamed chat parser). Added a
+companion `_raise_chat_transport_error_frame` helper paralleling the
+existing `_raise_chat_error_frame` (sibling fix to upstream PR #1219,
+which closed the `"er"` frame silent-skip path).
 
-**Files touched:** `notebooklm/rpc/decoder.py` (upstream),
-`notebooklm/exceptions.py` (upstream — if a new error class is needed).
+Local verification:
+- 3 new unit tests pass + 30 existing tests still pass in
+  `tests/unit/test_streaming_chat_wire.py`
+- 6,284 of 6,292 unit tests pass (8 Windows-symlink failures unrelated)
+- `ruff format --check .` + `ruff check .` + `mypy` on the changed
+  file all clean
 
-**Estimated effort:** 1-2 hours including upstream repo orientation.
+Submission package at
+`C:\Users\james\Desktop\GANYMEDE_FINAL\PROJECT_GANYMEDE\notebooklm-py-pr\`:
+- `HOW_TO_SUBMIT.md` — step-by-step first-time-PR guide
+- `PR_DESCRIPTION.md` — ready-to-paste PR body, matches upstream tone
+- `0001-fix-chat-surface-e-transport-error-frames-as-ChatErr.patch` —
+  portable backup of the commit
+
+Operator submission steps: see `HOW_TO_SUBMIT.md`. Crosses the
+"publishing public-facing" autonomy gate; held for explicit operator
+action.
+
+**Followup when the PR merges upstream:** Ganymede's
+`app/services/notebooklm/client.py` raw-HTTP-body-on-empty-response
+diagnostic logging becomes redundant (the SDK will raise `ChatError`
+directly). Leave in place as defence-in-depth or clean up — small chunk
+for after the merge.
 
 ---
 
