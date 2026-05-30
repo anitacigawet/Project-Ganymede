@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-05-26 (post-milestone 38 commit).
+Last updated: 2026-05-26 (post-milestone 39: P1-05 predictions bulletin board shipped).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -115,29 +115,24 @@ a default; operator picks if they care.
 
 ---
 
-### P1-05 · Predictions bulletin board (operator opt-in)
+### ~~P1-05 · Predictions bulletin board~~ ✅ SHIPPED 2026-05-26
 
-A `/predictions` route in the UI showing pre-registered predictions as
-cards with claim / mechanism / resolution-date countdown / status.
-Currently we only have one (LMArena 2026-06-30), but the surface scales.
+Commit `581b5b6` + drive-by TS fixes in `90e70dc`.
 
-**Done when:**
-- Operator approves the build (small ship; opt-in).
-- New page at `ganymede-ui/src/app/predictions/page.tsx` (or wherever
-  Next.js 16 wants it — check `node_modules/next/dist/docs/` first).
-- Parses predictions from a static JSON at
-  `ganymede-ui/src/data/predictions.ts` OR a new
-  `GET /api/v2/predictions` endpoint that scans run records.
-- Cards show: scenario one-liner, claim, mechanism, resolution date,
-  countdown, status (pending / validated / falsified / inconclusive).
-- LMArena prediction populated as the first card.
+- `ganymede-ui/src/data/predictions.ts` — typed ledger seeded with
+  the LMArena prediction (audited + Bridge-extended, medium-high
+  confidence, resolves 2026-06-30).
+- `ganymede-ui/src/app/predictions/page.tsx` — bulletin board page
+  with status pills, countdown subcomponent, falsification-triggers
+  display, run-record link-out.
+- `ganymede-ui/src/app/page.tsx` — top-right Predictions link with
+  pending-count badge.
+- Bonus: fixed two pre-existing TS errors that were blocking
+  `next build` (GravityWell material type, LithographyView
+  JSX.Element).
 
-**Files touched:** new page file, new data file or new API endpoint,
-possibly `app/v2_routes.py`.
-
-**Estimated effort:** 1-2 hours.
-
-**Operator-gated:** yes — opt-in. Skip if operator doesn't approve.
+Verified: build produces three static routes (/, /predictions,
+/_not-found) prerendered. Type-check clean.
 
 ---
 
@@ -202,3 +197,21 @@ for continuity:
 
 Commit: `97f9101`. Run record:
 `docs/history/Architecture_History.md` § milestone 38.
+
+### Milestone 39 (2026-05-26) — Autopilot Protocol adopted + Predictions bulletin board
+
+- Adopted the Autopilot Protocol (commit `2a458c2`). Three new
+  contract docs at repo root: CLAUDE.md (operating manual),
+  ROADMAP.md (phase-by-phase plan by silo), TASKS.md (atomic-chunk
+  ledger — this file). docs/history/Architecture_History.md
+  continues as the append-only decision log.
+- P1-05 predictions bulletin board (commit `581b5b6`) — first
+  autonomous chunk shipped under the protocol. New /predictions
+  route in Next.js + typed predictions ledger + top-right link
+  from main page. Seeded with the LMArena 2026-06-30 prediction.
+- Drive-by TS fixes (commit `90e70dc`) — GravityWell.tsx material
+  type cast + LithographyView.tsx JSX.Element removal. Both
+  pre-existing, surfaced by running `next build` for the
+  predictions chunk. Build now clean.
+
+Run record: `docs/history/Architecture_History.md` § milestone 39.

@@ -397,6 +397,45 @@ A targeted follow-on to milestone 37. The `audit_with_bridge()` method shipped e
 - Bridge notebook lifecycle — auto-provisioned notebooks aren't auto-deleted after the iterate run. For long-lived ops, the operator can clean up via `DELETE /api/v2/notebooks/{id}`. Worth adding a `cleanup_bridge_notebook: bool = false` flag to `IterateRequest` later if accumulated test notebooks become a problem.
 - Validate the audited+Bridge-extended Cleanroom prediction at 2026-06-30.
 
+## 39. Autopilot Protocol adopted + predictions bulletin board (2026-05-26)
+
+A mode-change milestone followed by the first chunk shipped under the new mode.
+
+**The mode change.** The operator pointed at the Autopilot Protocol they had Claude draft earlier (`~/Documents/Obsidian/PROJECTS/CLAUDE/Autopilot/AUTOPILOT_PROTOCOL.md`) and directed: *"We should just use this protocol to do everything as much as you can, unless you need my input for major things."* The protocol formalizes how Claude operates semi-autonomously on vision-driven projects with a clear vision and a roadmap — atomic-chunk loop, autonomy rules, stop conditions, per-chunk commits, contract documents kept fresh.
+
+**Contract docs added at repo root** (commit `2a458c2`):
+
+- `CLAUDE.md` — operating manual for the AI working on Ganymede. Defines the role, session-open reading order, autonomy rules (what's autonomous vs what stops for operator input), stop conditions, the "continue" trigger semantics, and the per-chunk quality gates. Explicit commit-but-don't-push rule (Ganymede's 17 commits already sit ahead of origin/master; push remains an operator-cadence action).
+- `ROADMAP.md` — phase-by-phase plan organized by silo. Predictor: P1 Bridge robustness → P2 2026-06-30 validation → P3 next prediction. Envisioner: E1 Bicameral Level 2 design → E2 Level 3. Methodology: M1 Foundations deep-read → M2 leaner-corpus test → M3 framework decision. Pluggable: Pl1 Operational hygiene → Pl2 First module consumer. Each phase carries goals, deliverables, exit criteria, and role split.
+- `TASKS.md` — atomic-chunk ledger. ACTIVE section is the working queue (top item = next chunk). NEXT UP previews upcoming phases. COMPLETED ARCHIVE keeps historical record.
+
+**Decision-log convention:** `docs/history/Architecture_History.md` (this file) remains the append-only narrative decision log. No separate `DECISIONS.md` — the milestones serve the same role with project-appropriate granularity.
+
+**First chunk under the protocol: P1-05 predictions bulletin board** (commit `581b5b6`). The operator escalated it to top of ACTIVE — pre-registered Cleanroom predictions had been living as prose inside `docs/experiments/runs/*.md` with no visual surface. The new bulletin board at `/predictions` lists pre-registered predictions as cards with claim / audited mechanism / falsification triggers / live countdown / status.
+
+What shipped:
+
+- **`ganymede-ui/src/data/predictions.ts`** — typed ledger (`Prediction`, `PredictionStatus`, `RiskMechanism`, `daysUntilResolution`) seeded with the LMArena 2026-06-30 prediction (audited Stroke 3 + Bridge addendum, medium-high confidence).
+- **`ganymede-ui/src/app/predictions/page.tsx`** — `'use client'` page rendering one card per prediction. `Countdown` subcomponent re-renders once per minute. Status pills: amber (pending), emerald (validated), rose (falsified), cyan (partial), slate (inconclusive). Each card links out to its source run record on GitHub.
+- **`ganymede-ui/src/app/page.tsx`** — top-right floating Predictions link with a pending-count chip. Quiet text-only when 0 pending; chip surfaces a count when >0.
+
+When a prediction's resolution date arrives, the operator edits `predictions.ts` directly (flip status, fill in outcome). The run-record markdown in `docs/experiments/runs/` remains source-of-truth for methodology + verbatim Stroke outputs. The bulletin board is a presentation layer.
+
+Future enhancement (not committed): a `GET /api/v2/predictions` endpoint that parses run records automatically. The static data file is the right starting point for a single-entry board; the surface scales to N without backend complexity.
+
+**Drive-by fixes** (commit `90e70dc`) — two pre-existing TypeScript errors that were blocking `next build`, surfaced when running the build to type-check the new page:
+
+- `GravityWell.tsx:120` — `Mesh.material` is typed `Material | Material[]` (Three.js allows arrays for multi-material meshes); cast to single `Material` to access `.opacity`.
+- `LithographyView.tsx:212` — return type `JSX.Element`. React 19 + Next.js 16's TS lib changes removed `JSX` as a global namespace. Removed the explicit return type; TS infers it cleanly.
+
+Build now produces three prerendered static routes (`/`, `/predictions`, `/_not-found`). Type-check passes.
+
+**Pending after this milestone:**
+
+- P1-01 (upstream `notebooklm-py` PR for the `[["e",4,null,null,N]]` error envelope) is the new top of ACTIVE per TASKS.md. PR drafting is autonomous; submission stops for operator approval.
+- P1-02 (Powell-sound Bridge null test), P1-03 (CTA-leak rate), P1-04 (Bridge notebook lifecycle) round out P1 ACTIVE.
+- E1 (Bicameral Level 2) and M1 (Foundations deep-read) queued as NEXT UP per ROADMAP.
+
 ---
 
 ## Cross-references at a glance
@@ -446,3 +485,5 @@ A targeted follow-on to milestone 37. The `audit_with_bridge()` method shipped e
 | Bridge wired into /iterate as Stroke 2b (38) | `ganymede-backend/app/services/orchestrator.py` (`run_iterative_engine` + `provision_bridge_notebook`) + `ganymede-backend/app/v2_routes.py` (`IterateRequest`) + `ganymede-backend/app/contracts.py` (`StrokeResult.audit_kind`) + `ganymede-ui/src/components/DispatcherPanel.tsx` + `ganymede-ui/src/components/RunnerPanel.tsx` |
 | `ITERATIVE_BICAMERAL_RESYNTHESIS_TEMPLATE` (38) | `ganymede-backend/app/services/orchestrator.py` |
 | `audit_with_bridge` soft-fail flag (38) | `ganymede-backend/app/services/orchestrator.py` |
+| Autopilot Protocol adoption (39) | `CLAUDE.md` + `ROADMAP.md` + `TASKS.md` (repo root) |
+| Predictions bulletin board (39) | `ganymede-ui/src/app/predictions/page.tsx` + `ganymede-ui/src/data/predictions.ts` + `ganymede-ui/src/app/page.tsx` (link) |
