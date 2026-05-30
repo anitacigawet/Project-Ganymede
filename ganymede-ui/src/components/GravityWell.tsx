@@ -115,9 +115,12 @@ export function GravityWell({ config, overrides, scanColor }: GravityWellProps) 
     // 3. Update Legislative Plane (The Ceiling)
     if (legPlaneRef.current) {
       legPlaneRef.current.position.y = currentMitigation * 3 - 0.5;
-      // Holographic pulse effect
+      // Holographic pulse effect. The mesh's material is typed as
+      // Material | Material[] (Three.js allows arrays for multi-material
+      // meshes); ours is a single material, so cast to access .opacity.
       const pulse = 0.1 + Math.sin(time * 2) * 0.05;
-      legPlaneRef.current.material.opacity = pulse + currentMitigation * 0.2;
+      (legPlaneRef.current.material as THREE.Material).opacity =
+        pulse + currentMitigation * 0.2;
     }
 
     if (meshRef.current) {

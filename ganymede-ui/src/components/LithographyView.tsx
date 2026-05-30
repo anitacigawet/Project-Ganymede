@@ -209,7 +209,7 @@ function mirrorAngleAt(pivot: Point, incoming: Point, outgoing: Point): number {
 
 export function LithographyView({
   snapshot, onSwitchToCanvas, canvasAvailable,
-}: LithographyViewProps): JSX.Element {
+}: LithographyViewProps) {
   const stages = useMemo(() => deriveStages(snapshot), [snapshot]);
   const stageText = stages ? stageLabel(stages, snapshot) : '—';
 
