@@ -1,0 +1,25 @@
+The Engine explicitly addressed the connection between the DOJ headquarters renovation probe in Silo D1 [1] and the "for-cause" versus "at-will" legal removal mechanics in Silo D5 [2] to construct the "Lasso" scenario. It also mapped the institutional preservation logic of Silo D8 [3] against the 9D Framework concepts of Go/Chess and Set/Horus [4]. Finally, it briefly linked the lack of market momentum in Silo D7 [5] to Powell's isolated Board seat in Silo D8 [3]. These connections have been handled and are out of scope.
+
+Here are the missed bridges supported by the substrate:
+
+Bridge 1 (STRUCTURAL)
+Packets: [Silo D1 — "Fire Powell" Narrative] x [Silo D8 — Institutional Support]
+Connection: Silo D1 identifies the DOJ criminal investigation into the headquarters renovation as an active, ongoing "sword of Damocles" used to justify a "for-cause" firing [1]. However, Silo D8 explicitly documents that this DOJ probe was closed on April 24, 2026, an event which triggered Senator Tillis to defect and advance Kevin Warsh's nomination [3]. In combination, these packets state the primary legal pretext the Engine relied on for the ongoing "Lasso" has already been resolved and closed.
+Likely reason missed: The Engine pattern-matched the DOJ probe as a static structural vulnerability in one dimension, failing to update its temporal state based on the chronological event trigger located in another.
+
+Bridge 2 (STRUCTURAL)
+Packets: [Silo D7 — Economic-Political Collision] x [Silo D8 — Institutional Support]
+Connection: Silo D7 establishes that the Executive's core necessity is forcing massive interest rate cuts (down to 1.0%) to survive the 2026 midterm elections [5]. Yet, Silo D8 reveals a "hawk defection" by Regional Bank Presidents (Hammack, Kashkari, Logan) who voted specifically against Powell's recent "easing bias" [3]. Together, this reveals that replacing Powell does not automatically grant the Executive their desired 1.0% rate, because a powerful voting bloc within the institution is actually more hawkish than Powell himself.
+Likely reason missed: The Engine collapsed the Board into a binary "Powell vs. Executive" dynamic, erasing the multi-polar internal voting factions that complicate the Executive's ultimate economic objective.
+
+Bridge 3 (IMPLIED)
+Packets: [Silo D7 — Economic-Political Collision] x [Silo D1 — "Fire Powell" Narrative]
+Connection: Silo D7 details the administration directly ordering Fannie Mae and Freddie Mac to purchase $200 billion in MBS to suppress rates on their own [5]. Concurrently, Silo D1 cites Executive Order 14249, which attempts to subordinate the Fed's supervisory functions to the OMB [1]. Combined, these packets point toward the Executive actively building a parallel apparatus to bypass the Federal Reserve's monetary and regulatory authority entirely, rather than just seeking to capture its leadership.
+Likely reason missed: The Engine's resolution-shape required focusing exclusively on the direct, head-to-head confrontation over the Chair's seat, rendering the Executive's asymmetrical circumvention of the institution invisible.
+
+Bridge 4 (IMPLIED)
+Packets: [Silo D1 — "Fire Powell" Narrative] x [Reverse Observer Effect Analysis / ROEM Formal Model]
+Connection: The foundations corpus defines ROEM's "The Game" axiom, where forcing an opponent to make an observed decision inevitably collapses their state into a disadvantageous outcome [6, 7]. Silo D1 outlines the "Democratic Deficit" narrative, which frames the Fed as an unaccountable, distant elite [1]. If Powell mounts the prolonged, multi-month legal defense described in Silo D5 [2], his very act of publicly defending his "unaccountable" independence perfectly validates the populist narrative in Silo D1, satisfying the ROEM condition where his rational defense traps him in a disadvantageous state regardless of the legal verdict.
+Likely reason missed: The Engine evaluated the legal dimension mechanically as a time-delay tactic, missing the cross-dimensional ROEM application where defending institutional independence actively fuels the opponent's cultural narrative.
+
+Total missed bridges: 4 (2 structural, 2 implied, 0 speculative).

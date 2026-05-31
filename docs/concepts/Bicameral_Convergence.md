@@ -372,7 +372,7 @@ Run 7 of the LMArena scenario in [`../experiments/runs/06_LMArena_Anthropic_Clea
 
 ### What this doesn't yet validate
 
-- **Powell-sound robustness.** Does the Bridge produce "Total missed bridges: 0" on known-sound Engine output? Still pending. The LMArena Stroke 1 was framework-grounded and the Auditor flagged it — the Bridge had legitimate gaps to identify. A test against a Stroke 1 the Auditor judges sound is the cleaner null test.
+- ~~**Powell-sound robustness.**~~ ✅ **Closed 2026-05-31** by the [Powell Bridge Null Test](../experiments/runs/Powell_Bridge_Null_Test.md). Run against the canonical Powell Cleanroom substrate (4 Truth Packets + foundations) with the Powell Engine Resolution as ``target_text``. Result: **4 missed bridges (2 STRUCTURAL, 2 IMPLIED, 0 SPECULATIVE)** — the Bridge passes its null-test discipline (no over-production) AND surfaces real catches we missed at the time. Most severe: the Engine's "Renovation-Cause Pincer" Strategic Lasso relied on a DOJ probe that another packet documented as already closed. The Bridge would have flagged the temporal-state error before the resolution went to blind validation. Cross-scenario evidence now spans three independent substrates (Amnesia, LMArena, Powell) with zero Bridge↔Auditor overlap on any of them.
 - **Level 2 (mirror-bounce loop).** Not yet built. ``audit_with_bridge()``
   is shipped (2026-05-26, milestone 37 continuation — see below); the
   remaining piece is ``run_bicameral_loop()`` orchestrator method plus

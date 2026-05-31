@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-05-26 (post-milestone 39 + P1-01 upstream PR drafted, awaiting submission).
+Last updated: 2026-05-31 (post-milestone 40 — P1-02 Powell Bridge null test + P1-06 auto_relogin ported from Z-SPAN).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -57,31 +57,27 @@ for after the merge.
 
 ---
 
-### P1-02 · Powell-sound Bridge null test
+### ~~P1-02 · Powell-sound Bridge null test~~ ✅ SHIPPED 2026-05-31
 
-Does Bridge produce "0 missed bridges" on known-sound Engine output, or
-does it over-produce SPECULATIVE bridges on sound input? Either result
-is informative.
+**Classification: "valid catches" — 4 missed bridges, 0 speculative.**
 
-**Done when:**
-- Pick a Powell-class Stroke 1 as the input. **Default pick:** the
-  Powell Cleanroom canonical Stroke 1 (preserved in
-  `docs/experiments/runs/Powell_Cleanroom/`). Alternative if operator
-  prefers: Tokenized Land or Genie Giant-Slayer.
-- Provision a Bridge notebook with the Powell substrate.
-- Fire `/sessions/{id}/bridge-audit` with that Stroke 1 as
-  `target_text`.
-- Document the Bridge's output. Classify: "0 missed bridges" / "missed
-  bridges with valid catches" / "over-produced speculative bridges".
-- Write a short run record at
-  `docs/experiments/runs/Powell_Bridge_Null_Test.md`.
+The Bridge passes its null-test discipline cleanly (no over-production)
+AND surfaces real catches the canonical Powell run missed. Most severe:
+the Engine's "Renovation-Cause Pincer" Strategic Lasso relied on a DOJ
+probe that Silo D8 explicitly documented as already closed — a
+temporal-state error the Bridge would have caught at the time.
 
-**Files touched:** new run record; possibly `docs/protocols/Connection_Bridge_Persona.md` if the test surfaces persona tuning.
+Cross-scenario evidence for the orthogonal-lenses claim now spans three
+substrates (Amnesia, LMArena, Powell) with zero Bridge↔Auditor overlap.
 
-**Estimated effort:** ~30 min wall time for the test + write-up
-(15 min for Bridge provision + 1 min audit + write-up).
+Run record: [`docs/experiments/runs/Powell_Bridge_Null_Test.md`](docs/experiments/runs/Powell_Bridge_Null_Test.md).
+Driver: [`scripts/powell_bridge_null_test.py`](scripts/powell_bridge_null_test.py).
+Artifacts: [`docs/experiments/runs/Powell_Bridge_Null_Test_Artifacts/`](docs/experiments/runs/Powell_Bridge_Null_Test_Artifacts/).
 
-**NotebookLM call budget:** ~15 calls.
+Updates: `docs/concepts/Bicameral_Convergence.md` "Powell-sound robustness"
+pending item closed; `docs/concepts/Framework_Cleanup_Hypothesis.md`
+gains a tenth empirical evidence entry referencing the DOJ-probe
+temporal-state error.
 
 ---
 
@@ -215,6 +211,24 @@ for continuity:
 
 Commit: `97f9101`. Run record:
 `docs/history/Architecture_History.md` § milestone 38.
+
+### Milestone 40 (2026-05-31) — auto_relogin port + Powell Bridge null test
+
+- **P1-06 auto_relogin ported from Z-SPAN** (commit `d809914`).
+  Closes the recurring "cookies expired, re-auth manually" interruption
+  for the steady-state case (Playwright profile still signed in to
+  Google). Wired into backend startup auto-recovery + new
+  `POST /api/v2/auth/auto-relogin` endpoint + reinitialize path.
+  Smoke-tested live this session: cold-start with expired cookies
+  recovered to `status=valid` + `client_initialized=true` in ~47s with
+  zero manual interaction.
+- **P1-02 Powell-sound Bridge null test** (commit pending).
+  Classification: 4 missed bridges, 0 speculative. Bridge passes its
+  null-test discipline AND surfaces real catches the canonical Powell
+  run missed (notably: Engine's Strategic Lasso relied on a DOJ probe
+  another packet documented as already closed). Closes
+  Bicameral_Convergence.md's "Powell-sound robustness" pending item
+  from milestone 33.
 
 ### Milestone 39 (2026-05-26) — Autopilot Protocol adopted + Predictions bulletin board
 

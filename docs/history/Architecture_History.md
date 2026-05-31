@@ -438,6 +438,71 @@ Build now produces three prerendered static routes (`/`, `/predictions`, `/_not-
 
 ---
 
+## 40. auto_relogin port + Powell Bridge null test (2026-05-31)
+
+Two chunks shipped under the Autopilot Protocol after a long usage pause forced a re-auth and surfaced a process gap the project should have closed already.
+
+### Trigger — operator pushed back on "you re-auth, I wait"
+
+The session opened with the recurring blocker: NotebookLM cookies expired between sessions (~5-hour lifetime), `/api/v2/auth/status` returned `expired`, Powell Bridge null test couldn't proceed. Operator's response: *"I don't know why you want me to re-auth since I thought we had automatic re-auth things so that you never had to ask me again."*
+
+Honest answer was *no — we never built auto-reauth in Ganymede*. The grep for `keepalive` / `auto_refresh` / `RotateCookies` / `PSIDTS` against `ganymede-backend/app` returned zero matches. The installed SDK (`notebooklm-py 0.3.4`) doesn't have keepalive either (the upstream main branch added `_auth/keepalive.py` later). Operator then pointed at Z-SPAN: *"if you look at the different projects I have on my desktop... they already have adjusted their notebook LM bridge with that capacity."*
+
+### P1-06 — auto_relogin ported from Z-SPAN (commit `d809914`)
+
+Read-only inspection of `ZSPAN/02_Core_Project/notebooklm_bridge/auth_check.py` confirmed Z-SPAN solved this in 2026-05 (D-035 in their decision log). Key insight from their design comment: the `notebooklm login` CLI uses Playwright's persistent context, so when the operator is already signed in to Google in that profile (the steady state for a long-running pilot), the OAuth flow auto-completes inside spawned Chromium in seconds — no human keystrokes required. The only blocking step is the subprocess's `input("[Press ENTER when logged in] ")`.
+
+`auto_relogin` automates that step: spawn the subprocess, stream stdout into a buffer, watch for the prompt string, sleep a grace period for redirects to settle, then feed ENTER programmatically and wait for `storage_state.json` save.
+
+**Ported:**
+
+- **`app/services/notebooklm/auth_check.py`** — new `auto_relogin()` function (~180 lines) with threading-based stdout drain, prompt detection, grace-period wait, automated ENTER feed. Plus `auto_relogin_enabled()` helper for the `GANYMEDE_AUTO_RELOGIN=0` escape hatch. Adapted from Z-SPAN with env var renaming (`ZSPAN_*` → `GANYMEDE_*`).
+
+**Wired:**
+
+- **`app/main.py:startup_event`** — on first-pass `notebooklm_svc.initialize()` failure, attempt `auto_relogin` once before declaring the client uninitialized. When the Playwright profile is healthy this means the backend self-recovers from cold-start with stale cookies (the steady-state case after a long session pause).
+- **`app/v2_routes.py`** — new `POST /api/v2/auth/auto-relogin` endpoint that wraps the helper and ALSO reinitializes `notebooklm_svc` on success (callers don't have to round-trip to `/auth/reinitialize` separately). Returns `AutoReloginResponse` with `auto_relogin` / `confirmed` / `exit_code` / `client_initialized` / `output` / `error` so failures stay debuggable.
+
+**Limits (documented inline):** if the Playwright profile is signed-out (cleared, 2FA challenge, Google forced re-auth), the prompt won't appear within `prompt_timeout`. Surfaced clearly so callers fall back to the manual `/auth/relogin` + `/auth/relogin/confirm` flow. The function's reader thread owns the subprocess stdout pipe — don't call `confirm_relogin` concurrently on the same subprocess (dual-read would race).
+
+**Smoke-tested live this session:** backend restarted with expired cookies (5+ hours since last re-auth). `startup_event` detected the stale state at +1s, triggered `auto_relogin`, captured the "Press ENTER when logged in" prompt at +23s, slept 10s for OAuth to settle, fed ENTER, subprocess exited cleanly at +47s, `notebooklm_svc` reinitialized, `/api/v2/auth/status?force=true` returned `status=valid` + `client_initialized=true`. End-to-end zero manual interaction.
+
+This was the recurring "you re-auth, I wait" pattern that had interrupted work every ~5 hours. Closed now for the steady-state case (signed-in Playwright profile). Manual flow remains as fallback.
+
+### P1-02 — Powell-sound Bridge null test (commit pending)
+
+Pending item from milestone 33's Bicameral_Convergence.md write-up. Once auto-relogin restored auth, the test fired: feed the Connection Bridge the EXACT canonical Powell substrate (4 Truth Packets + foundations) plus the Powell Engine Resolution as `target_text`. Question: does the Bridge produce "Total missed bridges: 0" on known-sound output, surface valid catches, or over-produce speculative bridges?
+
+**Result: 4 missed bridges (2 STRUCTURAL, 2 IMPLIED, 0 SPECULATIVE)** — classification "valid catches."
+
+Setup ran via `scripts/powell_bridge_null_test.py` (Python — initial PowerShell version mangled em dashes through here-string interpolation). The script parses the canonical Powell Truth Packets + Engine Resolution from the run record markdown directly so the test stays in sync with source-of-truth. Provisioning: 165s wall (18 NotebookLM calls). Audit: 62s wall (1 NotebookLM call). Bridge notebook: `da25203b-...` (single-use).
+
+**The most severe catch — Bridge 1 (STRUCTURAL):** The Engine's "Renovation-Cause Pincer" Strategic Lasso explicitly named the DOJ criminal investigation into the $2.5 billion headquarters renovation as the "Set-like disruptive tactic" manufacturing the for-cause requirement for removal. But Silo D8 explicitly states: *"Following the closure of the DOJ probe on April 24, 2026, Tillis immediately defected from his defensive posture and voted to advance nominee Kevin Warsh."* The Engine treated the probe as ongoing while another packet on the same substrate documented its closure. This is a real temporal-state error in the canonical resolution — the Strategic Lasso's mechanism doesn't exist anymore in the timeline the substrate describes.
+
+The Bridge's likely-reason hypothesis: *"The Engine pattern-matched the DOJ probe as a static structural vulnerability in one dimension, failing to update its temporal state based on the chronological event trigger located in another."* This reinforces the [Framework Cleanup Hypothesis](../concepts/Framework_Cleanup_Hypothesis.md)'s observation that the Engine processes dimensions statically rather than updating cross-dimension state.
+
+**What this validates:**
+
+1. **Bridge persona discipline.** Zero SPECULATIVE bridges in the output. Every catch traces to specific cited packets. The Bridge honestly excluded what the Engine already addressed (Lasso construction; Go/Chess and Set/Horus mapping; market-momentum link). It did what the persona asks: identify what the synthesis didn't draw, not restate what it did.
+2. **The orthogonal-lenses claim on a third substrate.** Bicameral Convergence's central architectural claim is that Auditor and Bridge catch *different* things. Cross-scenario evidence now spans three independent substrates (Amnesia, LMArena, Powell) with zero Bridge↔Auditor overlap. Architecturally robust.
+3. **The milestone 38 decision to default `include_bridge=True` was correct.** If the canonical Powell run — our strongest baseline — had real missed connections, then assuming any unaudited resolution is "good enough" is unsafe by default.
+
+**What this surfaces about the Powell canonical run:** the blind-validation audit at `06_Blind_Validation_Audit.md` confirmed the *predicted strategic positioning* matched real-world Bessent/Vought planning — that finding stands. But the resolution itself had a high-severity temporal-state error and three medium-severity missed cross-dimensional connections. Both can be true: the framework's intuition was real (validated), and the specific resolution wasn't as complete as the substrate supported (Bridge audit).
+
+Run record at [`../experiments/runs/Powell_Bridge_Null_Test.md`](../experiments/runs/Powell_Bridge_Null_Test.md). Artifacts at [`../experiments/runs/Powell_Bridge_Null_Test_Artifacts/`](../experiments/runs/Powell_Bridge_Null_Test_Artifacts/).
+
+### Pending after this milestone
+
+- ~~Powell-sound Bridge null test (existing pending item — does Bridge produce "0 missed bridges" on known-sound Engine output?)~~ ✅ closed by this milestone.
+- ~~auto_relogin equivalent for the recurring re-auth interruption~~ ✅ closed by this milestone.
+- P1-03 (Stroke 1 CTA-leak quantification), P1-04 (Bridge notebook lifecycle decision) still queued.
+- E1 (Bicameral Level 2 — `run_bicameral_loop` + 5 operator control surfaces) still queued as next phase.
+- M1 (Foundations corpus deep-read for Framework Cleanup Hypothesis) still queued.
+- 2026-06-30 LMArena prediction validation still on the calendar.
+- Bridge notebook `da25203b-...` from this run can be cleaned up via `DELETE /api/v2/notebooks/{id}` (single-use, won't be reused).
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -487,3 +552,5 @@ Build now produces three prerendered static routes (`/`, `/predictions`, `/_not-
 | `audit_with_bridge` soft-fail flag (38) | `ganymede-backend/app/services/orchestrator.py` |
 | Autopilot Protocol adoption (39) | `CLAUDE.md` + `ROADMAP.md` + `TASKS.md` (repo root) |
 | Predictions bulletin board (39) | `ganymede-ui/src/app/predictions/page.tsx` + `ganymede-ui/src/data/predictions.ts` + `ganymede-ui/src/app/page.tsx` (link) |
+| auto_relogin port (40) | `ganymede-backend/app/services/notebooklm/auth_check.py` (`auto_relogin` + `auto_relogin_enabled`) + `ganymede-backend/app/main.py` (startup auto-recovery) + `ganymede-backend/app/v2_routes.py` (`POST /api/v2/auth/auto-relogin`) |
+| Powell Bridge null test (40) | `docs/experiments/runs/Powell_Bridge_Null_Test.md` + `scripts/powell_bridge_null_test.py` + `docs/experiments/runs/Powell_Bridge_Null_Test_Artifacts/` |
