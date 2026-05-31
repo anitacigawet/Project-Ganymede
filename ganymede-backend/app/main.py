@@ -122,8 +122,48 @@ async def startup_event() -> None:
     try:
         await notebooklm_svc.initialize()
         logger.info("NotebookLM client initialized.")
+        return
     except Exception as exc:
-        logger.error("Failed to initialize NotebookLM client: %s", exc)
+        logger.warning(
+            "First-pass NotebookLM init failed: %s — attempting auto-relogin",
+            exc,
+        )
+
+    # Auto-recovery: cookies likely expired between sessions (Google's
+    # session cookies have a ~5-hour lifetime). auto_relogin spawns
+    # `notebooklm login` which reuses Playwright's persistent profile —
+    # if the operator is still signed in to Google in that profile
+    # (the steady state), the OAuth auto-completes silently. Pattern
+    # ported from Z-SPAN's notebooklm_bridge worker pre-flight.
+    from app.services.notebooklm import auth_check
+    if not auth_check.auto_relogin_enabled():
+        logger.error(
+            "Auto-relogin disabled (GANYMEDE_AUTO_RELOGIN=0). "
+            "Run `python -m notebooklm login` manually or hit "
+            "POST /api/v2/auth/auto-relogin."
+        )
+        return
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        relogin_result = await loop.run_in_executor(None, auth_check.auto_relogin)
+    except Exception as exc:
+        logger.error("Auto-relogin attempt raised: %s", exc)
+        return
+    if not relogin_result.get("confirmed"):
+        logger.error(
+            "Auto-relogin did not confirm: %s. "
+            "Hit the AuthPill in the UI or POST /api/v2/auth/auto-relogin.",
+            relogin_result.get("error", "(no error message)"),
+        )
+        return
+    try:
+        await notebooklm_svc.initialize()
+        logger.info("NotebookLM client initialized after auto-relogin.")
+    except Exception as exc:
+        logger.error(
+            "NotebookLM init still failed after auto-relogin: %s", exc,
+        )
 
 
 @app.on_event("shutdown")

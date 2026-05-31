@@ -1010,6 +1010,25 @@ class ReinitializeResponse(BaseModel):
     error: Optional[str] = None
 
 
+class AutoReloginResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    auto_relogin: bool
+    """True iff the end-to-end auto-relogin flow ran (subprocess spawn +
+    prompt detection + ENTER feed). False on early bailouts (spawn failure,
+    auto-relogin disabled by env var)."""
+    confirmed: bool
+    """True iff the ``notebooklm login`` subprocess exited cleanly (cookies
+    saved successfully)."""
+    exit_code: Optional[int] = None
+    client_initialized: bool
+    """Whether ``notebooklm_svc.client`` is alive AFTER the relogin+reinit.
+    May be False even when ``confirmed=True`` if reinit itself failed."""
+    output: Optional[str] = None
+    """Captured stdout from the ``notebooklm login`` subprocess. Useful for
+    debugging when ``confirmed=False``."""
+    error: Optional[str] = None
+
+
 @router.post("/auth/reinitialize", response_model=ReinitializeResponse)
 async def auth_reinitialize() -> ReinitializeResponse:
     """Close + re-initialize the backend's ``notebooklm_svc``.
@@ -1047,3 +1066,88 @@ async def auth_reinitialize() -> ReinitializeResponse:
             details="Initialize failed — cookies on disk may still be expired.",
             error=str(exc),
         )
+
+
+@router.post("/auth/auto-relogin", response_model=AutoReloginResponse)
+async def auth_auto_relogin() -> AutoReloginResponse:
+    """End-to-end auto re-auth: spawn ``notebooklm login``, automate ENTER, reinit.
+
+    Wraps :func:`app.services.notebooklm.auth_check.auto_relogin`. Pattern
+    ported from Z-SPAN's pre-flight auth check: the ``notebooklm login`` CLI
+    uses Playwright's persistent profile, so if the operator's still signed
+    in to Google in that profile (the steady state), the OAuth auto-completes
+    and only the ENTER confirmation needs automation. Closes the recurring
+    "cookies expired again, hit the AuthPill" interruption when the profile
+    is healthy.
+
+    Falls back gracefully if the profile is NOT healthy — the function returns
+    ``confirmed=false`` with an explanatory ``error``; the caller should then
+    use the manual ``/auth/relogin`` + ``/auth/relogin/confirm`` flow.
+
+    On a successful relogin, this endpoint ALSO reinitialises the
+    ``notebooklm_svc`` singleton so subsequent calls pick up the fresh
+    cookies without a second round-trip to ``/auth/reinitialize``.
+
+    Set ``GANYMEDE_AUTO_RELOGIN=0`` to disable auto-relogin entirely (the
+    function will return early with ``auto_relogin=false`` and an error
+    naming the env var).
+    """
+    from app.main import notebooklm_svc
+
+    if not auth_check.auto_relogin_enabled():
+        return AutoReloginResponse(
+            auto_relogin=False,
+            confirmed=False,
+            client_initialized=notebooklm_svc.client is not None,
+            error=(
+                "Auto-relogin is disabled (GANYMEDE_AUTO_RELOGIN=0). "
+                "Use POST /api/v2/auth/relogin + /auth/relogin/confirm "
+                "for the manual flow."
+            ),
+        )
+
+    # auto_relogin is synchronous (it manages a subprocess + thread); run
+    # it on the default executor so we don't block the event loop for
+    # the ~10-20s the relogin takes.
+    import asyncio
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, auth_check.auto_relogin)
+    except Exception as exc:
+        logger.exception("auto_relogin raised")
+        return AutoReloginResponse(
+            auto_relogin=False,
+            confirmed=False,
+            client_initialized=notebooklm_svc.client is not None,
+            error=f"auto_relogin raised: {type(exc).__name__}: {exc}",
+        )
+
+    # If the relogin confirmed, reinitialize the service so callers don't
+    # have to hit /auth/reinitialize separately.
+    client_initialized = notebooklm_svc.client is not None
+    if result.get("confirmed"):
+        try:
+            await notebooklm_svc.close()
+        except Exception:
+            logger.debug(
+                "notebooklm_svc.close() raised during post-relogin reinit; ignoring"
+            )
+        try:
+            await notebooklm_svc.initialize()
+            auth_check.invalidate_cache()
+            client_initialized = notebooklm_svc.client is not None
+        except Exception as exc:
+            logger.exception("notebooklm_svc reinit failed after auto-relogin")
+            result["error"] = (
+                (result.get("error") or "")
+                + f" (warning: reinit failed after relogin: {exc})"
+            ).strip()
+
+    return AutoReloginResponse(
+        auto_relogin=bool(result.get("auto_relogin")),
+        confirmed=bool(result.get("confirmed")),
+        exit_code=result.get("exit_code"),
+        client_initialized=client_initialized,
+        output=result.get("output"),
+        error=result.get("error"),
+    )

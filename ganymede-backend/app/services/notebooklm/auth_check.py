@@ -339,3 +339,225 @@ def relogin_status() -> dict:
     if code is None:
         return {"in_flight": True, "exited": False, "pid": _relogin_proc.pid}
     return {"in_flight": False, "exited": True, "exit_code": code}
+
+
+# ── End-to-end auto re-auth ───────────────────────────────────────────
+#
+# Ported from Z-SPAN's ``notebooklm_bridge/auth_check.py:auto_relogin``
+# (D-035 in Z-SPAN's decision log). Ganymede's equivalent of the same
+# operator-pain mitigation — Google's session cookies have a ~5-hour
+# lifetime, and prior to this function each expiry interrupted Ganymede
+# with a manual re-auth prompt.
+#
+# The notebooklm-py CLI uses Playwright's persistent context
+# (``user_data_dir``), so a fresh ``notebooklm login`` invocation reuses
+# the saved browser profile. When the operator is already signed in to
+# Google in that profile (the steady state for a long-running pilot),
+# the OAuth flow auto-completes inside the spawned Chromium and lands
+# on the NotebookLM homepage within a few seconds — no human
+# keystrokes required. The only blocking step is the subprocess
+# waiting on ``input("[Press ENTER when logged in] ")``.
+#
+# :func:`auto_relogin` automates that step: spawn the subprocess,
+# stream its stdout into a buffer, wait until the prompt string
+# appears, give Playwright a brief grace period to finish redirecting,
+# then feed ENTER + wait for the storage_state.json save.
+#
+# Limitations:
+# - If the Playwright profile is signed-out (cleared profile dir,
+#   Google forced re-auth, 2FA challenge), the prompt won't appear
+#   within ``prompt_timeout`` because the browser is sitting on the
+#   sign-in page. The function surfaces this clearly so callers can
+#   fall back to the manual UI flow (:func:`spawn_relogin` +
+#   :func:`confirm_relogin`).
+# - The reader thread takes ownership of the subprocess stdout pipe.
+#   Don't call :func:`confirm_relogin` concurrently with
+#   :func:`auto_relogin` on the same subprocess (the dual-read would
+#   race). Auto-relogin is intended for server-side automation; the
+#   manual ``spawn``/``confirm`` flow is independent.
+
+
+def auto_relogin(
+    *,
+    prompt_timeout: float = 60.0,
+    post_prompt_grace: float = 10.0,
+    confirm_timeout: float = 30.0,
+) -> dict:
+    """End-to-end auto re-auth.
+
+    Spawn ``notebooklm login``, watch for the "Press ENTER when logged in"
+    prompt, sleep ``post_prompt_grace``, then feed ENTER and wait for
+    cookie save.
+
+    Returns:
+        dict with keys:
+            ``auto_relogin``: bool — True iff the end-to-end flow ran
+            ``confirmed``:    bool — True iff subprocess exited cleanly
+            ``exit_code``:    int | None
+            ``output``:       str — captured stdout (for debugging)
+            ``error``:        str | None
+    """
+    import threading
+
+    global _relogin_proc
+
+    spawn = spawn_relogin()
+    if not spawn.get("spawned"):
+        return {
+            "auto_relogin": False,
+            "confirmed": False,
+            "error": spawn.get("error", "spawn_relogin failed"),
+            "output": "",
+        }
+
+    proc = _relogin_proc
+    if proc is None or proc.stdout is None:
+        return {
+            "auto_relogin": False,
+            "confirmed": False,
+            "error": "subprocess handle missing after spawn_relogin returned",
+            "output": "",
+        }
+
+    buffer = bytearray()
+    buf_lock = threading.Lock()
+
+    def _drain_stdout() -> None:
+        try:
+            while True:
+                if hasattr(proc.stdout, "read1"):
+                    chunk = proc.stdout.read1(4096)
+                else:
+                    chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                with buf_lock:
+                    buffer.extend(chunk)
+        except Exception:
+            # Pipe closed mid-read or other transient — fine, we're
+            # shutting down.
+            pass
+
+    reader = threading.Thread(target=_drain_stdout, daemon=True)
+    reader.start()
+
+    # The literal substring lives in notebooklm-py's cli/session.py:
+    #   input("[Press ENTER when logged in] ")
+    # Match the "Press ENTER when logged in" core so trivial wording
+    # tweaks in the brackets/whitespace don't break detection.
+    PROMPT_NEEDLE = b"Press ENTER when logged in"
+
+    start = time.monotonic()
+    saw_prompt = False
+    while time.monotonic() - start < prompt_timeout:
+        if proc.poll() is not None:
+            reader.join(timeout=1.0)
+            with buf_lock:
+                out = bytes(buffer).decode("utf-8", errors="replace")
+            _relogin_proc = None
+            invalidate_cache()
+            return {
+                "auto_relogin": False,
+                "confirmed": False,
+                "exit_code": proc.returncode,
+                "error": (
+                    f"subprocess exited (code {proc.returncode}) before "
+                    f"prompt appeared"
+                ),
+                "output": out,
+            }
+        with buf_lock:
+            if PROMPT_NEEDLE in buffer:
+                saw_prompt = True
+                break
+        time.sleep(0.5)
+
+    if not saw_prompt:
+        # Likely a manual sign-in step is required (cleared profile,
+        # 2FA, etc.)
+        try:
+            proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+        reader.join(timeout=1.0)
+        with buf_lock:
+            out = bytes(buffer).decode("utf-8", errors="replace")
+        _relogin_proc = None
+        invalidate_cache()
+        return {
+            "auto_relogin": False,
+            "confirmed": False,
+            "error": (
+                f"login prompt did not appear within {prompt_timeout:.0f}s — "
+                "Playwright profile may need a manual Google sign-in. "
+                "Re-auth via the AuthPill in the UI or `python -m notebooklm login`."
+            ),
+            "output": out,
+        }
+
+    # Prompt visible. Wait for the Playwright OAuth redirect cascade to
+    # settle on the NotebookLM homepage so the saved storage state
+    # captures the post-redirect cookies.
+    logger.info(
+        "auto_relogin: prompt detected, sleeping %.1fs for OAuth to settle",
+        post_prompt_grace,
+    )
+    time.sleep(post_prompt_grace)
+
+    # Feed ENTER directly — don't call confirm_relogin() because its
+    # _read_remaining() would race with our reader thread on stdout.
+    try:
+        proc.stdin.write(b"\n")
+        proc.stdin.flush()
+        proc.stdin.close()
+    except (BrokenPipeError, OSError) as e:
+        logger.warning("auto_relogin: stdin write failed: %s", e)
+
+    try:
+        proc.wait(timeout=confirm_timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+        reader.join(timeout=1.0)
+        with buf_lock:
+            out = bytes(buffer).decode("utf-8", errors="replace")
+        _relogin_proc = None
+        invalidate_cache()
+        return {
+            "auto_relogin": True,
+            "confirmed": False,
+            "exit_code": None,
+            "error": (
+                f"subprocess didn't exit within {confirm_timeout:.0f}s "
+                "after ENTER — killed"
+            ),
+            "output": out,
+        }
+
+    reader.join(timeout=2.0)
+    with buf_lock:
+        out = bytes(buffer).decode("utf-8", errors="replace")
+    code = proc.returncode
+    _relogin_proc = None
+    invalidate_cache()
+    return {
+        "auto_relogin": True,
+        "confirmed": code == 0,
+        "exit_code": code,
+        "output": out,
+    }
+
+
+def auto_relogin_enabled() -> bool:
+    """Env-var gate for the auto-relogin path. Default ON.
+
+    Set ``GANYMEDE_AUTO_RELOGIN=0`` to disable (useful when debugging an
+    auth issue that auto_relogin masks).
+    """
+    return os.environ.get("GANYMEDE_AUTO_RELOGIN", "1").strip().lower() not in (
+        "0", "false", "off", "no",
+    )
