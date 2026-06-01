@@ -46,12 +46,12 @@ Of the available documented-verbatim sample (n=7 where the Stroke 1 ending is ei
 | Powell Cleanroom | 2026-05-04 | No | *"neutralized institutional paralysis."* |
 | Tokenized Land | 2026-05-04 | No | *"functionally obsolete."* |
 | Genie Giant-Slayer | 2026-05-04 | No | *"escape from the obsolescence you manufactured."* |
-| Musk_Altman Polymarket | 2026-05-04 | Yes | *"Would you like me to elaborate on how the 8 Pillars of Metacognition could be practically applied..."* (note: this was the volunteered follow-up after a separate Engine summary, structurally equivalent to a Stroke 1 CTA) |
+| Musk_Altman Polymarket | 2026-05-04 | Soft-yes | *"Would you like me to elaborate on how the 8 Pillars of Metacognition could be practically applied..."* This was the Engine volunteering AFTER a separate summary (per [`Musk_Altman_Polymarket.md:103-105`](../experiments/runs/Musk_Altman_Polymarket.md)), NOT at the strict tail of Stroke 1's raw_response. Same shape as a tail-CTA but a different surface. Counted as a leak in the "all CTA-shaped offers regardless of surface" framing; if you tighten the criterion to "strict Stroke 1 tail only," exclude this row. |
 | LMArena Run 1 | 2026-05-25 ~03:05 | No | *"...extreme vulnerability to a Set-like usurpation before the end of June 2026."* |
 | LMArena Run 3 | 2026-05-25 ~21:10 | Yes | *"Shall I initialize a Bayesian Network projection to map the specific probabilistic triggers for a 'Set-like' market disruption prior to the end of June?"* |
 | LMArena Run 6 | 2026-05-26 ~05:17 | Yes | *"Would you like me to run a web search..."* |
 
-**Observed leak rate: 3 / 7 ≈ 43%.** Consistent with the operator's standing ~50% estimate flagged in the Run 6 side-observations.
+**Observed leak rate: 3 / 7 ≈ 43%** under the inclusive criterion (any CTA-shaped offer in the Stroke 1 surface). **2 / 6 ≈ 33%** under the strict criterion (only the trailing CTA at the strict end of Stroke 1's raw_response — excludes the Musk_Altman row, which was a volunteered follow-up after a separate summary). Both rates are consistent with the operator's standing ~50% estimate flagged in the Run 6 side-observations; the precise number is sample-bound.
 
 Caveats:
 - The sample is biased toward LMArena (4 of 7 entries). LMArena's market-prediction framing may prompt the Engine to volunteer the "want me to search for fresh data?" line more readily than non-market scenarios.

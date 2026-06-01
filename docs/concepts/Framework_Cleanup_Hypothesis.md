@@ -10,6 +10,8 @@ color_id: "5"
 
 > **Status:** Hypothesis-tier concept doc. Captured 2026-05-25 during the first-live-Dispatcher-spin session, in response to the operator's direct question: *"do you think that the actual framework that we're utilizing is just simply wrong, or that that's what's poisoning everything else?"*
 >
+> **Superseded for operational use (2026-06-01) by [`Framework_Kernel_vs_Scaffolding_Partition.md`](Framework_Kernel_vs_Scaffolding_Partition.md)** — the canonical partition doc produced by M1's end-to-end deep read of `docs/foundations/`. This Hypothesis doc remains as the historical record of the bet (why we believed the partition was worth pursuing); the Partition doc is the operationalized output (the per-primitive KEEP/DROP/DE-EMPHASIZE table + cleanliness assessment + recommendation). Future updates about kernel-vs-scaffolding go to the Partition doc, not here. If the bet itself needs revisiting (e.g., M2 falsifies the partition), log it as an addendum in the Partition doc and link back here for context.
+>
 > Lives in [Methodology Silo 3](../experiments/methodology_questions.md). Operationalizes [Q1 diagnosis #3](../experiments/methodology_questions.md#q1-the-structural-waiver-pattern-attractor) — *"the framework itself has the bias"* — with a kernel-vs-scaffolding partition and a strip-down test plan. Not yet experimentally validated.
 
 ## The hypothesis

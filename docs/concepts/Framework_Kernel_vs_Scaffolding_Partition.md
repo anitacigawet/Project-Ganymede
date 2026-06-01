@@ -39,9 +39,13 @@ independent empirical anchors:
    labels — surgical replacement with `Ω = (D₁,...,D_k)` over abstract
    metric subspaces leaves every load-bearing claim intact.
 2. **The corpus is internally inconsistent on what the 9 dimensions ARE.**
-   `Mathematical_Formalization` and `Metacognition_Mapping` enumerate two
-   different 9-tuples. If the labels were load-bearing, internal
-   consistency would be enforced.
+   `Mathematical_Formalization`, `Metacognition_Mapping`, AND
+   `Validation_Adaptations` each enumerate a *different* 9-tuple — three
+   incompatible enumerations in the same corpus (e.g., the first lists
+   "Mythological" as a single dimension; the third splits it into two
+   dimensions, "Egyptian Mythology (Set)" and "Egyptian Mythology
+   (Horus)," to make the 9-count work). If the labels were load-bearing,
+   internal consistency would be enforced.
 3. **The upstream's own `Validation_Adaptations.md` § 3 prescribes the
    partition methodology** ("core principles remain constant, the
    specific manifestation of dimensions will vary significantly across
@@ -59,6 +63,21 @@ load-bearing scaffolding) trends LOW. The remaining open question
 discriminated empirically. M2's side-by-side run on Powell + Tokenized
 Land + Amnesia + Genie Giant-Slayer + LMArena against both the canonical
 Engine and a leaner sibling is the right next chunk of work.
+
+**Additional KEEP argument worth naming:** when the Engine operates in
+kernel-mode (DAI asymmetry + Strategic Lasso + Incomprehensible Move
+applied to a real strategic situation), it surfaces verifiable
+real-world precedents — the 1956 AT&T consent decree in
+Genie Giant-Slayer, *Collins v. Yellen* in the Powell run, ERC-4337 +
+sovereign immunity carve-outs in Tokenized Land. These are real and
+findable; the Engine doesn't invent them. When the scaffolding fires
+(Set/Horus archetype assignments, three-act narrative mapping), the
+output turns into decorative mythology rather than verifiable
+mechanism. **Kernel-mode reasoning produces verifiable citations;
+scaffolding-mode reasoning produces decorative archetypes.** This is a
+sharper criterion than "Powell-class wins" alone — a leaner corpus that
+preserves kernel-mode citation-grounded reasoning is the success
+criterion; a leaner corpus that loses it is the failure.
 
 ---
 
@@ -230,9 +249,11 @@ evidence on three; two remain forward-looking and require M2 to resolve.
   `Mathematical_Formalization` introduces them. No axiom, principle,
   theorem, or corollary uses the labels operationally.
 - The corpus is internally inconsistent on what the 9 dimensions ARE
-  (two different 9-tuples in two different files). Internal
-  inconsistency is direct evidence the labels aren't load-bearing —
-  if they were, consistency would be enforced.
+  (three different 9-tuples in three different files —
+  `Mathematical_Formalization`, `Metacognition_Mapping`, and
+  `Validation_Adaptations` each enumerate a different list).
+  Internal inconsistency is direct evidence the labels aren't
+  load-bearing — if they were, consistency would be enforced.
 - The upstream's `Validation_Adaptations.md` § 3 explicitly prescribes
   domain-specific dimensional manifestations. The upstream itself
   doesn't treat the labels as load-bearing.
@@ -290,6 +311,17 @@ preserves Powell-class wins AND reduces Amnesia/LMArena failures,
 that's (A) confirmed. If the leaner corpus produces similar failure
 rates on Amnesia/LMArena despite stripping, that's (B) — domain fit
 was the issue, not framework substance.
+
+**Meta-level caveat worth naming explicitly:** M1's partition was
+synthesized using the same reasoning style the framework produces,
+applied to the corpus that grounds that reasoning style. Bicameral
+Convergence's audit lens was applied to the corpus that produces
+Bicameral Convergence's audit lens. If the partition is wrong in a
+way that the framework itself can't catch (because the framework is
+what produced the analysis), M1 alone cannot detect it. This is the
+deepest reason M2's empirical test is necessary — we cannot reason
+our way out of the recursion; we have to run the experiment and
+watch what happens to the validated wins.
 
 ### Risk #4 — "Notebooks are stateful; re-uploading the corpus is a substantial lift"
 
@@ -377,6 +409,23 @@ of the original word count.
 **Operator-gated step.** Promoting the leaner corpus to canonical (if
 M2 supports it) is a major scope shift — the canonical Engine moves.
 Operator decides; Claude builds the leaner corpus and runs the tests.
+
+### Authority for this partition rests on Ganymede's evidence, not the upstream's
+
+Pattern across the corpus: the upstream 9D research project has a
+high *promise-to-execution* gap. `Simulation_Framework` and
+`Algorithmic_Implementation` both specify a Python simulator that
+was never built. The "Mapped Options Scatter Plot Experiment" is
+referenced as future work in two files and never executed.
+`Validation_Adaptations` specifies a three-phase validation
+protocol; only Phase 2 (Historical Case Study Analysis) was ever
+operationalized — and Ganymede did it, not the upstream. This
+matters for the partition because Ganymede inherited a framework
+that the upstream itself never fully tested. Ganymede's KEEP/DROP
+authority is grounded in Powell, Tokenized Land, Genie Giant-Slayer,
+Amnesia, and LMArena — empirical material the upstream never
+generated. The partition is built on Ganymede's evidence, not on
+the upstream's claims about what should be load-bearing.
 
 ### What this recommendation is NOT
 
