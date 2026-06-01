@@ -65,11 +65,14 @@ concern. If a chunk is sprawling across many concerns, stop and split it.
 ✅ Refactors that don't change observable behavior
 ✅ Wiring up assets the operator has already provided
 ✅ Test additions for existing behavior
-✅ **Commit + (NOT push)** finished chunks per the standing
-   autonomous-commits rule in `~/.claude/CLAUDE.md`. Push remains
-   operator-only per Autopilot Protocol — Ganymede's local commits
-   already sit ahead of `origin/master`; the operator pushes on their
-   own cadence.
+✅ **Commit + push** finished chunks per the standing
+   autonomous-commits rule in `~/.claude/CLAUDE.md`. Routine
+   `git push` to `origin/master` for save-to-GitHub purposes is
+   autonomous — operator directive 2026-06-01: *"the automatic push
+   to save our work to the Github... is not something that you need
+   to ask me for. That's something that we should just be doing
+   automatically no question."* Force-push, branch-delete, and
+   history-rewrite remain stop-and-ask (see below).
 
 ## What Claude stops and asks before doing
 
@@ -89,8 +92,9 @@ concern. If a chunk is sprawling across many concerns, stop and split it.
 ⛔ Anything that consumes NotebookLM quota beyond what's necessary
    for the chunk's "done" criterion (hourly cap is 20 calls, daily 100;
    stay well clear unless the chunk explicitly authorizes it)
-⛔ Pushing to remote, force-pushing, deleting branches, rewriting
-   history
+⛔ Force-pushing, deleting branches, rewriting already-pushed
+   history (routine `git push` to `origin/master` is autonomous —
+   see above)
 ⛔ Pre-registered predictions — operator must approve the prediction
    text and confidence level before it lands in a run record. The
    prediction is what gets validated against reality; it's load-bearing.
