@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-01 (post-milestone 41 — M1 Foundations corpus deep-read complete; partition table doc shipped; PROCEED-to-M2 recommendation pending operator review).
+Last updated: 2026-06-01 (post-P1-03 — Stroke 1 CTA-leak rate quantified at ~43%; post-processor follow-up added as P1-03b).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -81,25 +81,27 @@ temporal-state error.
 
 ---
 
-### P1-03 · Quantify Stroke 1 CTA-leak rate
+### ~~P1-03 · Quantify Stroke 1 CTA-leak rate~~ ✅ SHIPPED 2026-06-01
 
-Stroke 1 still leaks "Would you like me to…" CTAs in ~50% of runs
-despite the persona's explicit prohibition. Quantify first; mitigate
-second.
+Observed leak rate: 3 / 7 ≈ 43% (consistent with the operator's standing ~50% estimate). Stroke 1's tail-CTA persists *after* the 2026-05-25 persona-tightening — explicit persona-text prohibition is not overriding NotebookLM's substrate behavior. Documented in [`docs/learnings/Iterative_Operational_Learnings.md`](docs/learnings/Iterative_Operational_Learnings.md) § 4 "Persona CTA-suppression effectiveness" with sample table + methodology caveats + recommended mitigation.
+
+**Recommended mitigation:** post-process strip (precision-targeted regex on canonical CTA shapes applied at orchestrator stroke-assembly boundary, after the last FINAL RESOLUTION capstone marker). Preserves raw response for forensics; cleans the operator-facing surface. Surfaces as P1-03b below.
+
+**Key carryforward finding:** the CTA-leak persistence is empirical evidence that persona text changes are not the right lever for substrate-behavior shaping — same lesson as the Framework Cleanup Hypothesis's "corpus dominance overwhelms persona" finding.
+
+### P1-03b · Implement CTA-suppression post-processor (follow-up to P1-03)
+
+Implementation chunk for the mitigation recommended by P1-03.
 
 **Done when:**
-- Inspect Stroke 1 raw_response from the last ~10 runs (in
-  `backend.log` or stored session state if available).
-- Count how many end with a CTA-shaped sentence.
-- Document the rate in
-  `docs/learnings/Iterative_Operational_Learnings.md` under a new
-  "Persona CTA-suppression effectiveness" section.
-- Recommend a mitigation: stronger persona phrasing / post-process strip
-  / `response_length=SHORTER` / accept-and-document.
+- New helper `_strip_trailing_cta(raw_response: str) -> tuple[str, str | None]` lives in `app/services/orchestrator.py` (or `app/services/notebooklm/client.py`). Match against canonical CTA-start patterns; if found in the final paragraph (after the last `### FINAL` / `**Final Resolution**` / equivalent capstone marker), slice it off.
+- Wired into the synthesize-stroke return path so the UI receives the cleaned text and the session state preserves both `cleaned` and `stripped_cta` for forensic visibility.
+- Verified against the three confirmed leak phrases from P1-03's table (the *"Would you like me to run a web search..."* / *"Shall I initialize a Bayesian Network projection..."* / *"Would you like me to elaborate..."* shapes) as test cases.
+- Engine persona text left in place as defense-in-depth (don't fight one battle on two fronts).
 
-**Files touched:** `docs/learnings/Iterative_Operational_Learnings.md`.
+**Files touched:** `app/services/orchestrator.py` or `app/services/notebooklm/client.py`; possibly `app/contracts.py` if a new field is added to StrokeResult for the stripped CTA.
 
-**Estimated effort:** 30 min. No NotebookLM calls (uses logged data).
+**Estimated effort:** ~30 minutes. No NotebookLM calls.
 
 ---
 
