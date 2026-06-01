@@ -503,6 +503,72 @@ Run record at [`../experiments/runs/Powell_Bridge_Null_Test.md`](../experiments/
 
 ---
 
+## 41. Foundations corpus deep-read complete — kernel-vs-scaffolding partition table shipped (2026-06-01)
+
+The Framework Cleanup Hypothesis ([`../concepts/Framework_Cleanup_Hypothesis.md`](../concepts/Framework_Cleanup_Hypothesis.md)) had named M1 of [Methodology Silo 3](../experiments/methodology_questions.md) as "read `docs/foundations/` end-to-end and produce an explicit kernel-vs-scaffolding partition document." This milestone closes that step. Two chunks (M1a + M1b) shipped in sequence under the Autopilot Protocol.
+
+### M1a — Per-file primitive tagging
+
+All 14 files in [`../foundations/`](../foundations/) read end-to-end. Each file got a per-section addition to the working scratch file at [`../scratch/2026-05-31-M1-foundations-deep-read.md`](../scratch/2026-05-31-M1-foundations-deep-read.md) with primitives identified, KEEP / DROP / DE-EMPHASIZE / OUT-OF-SCOPE / REFERENCE-ONLY tagging, and one-sentence rationales per primitive. Commit `221db90`. Final scratch file: 64KB, 459 lines added.
+
+**Ten cross-file findings** surfaced during M1a that fed into M1b's synthesis:
+
+1. **Mathematical_Formalization_9D_ROEM.md is ~90% kernel material with all scaffolding concentrated in section 2.1 alone** (the labeled 9-tuple). The math never references the labels after introduction — surgical replacement leaves every theorem intact.
+2. **The corpus is internally inconsistent on what the 9 dimensions ARE.** `Mathematical_Formalization` lists Cultural/Strategic-Game-Archetypes/Mythological/Temporal/Psychological/Linguistic/Economic/Social/Ethical; `Metacognition_Mapping` lists Linguistic/Set/Go/Chess/Horus/Narrative/Philosophical/Historical-Cultural/Meta-Analytical. Two different 9-tuples in the same corpus. Internal inconsistency is direct evidence the labels aren't load-bearing.
+3. **Validation_Adaptations.md § 3 is the kernel-vs-scaffolding partition stated by the upstream itself** ("core principles remain constant, the specific manifestation of dimensions will vary significantly across fields"). The hypothesis is a literal application of the upstream's prescribed methodology, not a deviation.
+4. **The 8 Pillars import is already a stripping decision the upstream made.** The source PDF (Drigas & Mitsea 2021) is "8 Pillars × 8 Layers of Consciousness × 8 Intelligences." The 9D corpus imported only the first axis. Precedent for further stripping is established.
+5. **The 8 Pillars list is itself internally inconsistent between sibling files.** `Metacognition_Mapping` has Mnemosyne at #8 (faithful to the PDF source); `Metacognition_Integration` has Anelixis at #8 (Ganymede-corpus deviation).
+6. **Comprehensive_Multidimensional_Analysis.md is the highest scaffolding-density file** (~95%). Cleanest single excision target.
+7. **9D_Framework_Metacognition_Mapping.md is the second-highest scaffolding-density file** (~95% via the Cartesian product of two scaffolding-shaped enumerations — 8 Pillars × 9 Layers).
+8. **The project's "Strategic Lasso" terminology is a rename from the upstream's "Strategic Funnel."** Same primitive (`Algorithmic_Implementation` § 4.4). Worth recording for vocabulary audit purposes.
+9. **DAI + DAP are the load-bearing kernel pair.** DAI quantifies completeness within perceived dimensions; DAP specifies which subset of dimensions an entity perceives. Together they're the structural-asymmetry primitives.
+10. **Risk #2 trends LOW based on M1a evidence.** *"The scaffolding might be load-bearing in ways the outputs don't reveal"* — but the math literally doesn't reference the labels after section 2.1, the corpus is internally inconsistent on them, and the upstream's own methodology endorses domain-specific replacement.
+
+### M1b — Synthesis and recommendation
+
+Canonical partition doc shipped at [`../concepts/Framework_Kernel_vs_Scaffolding_Partition.md`](../concepts/Framework_Kernel_vs_Scaffolding_Partition.md). Twelve thematic groups, each row a primitive with its tag + rationale + source-file abbreviation:
+
+- **Groups 1-6 (KEEP):** core kernel + DAI/DAP + ROEM axioms (1-5) + ROEM principles (mostly KEEP; Principle 1 scope-tightened to interactive contexts) + theorems & corollaries (Theorem 2 scope-gated) + strategic primitives (Lasso, Incomprehensible Move, Asymmetric Perception Games, Dimensional Dominance, Strategist's Meta-Position, Two Realities, Logical Impenetrability, "The Game," Gravity-Well geometric interpretation).
+- **Group 7 (DROP):** the dimension labels themselves — both 9-tuples + the hermeneutic origin. Replacement language: `Ω = (D₁, D₂, ..., D_k)` over abstract metric subspaces, k determined by domain.
+- **Group 8 (DROP):** the wordplay / cultural / mythological scaffolding (Egyptian Set / Horus, Chinese Go, Western Chess implied contrast, ma'at / isfet, cross-cultural parallels, AlphaGo motivation). The narrative-three-act + Order-vs-Chaos universal-tensions claims are DE-EMPHASIZE not DROP — they're real patterns; the mechanical application is what fails.
+- **Group 9 (DROP):** the metacognition import (8 Pillars schema, 8×9 Cartesian-product mapping, 6 application domains). Substantive claims (Self-Regulation, Adaptation, Mnemosyne-as-learning) survive as substance folded into the Bicameral Convergence architecture; the schema wrapper doesn't survive. Source PDF reduced to REFERENCE-ONLY.
+- **Group 10 (KEEP):** validation methodology (Phase 2 Historical Case Study, Phase 3 Real-World Pilot, Domain-Specific Adaptations § 3, Agent Profiling, Iterative Refinement). This is the most kernel-relevant material in the corpus *after* Mathematical_Formalization.
+- **Group 11 (OUT-OF-SCOPE):** the upstream's planned-but-unbuilt Python simulator (DADT, BNOPDM, MGTM, DNE, the simulator architecture, the mapped-options scatter plot). Ganymede's NotebookLM substrate makes these irrelevant.
+- **Group 12 (DROP):** rhetorical capstones ("intelligence amplification" / "binary systems may become obsolete" / Anelixis-as-Pillar-8 / marketing-tier closing rhetoric). DE-EMPHASIZE for the "conceptual zero-day" framing and the "subtle and sustainable" Offensive Architect drift.
+
+**Cleanliness assessment:**
+- **Risk #1** (stripping too aggressively breaks the wins) — trends LOW. Direct evidence: math is dimension-label-agnostic from § 2.2 onwards.
+- **Risk #2** (hidden load-bearing scaffolding) — trends LOW. Powell + Tokenized Land + Genie Giant-Slayer wins are describable in kernel-only language; mythology assignments inverted across LMArena runs.
+- **Risk #3** (framework substance vs. domain fit) — OPEN. M1a cannot resolve. Both hypotheses (A: framework cleanup needed; B: domain-applicability gate needed) are consistent with M1a evidence. Only M2's empirical test discriminates.
+- **Risk #4** (notebook re-upload lift) — operational, plan-it-in (~2-3 hours of source curation + 13 file uploads + persona reapply).
+- **Risk #5** (Auditor manufactures findings on clean input) — OPEN; mitigation already in persona text, needs observational validation.
+
+**Recommendation: PROCEED to M2 leaner-corpus side-by-side test.** Operator-gated — promoting M2 to ACTIVE depends on operator sign-off on the partition doc's recommendation. The leaner-corpus build is a major scope shift (the canonical Engine's grounding moves), so this isn't autonomous-territory.
+
+### What this milestone closes
+
+- M1 phase of [Methodology Silo 3](../experiments/methodology_questions.md) — exit criteria met (partition table + assessment exist as a doc in `docs/concepts/`; operator review pending).
+- The "Foundations corpus deep-read for the Framework Cleanup Hypothesis" pending item that has been carried in every milestone since milestone 37 — finally closed.
+- The structural risk surfaced in the M1 brainstorm (the Methodology silo had been deferred indefinitely; closing M1 is what closes that pattern) — closed.
+
+### What this milestone opens
+
+- M2 ready to promote to ACTIVE on operator approval. Per the partition doc's "Proposed M2 design":
+  - M2-01: Build the leaner sibling notebook (~6-7 files vs. 14; ~40-50% of original word count).
+  - M2-02: Run Powell + Tokenized Land + Amnesia + Genie Giant-Slayer + LMArena scenarios against both Engines.
+  - M2-03: Apply the PRESERVE / REDUCE / NEUTRAL evaluation criteria.
+  - M2-04: Write the side-by-side report; operator decides on promotion to canonical (operator-gated major scope shift).
+- A vocabulary-audit follow-up surfaced by M1a: the project's "Strategic Lasso" is a rename from the upstream's "Strategic Funnel." Worth deciding on a project-wide naming convention. Not blocking; low priority.
+
+### Pending after this milestone
+
+- Operator review of the partition doc + sign-off (or counter-proposal) on the PROCEED-to-M2 recommendation.
+- M2-01 onwards (operator-gated).
+- P1-03 (CTA-leak quantification), P1-04 (Bridge notebook lifecycle) still queued in P1 ACTIVE.
+- 2026-06-30 LMArena prediction validation still on the calendar.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -554,3 +620,4 @@ Run record at [`../experiments/runs/Powell_Bridge_Null_Test.md`](../experiments/
 | Predictions bulletin board (39) | `ganymede-ui/src/app/predictions/page.tsx` + `ganymede-ui/src/data/predictions.ts` + `ganymede-ui/src/app/page.tsx` (link) |
 | auto_relogin port (40) | `ganymede-backend/app/services/notebooklm/auth_check.py` (`auto_relogin` + `auto_relogin_enabled`) + `ganymede-backend/app/main.py` (startup auto-recovery) + `ganymede-backend/app/v2_routes.py` (`POST /api/v2/auth/auto-relogin`) |
 | Powell Bridge null test (40) | `docs/experiments/runs/Powell_Bridge_Null_Test.md` + `scripts/powell_bridge_null_test.py` + `docs/experiments/runs/Powell_Bridge_Null_Test_Artifacts/` |
+| Framework Kernel vs. Scaffolding partition (41) | [`../concepts/Framework_Kernel_vs_Scaffolding_Partition.md`](../concepts/Framework_Kernel_vs_Scaffolding_Partition.md) + [`../scratch/2026-05-31-M1-foundations-deep-read.md`](../scratch/2026-05-31-M1-foundations-deep-read.md) (per-file working notes) |

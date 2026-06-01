@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-05-31 (post-milestone 40 — P1-02 Powell Bridge null test + P1-06 auto_relogin ported from Z-SPAN).
+Last updated: 2026-06-01 (post-milestone 41 — M1 Foundations corpus deep-read complete; partition table doc shipped; PROCEED-to-M2 recommendation pending operator review).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -168,14 +168,21 @@ surfaces. Architectural spec already locked in
 - E1-05: Frontend live-progress UI (extends DispatcherPanel) — iteration counter, current side, cancel button visible
 - E1-06: First live run on a documented test scenario; results into a new run record
 
-### Silo 3 Phase M1: Foundations corpus deep-read
+### ~~Silo 3 Phase M1: Foundations corpus deep-read~~ ✅ SHIPPED 2026-06-01 (commit pending)
 
-Multi-hour focused work. Best done as a single big chunk rather than
-many small ones, since the value is in the cross-foundation synthesis.
+- M1a (foundations deep-read): all 14 files in `docs/foundations/` tagged with per-primitive KEEP/DROP/DE-EMPHASIZE in [`docs/scratch/2026-05-31-M1-foundations-deep-read.md`](docs/scratch/2026-05-31-M1-foundations-deep-read.md) (commit `221db90`).
+- M1b (synthesis + recommendation): canonical partition doc shipped at [`docs/concepts/Framework_Kernel_vs_Scaffolding_Partition.md`](docs/concepts/Framework_Kernel_vs_Scaffolding_Partition.md). Recommendation: **PROCEED to M2 leaner-corpus side-by-side test.** Risk #1 (tangled partition) and Risk #2 (hidden load-bearing scaffolding) both trend LOW; Risk #3 (framework substance vs. domain fit) remains open and only M2's empirical test discriminates.
 
-- M1-01: Read all 13 foundation files end-to-end; take notes per file
-- M1-02: Build the kernel-vs-scaffolding partition table
-- M1-03: Write the assessment doc; recommend proceed/refine/shelve
+**Operator-gated next step.** Promoting M2 to ACTIVE depends on operator sign-off on the partition doc's PROCEED recommendation. The leaner-corpus build is a major scope shift (the canonical Engine's grounding moves), so this isn't autonomous-territory.
+
+### Silo 3 Phase M2: Leaner-corpus side-by-side test (NEXT — operator-gated)
+
+Awaiting operator approval of the M1 PROCEED recommendation. Per the partition doc's "Proposed M2 design":
+
+- M2-01: Build a leaner sibling notebook of the canonical Engine (re-upload curated subset of `docs/foundations/` excluding Groups 7/8/9/12 of the partition; surgical replacement of Math_Formalization § 2.1 labeled 9-tuple with abstract metric subspaces; persona reused verbatim)
+- M2-02: Run Powell, Tokenized Land, 60-Second Amnesia, Genie Giant-Slayer, and LMArena scenarios against BOTH the canonical Engine and the leaner sibling
+- M2-03: Apply the evaluation criteria (PRESERVE Powell-class wins; REDUCE Amnesia/LMArena dimensional-greed failures; NEUTRAL Stroke 1 length drop)
+- M2-04: Write the side-by-side test report; operator decides on promotion to canonical (operator-gated — major scope shift)
 
 ### Silo 1 Phase P2: 2026-06-30 LMArena prediction validation
 
