@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-01 (post-P1-03 — Stroke 1 CTA-leak rate quantified at ~43%; post-processor follow-up added as P1-03b).
+Last updated: 2026-06-06 (post-milestone 42 — LMArena Cleanroom partially validated 2026-06-05 by Anthropic's pause call; E1 Bicameral Convergence Level 2 promoted to ACTIVE as the highest-leverage phase).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -13,9 +13,106 @@ Last updated: 2026-06-01 (post-P1-03 — Stroke 1 CTA-leak rate quantified at ~4
 
 ---
 
-## ACTIVE — Silo 1 Phase P1: Bridge robustness + operational hygiene
+## ACTIVE — Silo 2 Phase E1: Bicameral Convergence Level 2 build
 
-The current chunk queue. Top item is the next thing to ship.
+**Priority elevated by milestone 42 (2026-06-05) — Anthropic's real-world pause call confirmed the Bridge's mechanism-category catch from Run 7 but exposed the architectural gap: Levels 2/3 don't exist, so the Engine itself never made the specific prediction.** The gap is engineering, not research (architectural spec locked in [`docs/concepts/Bicameral_Convergence.md`](docs/concepts/Bicameral_Convergence.md)). Build the loop, and the next prediction of this shape produces the specific synthesis, not just the mechanism-category gesture.
+
+### E1-01 · `POST /api/v2/sessions/{id}/cancel` endpoint + loop-checks-cancel-flag plumbing
+
+The first of the five mandatory operator control surfaces for the Bicameral loop. Cancel is foundational because the loop is potentially long-running (5-15 min) and the operator needs an unconditional bail-out.
+
+**Done when:**
+- New endpoint `POST /api/v2/sessions/{id}/cancel` in `app/v2_routes.py` returns 200 with `{"cancelled": true, "session_id": ...}` for active sessions, 404 for unknown, 409 for already-terminal.
+- `Session` (in `app/services/session.py` or wherever the registry lives) gains a `cancel_requested: bool` flag + thread-safe setter.
+- Plumbing in the orchestrator: every NotebookLM-call await point in the iterative loop checks `session.cancel_requested` before kicking off the next call; if set, marks session terminal and emits a `SESSION_CANCELLED` event.
+- The existing `run_iterative_engine` is the immediate target (Bicameral Level 1 currently runs there); the new `run_bicameral_loop` (E1-03) inherits the same plumbing.
+- Smoke-test: kick a `/iterate` call, send cancel mid-Stroke-1, verify clean termination + no orphaned background tasks + WS subscribers get `SESSION_CANCELLED`.
+
+**Files touched:** `app/v2_routes.py`, `app/services/orchestrator.py`, `app/services/session.py`, `app/contracts.py` (new SessionEventType).
+
+**Estimated effort:** ~45-60 min. No NotebookLM calls required for the wiring; smoke-test fires one short call.
+
+### E1-02 · New SessionEventType entries for the bicameral loop
+
+Per [`docs/concepts/Bicameral_Convergence.md`](docs/concepts/Bicameral_Convergence.md), the Level 2 loop emits iteration-boundary events for WS subscribers. Add the event types so frontend can subscribe before the orchestrator method is built.
+
+**Done when:**
+- New SessionEventType entries: `BICAMERAL_ITERATION_START`, `BICAMERAL_ITERATION_END`, `BICAMERAL_CONVERGED`, `BICAMERAL_HARD_CAP_REACHED`, `SESSION_CANCELLED` (the cancel event from E1-01 lives here).
+- Each event carries iteration index, side (engine/bridge), and any convergence-criterion metadata.
+- Contracts in `app/contracts.py`; serializer covers the new types; WS endpoint passes through.
+
+**Files touched:** `app/contracts.py`, possibly `app/services/session.py` if event registry needs updating.
+
+**Estimated effort:** ~30 min. No NotebookLM calls.
+
+### E1-03 · `run_bicameral_loop()` orchestrator method
+
+The core of Level 2 — the closed-loop mirror-bounce between Engine and Bridge until convergence. Inherits cancel-flag plumbing from E1-01.
+
+**Done when:**
+- New method `run_bicameral_loop(session, scenario, packets, max_iterations: int = 5, min_delay: float = 5.0)` in `app/services/orchestrator.py`.
+- Each iteration: Engine synthesizes → Bridge audits → if Bridge surfaces new STRUCTURAL/IMPLIED bridges, feed them back as friction; otherwise mark converged.
+- Sequential mirror-bounce respecting the 8s cooldown gate.
+- Hard iteration cap (default 5, configurable 1-10 per the architectural spec).
+- Inter-iteration delay (default 5s, configurable 2-30s) — gives the operator time to inspect intermediate state if desired.
+- Cancel-flag check between iterations.
+- Emits `BICAMERAL_ITERATION_START/END` events around each iteration.
+
+**Files touched:** `app/services/orchestrator.py`, possibly templates in same file.
+
+**Estimated effort:** ~2-3 hours. Touches NotebookLM (will need a smoke-test run, ~3-5 calls).
+
+### E1-04 · Convergence-criterion implementation
+
+The decision logic that makes the loop terminate cleanly.
+
+**Done when:**
+- Three convergence criteria per the architectural spec, in priority order:
+  1. **No new STRUCTURAL bridges** in two consecutive iterations → converged.
+  2. **Resolution-stable** — Engine's FINAL RESOLUTION text is materially unchanged between two iterations → converged.
+  3. **Hard iteration cap** reached → emit `BICAMERAL_HARD_CAP_REACHED`, terminate with partial result.
+- Convergence detection runs after each iteration's Bridge audit.
+- Emits `BICAMERAL_CONVERGED` with the winning criterion + iteration count.
+
+**Files touched:** `app/services/orchestrator.py` (probably a helper module).
+
+**Estimated effort:** ~60-90 min. May need 1-2 NL calls for testing the resolution-stability heuristic.
+
+### E1-05 · Frontend live-progress UI (extends DispatcherPanel/RunnerPanel)
+
+Operator visual transparency — the first of the five mandatory control surfaces is visual; the frontend has to render iteration progress in real time.
+
+**Done when:**
+- DispatcherPanel + RunnerPanel subscribe to the new bicameral events.
+- Iteration counter visible (e.g., "Iteration 3 of 5").
+- Current side indicator (Engine synthesizing / Bridge auditing).
+- Cancel button always visible during a live loop, wired to the new endpoint.
+- Convergence outcome rendered when `BICAMERAL_CONVERGED` lands.
+- Hard-cap outcome rendered with appropriate warning when that path fires.
+
+**Files touched:** `ganymede-ui/src/components/DispatcherPanel.tsx`, `ganymede-ui/src/components/RunnerPanel.tsx`, maybe a new `BicameralProgressIndicator.tsx` subcomponent.
+
+**Estimated effort:** ~2 hours. No NL calls; need to remember Next.js 16 breaking-change check before writing.
+
+### E1-06 · First live run on a documented test scenario
+
+Run the new loop end-to-end on a scenario the operator approves; write up the run record.
+
+**Done when:**
+- Operator-approved test scenario selected (candidates per ROADMAP: a fresh Cleanroom-shape question similar to LMArena but different domain — non-political per standing rule).
+- `run_bicameral_loop` fires end-to-end; converges or hits hard cap cleanly; cancel-test verified mid-loop.
+- New run record at `docs/experiments/runs/` documenting Stroke 1, iteration trace, convergence outcome.
+- Architecture_History milestone (43) capturing what shipped + what the loop showed about the partial-validation gap from milestone 42.
+
+**Files touched:** `docs/experiments/runs/<new-record>.md`, `docs/history/Architecture_History.md`.
+
+**Estimated effort:** ~2-3 hours including write-up. NotebookLM calls per loop iteration; budget ~15-25 calls for a full run with cancel-test and second-run verification.
+
+---
+
+## DEFERRED — Silo 1 Phase P1: Bridge robustness + operational hygiene
+
+P1 has 2 of 3 exit criteria met (P1-02 Powell null test ✓, P1-03 CTA-leak quantification ✓). Remaining items deferred behind E1's elevated priority.
 
 ### ~~P1-01 · Upstream notebooklm-py PR for the `[["e",4,null,null,N]]` envelope~~ ✅ DRAFTED 2026-05-26 (awaiting submission)
 

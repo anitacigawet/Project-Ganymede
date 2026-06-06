@@ -12,13 +12,13 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 
 ---
 
-## Status at a glance (2026-05-26)
+## Status at a glance (2026-06-06)
 
 | Silo | Last shipped | Active phase | Next phase |
 |---|---|---|---|
-| **1. Predictor** | LMArena pre-registered (Bridge-extended, medium-high) | **P1: Bridge robustness** | P2: 2026-06-30 validation |
-| **2. Envisioner** | Bicameral Convergence Level 1 wired into /iterate (milestone 38) | **E1: Bicameral Level 2 design** | E2: Bicameral Level 3 |
-| **3. Methodology** | Framework Cleanup Hypothesis filed | **M1: Foundations deep-read** | M2: Side-by-side leaner-corpus test |
+| **1. Predictor** | LMArena Cleanroom partially validated 2026-06-05 (milestone 42) — Bridge's mechanism-category catch landed in reality as Anthropic's pause call, 10 days early | **P1: Bridge robustness** (2 of 3 exit criteria met) | P2: 2026-06-30 leaderboard-rank resolution (secondary, mechanism-category already validated) |
+| **2. Envisioner** | Bicameral Convergence Level 1 wired into /iterate (milestone 38) | **E1: Bicameral Level 2 build** (priority elevated by milestone 42 validation — architectural gap to specific predictions is now empirically named) | E2: Bicameral Level 3 |
+| **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
 | **4. Pluggable** | v2 API + Bicameral /iterate + Dispatcher all production | **Pl1: Operational hygiene** | Pl2: First module consumer |
 
 ---

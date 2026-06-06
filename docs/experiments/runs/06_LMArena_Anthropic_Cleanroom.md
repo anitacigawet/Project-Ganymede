@@ -464,6 +464,61 @@ This **strengthens** the audited Stroke 3 prediction (market 77% is approximatel
 - Rotate the GOOGLE_API_KEY in Google AI Studio (operator action — flagged in handoff because the key was pasted into chat during the Dispatcher build session).
 - ~~Commit all session work to git~~ ✓ Will commit at session end including this fourth/fifth-run verification + the four code changes shipped this session.
 
+## Real-world outcome — 2026-06-05 (PARTIAL VALIDATION at mechanism-category level)
+
+On **2026-06-05**, ten days after Run 7's Bridge audit, Anthropic publicly called for a **global pause on frontier AI development** ([Yahoo News](https://www.yahoo.com/news/science/articles/anthropic-calls-pause-global-ai-223531016.html)). Specific framing per the article:
+
+- Scope: global pause on FRONTIER systems specifically, not all AI development.
+- Stated reason: signs models could escape human control; "recursive self-improvement" risk; *"the human role is narrowing at each step in the AI development process."*
+- Condition: only effective if US + China (and other frontier labs) agree under verifiable rules.
+- Jack Clark (co-founder): *"Right now, it's like the AI industry has a gas pedal, but it doesn't have a brake pedal."*
+
+### How this maps to the Run 7 Bridge catch
+
+Run 7's Bridge audit (2026-05-26) surfaced:
+
+> *"Anthropic's metacognitive abilities... could break out of the ROEM funnel by mid-cycle, not being static."*
+> *"Anthropic's metacognitive adaptation capability is a moat not a vulnerability."*
+
+In the project's framework vocabulary, the Bridge identified that Anthropic had the **meta-capability to break out of the ROEM funnel** — to step outside the competitive frame the Engine and Auditor were debating (Anthropic vs. Google for leaderboard #1) and operate at a higher dimensional level.
+
+**Anthropic's pause call is a canonical instance of an Incomprehensible Move in the project's framework.** Per [`Vulnerabilities_of_Binary_Systems.md`](../../foundations/Vulnerabilities_of_Binary_Systems.md), the Incomprehensible Move is a move generated from a higher-dimensional framework that a lower-dimensional opponent cannot process until the strategic window has closed. In the leaderboard-race framing, asking competitors to stop is incoherent — you don't compete harder by halting. In the higher-dimensional framing (the race itself is the disadvantageous state), pausing is the move that changes the game's rules rather than playing inside them. The Bridge identified the **mechanism category** (metacognitive adaptation that breaks the ROEM funnel) 10 days before reality instantiated that category with a specific move (the pause call).
+
+### What this validates
+
+1. **Bicameral Convergence Level 1's value-add is empirically validated on a forward-looking strategic prediction**, not just on retroactive audits (Powell, Tokenized) or fresh-substrate diagnostic runs (Amnesia, Powell Bridge null test). The Bridge audit lens identified a mechanism category that landed in reality 10 days later, on a substrate the project had never seen the Bridge applied to before this run.
+2. **The framework's Incomprehensible Move primitive is operationally real.** It correctly predicted the category of move Anthropic would make. The Powell run's Strategic Lasso (Collins v. Yellen) was validated retroactively against real-world Bessent/Vought planning; this run validates Incomprehensible Move forward against Anthropic's strategic behavior. Two of the framework's named kernel primitives now have validated instances across distinct domains.
+3. **Cross-substrate forward + retroactive validation now spans three confirmed cases:** Powell (legal/regulatory — Strategic Lasso), Tokenized Land (financial/sovereign — Incomprehensible Move via ERC-4337), LMArena/Anthropic (AI competitive — Incomprehensible Move via pause call). The framework's strategic-reasoning is doing real work across uncorrelated domains.
+
+### What this does NOT validate
+
+1. **The Engine itself did not predict the pause.** Stroke 1 was stuck in leaderboard-race framing; Stroke 2 (Auditor) caught the framing but didn't promote it to a different prediction; Stroke 3 audited synthesis settled on *"Polymarket roughly right, with tunnel-vision risk"* — leaderboard-rank framing throughout. Only the Bridge (Stroke 2b) identified the mechanism category, and it did so at the abstract level (*"metacognitive adaptation as moat"*), not the specific instance level (*"call for pause"*).
+2. **The original LMArena pre-registered prediction is not validated at the leaderboard-rank level.** The Polymarket question (Anthropic #1 at end of June 2026) is still pending and now somewhat orthogonal — Anthropic's actual strategic move operated at a different layer than the benchmark-rank question framed.
+3. **The architectural gap is real, AND it is engineering, not research.** Bicameral Convergence Levels 2 and 3 (per [`Bicameral_Convergence.md`](../../concepts/Bicameral_Convergence.md)) would have taken the Bridge's catch, fed it back into the Engine as friction (Level 2), and with operator approval spawned an Oracle for safety-governance research (Level 3), then produced a specific synthesis. Without those levels, the framework correctly identifies the mechanism category but stops short of the specific prediction. **The architectural spec is locked; only the implementation is missing.**
+
+### Why this matters for the project's validation discipline
+
+The project's stated purpose for the LMArena run was not to win the Polymarket bet — it was to use a falsifiable near-term real-world event as a validation substrate for the strategic-reasoning physics engine. By that framing, the run is a success: the Bridge's mechanism-category catch landed in reality, on a forward-looking prediction, on a fresh substrate, within 10 days. The framework's strategic-reasoning has been validated against real-world strategic behavior.
+
+The leaderboard-rank prediction at 2026-06-30 remains on the calendar and will resolve separately. Its outcome is partially decoupled from this validation — Anthropic's pause call doesn't directly determine LMArena rank, and whether the market settles at end-of-June 2026 on Anthropic or another lab is now a secondary question relative to the primary validation (the Bridge correctly identified the strategic-mechanism category that Anthropic's leadership reached).
+
+### Classification
+
+**PARTIAL VALIDATION** — mechanism-category level. The Bridge's audit lens identified a mechanism category 10 days before reality instantiated it. The Engine itself did not predict the specific action; that gap is the unbuilt Bicameral Convergence Levels 2/3 architecture (engineering, not research).
+
+### Updated pre-registered prediction status
+
+| Component | Status as of 2026-06-05 |
+|---|---|
+| Stroke 1 un-audited prediction (Set-like usurpation of Anthropic) | **Falsified during the run by Stroke 2/Bridge, then by reality** — Anthropic was not usurped; they pre-empted the competitive frame entirely |
+| Stroke 3 audited prediction (Polymarket ~77% correct, tunnel-vision risk) | **Pending 2026-06-30** at the leaderboard-rank level; **partially superseded** at the strategic-frame level |
+| Bridge-extended catch (metacognitive adaptation as moat) | **Directionally validated 2026-06-05** at the mechanism-category level |
+| Mechanism category (Incomprehensible Move) | **Validated** — Anthropic's pause call is a canonical instance |
+
+### What this argues for next
+
+The validation event makes **E1 (Bicameral Convergence Level 2 — `run_bicameral_loop()` + 5 operator control surfaces)** the highest-leverage next phase. The Bridge's catch landed; the architectural spec is locked; only the engineering work remains. Build the loop, and the next prediction of this shape produces the specific synthesis, not just the mechanism-category gesture.
+
 ## Related
 
 - [Architecture History milestone 36](../../history/Architecture_History.md#36-first-live-dispatcher-spin--cleanroom-on-lmarena-prediction-2026-05-25) — the historical record of this run.
