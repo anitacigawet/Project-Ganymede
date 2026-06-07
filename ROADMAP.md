@@ -19,7 +19,7 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 | **1. Predictor** | LMArena Cleanroom partially validated 2026-06-05 (milestone 42) — Bridge's mechanism-category catch landed in reality as Anthropic's pause call, 10 days early | **P1: Bridge robustness** (2 of 3 exit criteria met) | P2: 2026-06-30 leaderboard-rank resolution (secondary, mechanism-category already validated) |
 | **2. Envisioner** | Bicameral Convergence Level 1 wired into /iterate (milestone 38) | **E1: Bicameral Level 2 build** (priority elevated by milestone 42 validation — architectural gap to specific predictions is now empirically named) | E2: Bicameral Level 3 |
 | **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
-| **4. Pluggable** | v2 API + Bicameral /iterate + Dispatcher all production | **Pl1: Operational hygiene** | Pl2: First module consumer |
+| **4. Pluggable** | Z-SPAN pattern-recognition validation 2026-06-06 (milestone 43) — framework correctly identified Z-SPAN's structural position from a generic prompt | **Pl1: Operational hygiene** | **Pl2: Z-SPAN as first consumer** (changed from PrisonBreak per milestone 43) → **Pl3: Operator Lens (translation stroke for operator-facing output)** |
 
 ---
 
@@ -236,25 +236,105 @@ a milestone.
   board.
 - Operator opts in/out on the bulletin board.
 
-### Pl2 — First module consumer (NEXT)
+### Pl2 — First module consumer: Z-SPAN (NEXT — primary)
 
-**Goal:** Wire PrisonBreak as the first concrete consumer of the
-v2 API, per `docs/integration/examples/prisonbreak_consumer.md`.
+**Goal:** Wire Z-SPAN as the first concrete consumer of the v2 API, with
+Z-SPAN using Ganymede as a long-term strategic-planning module for
+positioning against legacy GovTech competitors (Granicus etc.).
+
+**Why Z-SPAN replaces PrisonBreak as primary** (per milestone 43,
+2026-06-06): the 2026-06-06 NotebookLM transcript demonstrated that the
+framework's strategic-reasoning maps cleanly to Z-SPAN's competitive
+situation (open-source civic-data platform vs. closed-source legacy
+GovTech). Z-SPAN has live strategic decisions to make over the next
+weeks/months (terminology lock-in, competitive response, audience-facing
+narrative). The framework is exercised on real decisions, not
+hypotheticals. PrisonBreak is preserved as the planned second consumer.
 
 **Deliverables:**
-- PrisonBreak's `SimulatePanel.tsx` calls Ganymede's `/api/v2/sessions`
-  + `/iterate` with errors-as-truth-packets.
-- Validation that the Genie pathway produces useful output for
-  PrisonBreak's "digital public defender" use case.
-- Run record documenting the first end-to-end consumer run.
+- **Persistent session state** — current sessions are ephemeral; long-term
+  Z-SPAN strategic planning wants sessions that persist over weeks,
+  build on prior strokes, and surface a history of strategic
+  decisions. Backend persistence (Session + StrokeResult into SQLite or
+  similar) + API endpoints to resume / list / search prior sessions.
+- **Z-SPAN-side integration spec** — `docs/integration/examples/zspan_consumer.md`
+  describing how Z-SPAN calls Ganymede for strategic positioning,
+  competitive-response planning, terminology validation, etc.
+- **First live Z-SPAN strategic session** — a real Z-SPAN positioning
+  question processed end-to-end through the Dispatcher → iterative
+  loop → operator-facing output.
+- **Run record** documenting the first end-to-end Z-SPAN consumer run.
 
-**Exit criteria:** PrisonBreak's SimulatePanel produces a Ganymede-driven
-strategic resolution end-to-end on at least one case.
+**Exit criteria:** Z-SPAN's operator surface produces a Ganymede-driven
+strategic resolution end-to-end on at least one real positioning
+decision, and the operator can come back to the session a week later
+and continue with full prior-stroke context preserved.
 
 **Role split:**
-- This is cross-project work — touches PrisonBreak's repo. Operator
-  may want to do this manually or have Claude handle both repos.
-  Decision pending operator availability.
+- Cross-project work — touches Z-SPAN's repo. Operator decides which
+  side gets which work; Ganymede side handles persistence + integration
+  spec.
+
+### Pl3 — Operator Lens (translation stroke for operator-facing output)
+
+**Goal:** Build a downstream translation stroke that re-expresses the
+final stroke's output in legible operator-facing language while
+preserving the kernel's logic 1:1. Solves the "framework output is
+correct but jargon-heavy" UX problem without contaminating upstream
+reasoning.
+
+**Origin:** surfaced in the 2026-06-06 NotebookLM transcript session
+(milestone 43). When James prompted the framework with the Cube of
+Space as an aesthetic frame, the framework produced strategically
+identical reasoning but in more visceral/legible vocabulary
+(*"actualizes the concept instead of avoiding it"*, *"central
+intersection"*, *"gravity well"*, *"North face / South face"*). The
+insight: the kernel doesn't need to change; a translation layer
+downstream of the analytical strokes can re-express the output for
+human consumption. Architecturally analogous to a post-process render
+layer, not a persona change.
+
+**Why this architectural shape:**
+- Persona text changes contaminate upstream reasoning (corpus-dominance
+  lesson from M1 and earlier persona experiments). NOT the right lever.
+- Adding aesthetic frameworks to the grounding corpus compounds
+  scaffolding (M1 Cleanup Hypothesis evidence). NOT the right lever.
+- A downstream translation stroke is purely additive, reversible, and
+  preserves both the technical and translated versions for audit +
+  display.
+
+**Deliverables:**
+- **Translation Persona** sibling to Engine / Mirror Auditor / Connection
+  Bridge personas. Spec: receive a final-stroke raw_response + a
+  vocabulary-register target (e.g., "Cube-of-Space register",
+  "plain-English register", "executive-brief register"); re-express
+  in the target register while preserving the analytical claims 1:1.
+  Must NOT add new claims, soften strength, or introduce hedging the
+  original didn't carry.
+- **`run_translation()` orchestrator method** that fires the translation
+  stroke against a final synthesis (Stroke 3 in iterative runs;
+  Bicameral converged output in Level 2 runs).
+- **Session state** preserves both the technical final synthesis and
+  the translated version. API exposes both fields.
+- **Frontend toggle** between technical view and translated view in
+  DispatcherPanel + RunnerPanel; default to translated for operator-
+  facing display.
+- **Verbosity / register selector** — operator picks the translation
+  register per run. Default register: plain-English; alternative
+  registers selectable.
+- **First live run + comparison** — Cube-of-Space register applied to
+  a recent Stroke 3 (e.g., the Run 6 audited Anthropic synthesis).
+  Validate that the translated version preserves the analytical claims.
+
+**Exit criteria:** A live run produces both technical and translated
+outputs; operator can compare side-by-side; the translated version
+preserves the kernel's claims without altering them.
+
+**Role split:**
+- Claude builds the Translation Persona spec + orchestrator method +
+  API extension + frontend toggle.
+- Operator decides on the register library — which named registers to
+  ship (Cube-of-Space, plain-English, executive-brief, etc.).
 
 ---
 
