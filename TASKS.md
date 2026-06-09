@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-E1-04 — convergence-detection refinement: `_resolution_stable()` similarity-based check (default threshold 0.85, env-tunable) + `_is_audit_substantive()` fallback heuristic defending against non-canonical Bridge output that would false-converge. Both wired into `run_bicameral_loop`. All convergence logic verified on real outputs including LMArena Run 7. E1-05 frontend live-progress UI next).
+Last updated: 2026-06-06 (post-E1-05 — frontend live-progress UI shipped: `BicameralProgressIndicator.tsx` self-contained component + RunnerPanel.tsx wired with bicameral state tracking + cancel button + side-flip on synthesis_complete during bicameral iterations. TypeScript clean via `npx tsc --noEmit`. E1-06 first live run is the final E1 chunk).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -69,21 +69,27 @@ Defense layers vs. false convergence:
 1. Pre-E1-04: count-only — false-converges on non-canonical Bridge output.
 2. Post-E1-04: count-based AND substantiveness check together — won't false-converge even when Bridge persona produces stream-of-consciousness. Plus the resolution-stable backstop for "Engine has stabilized but Bridge hasn't" case.
 
-### E1-05 · Frontend live-progress UI (extends DispatcherPanel/RunnerPanel)
+### ~~E1-05 · Frontend live-progress UI~~ ✅ SHIPPED 2026-06-06
 
-Operator visual transparency — the first of the five mandatory control surfaces is visual; the frontend has to render iteration progress in real time.
+Shipped:
 
-**Done when:**
-- DispatcherPanel + RunnerPanel subscribe to the new bicameral events.
-- Iteration counter visible (e.g., "Iteration 3 of 5").
-- Current side indicator (Engine synthesizing / Bridge auditing).
-- Cancel button always visible during a live loop, wired to the new endpoint.
-- Convergence outcome rendered when `BICAMERAL_CONVERGED` lands.
-- Hard-cap outcome rendered with appropriate warning when that path fires.
+- **New `ganymede-ui/src/components/BicameralProgressIndicator.tsx`** — self-contained presentational component. Takes `BicameralProgressState` (running, currentIteration, maxIterations, currentSide, newBridgesSurfaced, convergenceCriterion, hardCapReached) + `onCancel` + `sessionId` props. Renders:
+  - **Live progress**: iteration counter (`"Iteration N of M"`), animated side indicator (Engine synthesizing / Bridge auditing), last-iteration bridge count, **cancel button** wired to the parent's onCancel handler.
+  - **Terminal CONVERGED**: emerald check-icon block with criterion label (`"No new structural bridges surfaced"` / `"Final resolution stabilized across iterations"`) + iteration count.
+  - **Terminal HARD_CAP_REACHED**: amber alert block with "hit hard cap without converging" message + iteration count.
+  - **Idle**: renders null (no DOM presence when not in a bicameral context).
+- **`IDLE_BICAMERAL_STATE` constant exported** — convenient initial value for parents to seed their state hook.
+- **`RunnerPanel.tsx` wired**:
+  - SessionEvent type union extended: `session_cancelled`, `bicameral_iteration_start`, `bicameral_iteration_end`, `bicameral_converged`, `bicameral_hard_cap_reached`.
+  - New `bicameralState` state hook seeded with `IDLE_BICAMERAL_STATE`.
+  - `handleEvent` extended with 6 new event handlers (5 bicameral + 1 synthesis_complete-during-bicameral for the side flip from engine → bridge).
+  - New `handleCancel` callback fires `POST /api/v2/sessions/{id}/cancel`; SESSION_CANCELLED arrives via WS and the existing terminal-event handler closes the WS + flips running to false.
+  - `BicameralProgressIndicator` mounted directly above the strokes list.
+  - `reset()` clears bicameralState back to IDLE.
 
-**Files touched:** `ganymede-ui/src/components/DispatcherPanel.tsx`, `ganymede-ui/src/components/RunnerPanel.tsx`, maybe a new `BicameralProgressIndicator.tsx` subcomponent.
+Smoke-test status: `npx tsc --noEmit` against the project's tsconfig passes cleanly with no errors.
 
-**Estimated effort:** ~2 hours. No NL calls; need to remember Next.js 16 breaking-change check before writing.
+**DispatcherPanel deferred**: DispatcherPanel doesn't use WebSocket (it's fetch-based, blocking until /iterate returns). Wiring bicameral live-progress there requires adding a WS subscription during the /iterate call — separate work, lower priority. The RunnerPanel is the canonical operator-driven surface; Z-SPAN as Pl2 first consumer will use the v2 API directly, not the DispatcherPanel UI.
 
 ### E1-06 · First live run on a documented test scenario
 

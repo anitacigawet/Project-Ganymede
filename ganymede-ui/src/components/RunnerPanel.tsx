@@ -26,6 +26,13 @@ import { Play, Loader2, Zap, BrainCircuit, ShieldQuestion, Crosshair, Terminal, 
 
 import { EXAMPLES_BY_PATHWAY, type RunnerExample } from '@/data/examples';
 import type { GSSState } from '@/types/ganymede';
+import {
+  BicameralProgressIndicator,
+  type BicameralProgressState,
+  type BicameralSide,
+  type ConvergenceCriterion,
+  IDLE_BICAMERAL_STATE,
+} from './BicameralProgressIndicator';
 
 type Pathway = 'cleanroom' | 'genie' | 'offensive' | 'mirror_audit';
 type RunMode = 'triage' | 'full_loop' | 'synthesis';
@@ -91,11 +98,19 @@ interface SessionEvent {
     | 'synthesis_complete'
     | 'stroke_completed'
     | 'session_complete'
+    | 'session_cancelled'
     | 'error'
     | 'blueprint_ready'
     | 'oracle_request'
     | 'oracle_created'
-    | 'oracle_harvested';
+    | 'oracle_harvested'
+    // Bicameral Convergence Level 2 events (E1-02). Emitted by
+    // backend.run_bicameral_loop around each closed-loop iteration so
+    // the frontend can render live progress + offer cancel.
+    | 'bicameral_iteration_start'
+    | 'bicameral_iteration_end'
+    | 'bicameral_converged'
+    | 'bicameral_hard_cap_reached';
   stroke_number: number | null;
   payload: Record<string, unknown>;
   emitted_at: string;
@@ -220,6 +235,16 @@ export function RunnerPanel({
   const [loadedExampleId, setLoadedExampleId] = useState<string | null>(null);
   const [blueprint, setBlueprint] = useState<string | null>(null);
   const [oracles, setOracles] = useState<Record<string, OracleProgress>>({});
+  // Bicameral Convergence Level 2 live-progress state (E1-05). Updated by
+  // handleEvent as BICAMERAL_ITERATION_START/END/CONVERGED/HARD_CAP_REACHED
+  // events arrive on the WebSocket. Consumed by BicameralProgressIndicator
+  // for the iteration counter, side indicator, and terminal-state messaging.
+  // When the operator-driven loop is a Level 1 /iterate (no bicameral
+  // events), this state stays at IDLE_BICAMERAL_STATE and the indicator
+  // renders nothing — it's gated by sessionId + state shape.
+  const [bicameralState, setBicameralState] = useState<BicameralProgressState>(
+    IDLE_BICAMERAL_STATE,
+  );
   // Example chips require two clicks to fire — guards the right panel
   // against accidental topology loads. `primedExampleId` is the chip
   // currently waiting for its confirming click; auto-clears after 3s.
@@ -293,7 +318,38 @@ export function RunnerPanel({
     setFinalText(null);
     setBlueprint(null);
     setOracles({});
+    setBicameralState(IDLE_BICAMERAL_STATE);
   }, [closeWs]);
+
+  // Cancel in-flight session. Fires POST /api/v2/sessions/{id}/cancel;
+  // backend transitions the session to "cancelled" and emits
+  // SESSION_CANCELLED on the WebSocket. The WS event handler clears
+  // bicameralState.running and closes the WS. Idempotent on the backend
+  // — safe to fire even if the loop just finished on its own.
+  const handleCancel = useCallback(async () => {
+    if (!sessionId) return;
+    const backendUrl =
+      process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? DEFAULT_BACKEND;
+    try {
+      const res = await fetch(
+        `${backendUrl}/api/v2/sessions/${sessionId}/cancel`,
+        { method: 'POST' },
+      );
+      if (!res.ok) {
+        // 404 means the session evaporated (process restart?). Surface
+        // as a soft error; the user can reset and re-run.
+        const body = await res.text();
+        setError(`Cancel failed: ${res.status} ${body}`);
+      }
+      // On success, the SESSION_CANCELLED event flows through the WS
+      // and the handler clears running state. No further work needed
+      // here — explicit return.
+    } catch (err) {
+      setError(
+        `Cancel request failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, [sessionId]);
 
   useEffect(() => closeWs, [closeWs]);
 
@@ -364,7 +420,91 @@ export function RunnerPanel({
       }));
     }
 
-    if (event.type === 'session_complete' || event.type === 'error') {
+    // Bicameral Convergence Level 2 — iteration boundaries + terminal
+    // outcomes. Backend's run_bicameral_loop emits these around each
+    // Engine ↔ Bridge iteration so the frontend can render live
+    // progress + a cancel button.
+    if (event.type === 'bicameral_iteration_start') {
+      const iteration = typeof p.iteration === 'number' ? p.iteration : null;
+      const maxIterations =
+        typeof p.max_iterations === 'number' ? p.max_iterations : null;
+      setBicameralState((prev) => ({
+        ...prev,
+        running: true,
+        currentIteration: iteration,
+        maxIterations,
+        // First half of the iteration is always Engine; END will flip to
+        // bridge before the BICAMERAL_ITERATION_END fires.
+        currentSide: 'engine' as BicameralSide,
+        // Clear stale bridge-count from the prior iteration once a new
+        // one starts.
+        newBridgesSurfaced: null,
+        convergenceCriterion: null,
+        hardCapReached: false,
+      }));
+    }
+    if (event.type === 'bicameral_iteration_end') {
+      const newBridges =
+        typeof p.new_bridges_surfaced === 'number'
+          ? p.new_bridges_surfaced
+          : null;
+      setBicameralState((prev) => ({
+        ...prev,
+        // Iteration finished — go idle until the next ITERATION_START
+        // (which flips back to engine) or a terminal event fires.
+        currentSide: 'idle' as BicameralSide,
+        newBridgesSurfaced: newBridges,
+      }));
+    }
+    // synthesis_complete fires after the Engine finishes a stroke. Inside
+    // a bicameral iteration (currentSide=='engine'), the next phase is the
+    // Bridge audit — flip the side indicator. The backend doesn't emit an
+    // explicit "bridge starting" event, so this is the cleanest signal we
+    // have. Outside a bicameral iteration (Level 1 /iterate), this is a
+    // no-op because currentSide stays at 'idle' and the condition fails.
+    if (event.type === 'synthesis_complete') {
+      setBicameralState((prev) =>
+        prev.running && prev.currentSide === 'engine'
+          ? { ...prev, currentSide: 'bridge' as BicameralSide }
+          : prev,
+      );
+    }
+    if (event.type === 'bicameral_converged') {
+      const criterion =
+        typeof p.criterion === 'string'
+          ? (p.criterion as ConvergenceCriterion)
+          : null;
+      setBicameralState((prev) => ({
+        ...prev,
+        running: false,
+        currentSide: 'idle' as BicameralSide,
+        convergenceCriterion: criterion,
+        hardCapReached: false,
+      }));
+    }
+    if (event.type === 'bicameral_hard_cap_reached') {
+      setBicameralState((prev) => ({
+        ...prev,
+        running: false,
+        currentSide: 'idle' as BicameralSide,
+        hardCapReached: true,
+      }));
+    }
+
+    if (
+      event.type === 'session_complete' ||
+      event.type === 'session_cancelled' ||
+      event.type === 'error'
+    ) {
+      // Terminal event from the backend's perspective. Stop the loop
+      // visually and close the WS. session_cancelled fires when the
+      // operator clicked Cancel and the backend's loop observed the
+      // flag at its next check point.
+      setBicameralState((prev) => ({
+        ...prev,
+        running: false,
+        currentSide: 'idle' as BicameralSide,
+      }));
       closeWs();
     }
   }, [closeWs]);
@@ -981,6 +1121,18 @@ export function RunnerPanel({
             </div>
           </div>
         )}
+
+        {/* Bicameral Convergence Level 2 live-progress (E1-05). Renders
+            only when a bicameral loop is in flight or has just terminated.
+            Hidden during Level 1 /iterate runs (those don't emit
+            bicameral_* events). Provides the iteration counter, current
+            side indicator, cancel button (wired to POST /sessions/{id}/cancel
+            per E1-01), and convergence/hard-cap terminal messaging. */}
+        <BicameralProgressIndicator
+          {...bicameralState}
+          sessionId={sessionId}
+          onCancel={handleCancel}
+        />
 
         {/* Stroke results */}
         {strokes.map((stroke) => (
