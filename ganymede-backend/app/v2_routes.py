@@ -89,6 +89,56 @@ class CreateSessionRequest(BaseModel):
     max_strokes: int = Field(1, ge=1, le=10)
 
 
+class SessionSummary(BaseModel):
+    """One row for the ``GET /api/v2/sessions`` list endpoint.
+
+    Lightweight by design — the list view is for browsing history (Z-SPAN
+    walking back through prior strategic-planning sessions), not for
+    loading full stroke text. Use ``GET /sessions/{id}`` and
+    ``GET /sessions/{id}/strokes`` for detail.
+    """
+    model_config = ConfigDict(extra="forbid")
+    session_id: str
+    status: str
+    pathway: Pathway
+    iterative: bool
+    max_strokes: int
+    created_at: str
+    """ISO-8601 UTC timestamp string. The store persists timestamps as
+    strings so passing them through here without round-tripping to
+    datetime keeps the API surface noise-free."""
+    completed_at: Optional[str] = None
+    error_message: Optional[str] = None
+    scenario: Scenario
+    final_text_preview: Optional[str] = None
+    """First 200 chars of the session's ``final_text`` if the session
+    completed, else None. Helps the list view show what each session
+    actually resolved to without forcing a per-row detail fetch."""
+
+
+class SessionsListResponse(BaseModel):
+    """Paginated response for ``GET /api/v2/sessions``."""
+    model_config = ConfigDict(extra="forbid")
+    sessions: list[SessionSummary]
+    total: int
+    """Total matching rows. Lets clients render pagination UI without
+    a second count query."""
+    limit: int
+    offset: int
+
+
+class SessionStrokesResponse(BaseModel):
+    """Response for ``GET /api/v2/sessions/{id}/strokes``."""
+    model_config = ConfigDict(extra="forbid")
+    session_id: str
+    strokes: list[StrokeResult]
+    translations: dict[str, str] = Field(default_factory=dict)
+    """Pl3 Operator Lens translations keyed by ``"{stroke_number}:{register}"``.
+    Returned alongside strokes so clients can render the translation panel
+    state in one round-trip rather than firing per-stroke translation
+    fetches."""
+
+
 class SessionStateResponse(BaseModel):
     """Lightweight snapshot of session state. For the full event timeline
     use ``GET /api/v2/sessions/{id}/events``."""
@@ -532,10 +582,119 @@ async def create_session(req: CreateSessionRequest) -> CreateSessionResponse:
     return CreateSessionResponse(session_id=session.id, state=_state(session))
 
 
+@router.get("/sessions", response_model=SessionsListResponse)
+async def list_sessions(
+    status: Optional[str] = None,
+    pathway: Optional[Pathway] = None,
+    q: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> SessionsListResponse:
+    """List prior sessions, ordered newest-first.
+
+    Pl2-01: the surface Z-SPAN (the first Pl2 consumer) uses to browse
+    its accumulated strategic-planning sessions weeks after they were
+    initially run.
+
+    Filters:
+        status   — running / complete / error / cancelled (exact match)
+        pathway  — cleanroom / genie / offensive / mirror_audit
+        q        — substring match over scenario JSON + final_text. Plain
+                   SQLite LIKE; FTS5 if needed at scale.
+        limit    — 1..200 (default 50)
+        offset   — pagination offset
+
+    Returns ``{ sessions, total, limit, offset }``. Persisted store is
+    the source of truth — in-memory-only mode (no store bound) returns
+    empty.
+    """
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be 1..200")
+    if offset < 0:
+        raise HTTPException(status_code=422, detail="offset must be >= 0")
+
+    store = registry().store
+    if store is None:
+        # In-memory-only mode (tests / GANYMEDE_DISABLE_SESSION_PERSISTENCE=1)
+        return SessionsListResponse(sessions=[], total=0, limit=limit, offset=offset)
+
+    pathway_str = pathway.value if pathway is not None else None
+    import asyncio as _asyncio
+
+    if q:
+        # search() doesn't honor status/pathway/offset; we filter post-hoc.
+        # Z-SPAN's q-with-filter case is rare; keeping the store API tight.
+        rows = await _asyncio.to_thread(store.search, q, limit + offset + 200)
+        if status:
+            rows = [r for r in rows if r["status"] == status]
+        if pathway_str:
+            rows = [r for r in rows if r["pathway"] == pathway_str]
+        total = len(rows)
+        rows = rows[offset : offset + limit]
+    else:
+        total = await _asyncio.to_thread(store.count, status, pathway_str)
+        rows = await _asyncio.to_thread(
+            store.list_summaries, status, pathway_str, limit, offset,
+        )
+
+    summaries: list[SessionSummary] = []
+    for r in rows:
+        try:
+            scenario = Scenario.model_validate_json(r["scenario_json"])
+        except Exception as exc:
+            logger.warning(
+                "list_sessions: malformed scenario_json for %s — surfacing "
+                "empty scenario in the summary row (%s)",
+                r["id"], exc,
+            )
+            scenario = Scenario()
+        final_text = r.get("final_text")
+        preview = (final_text[:200] + "…") if final_text and len(final_text) > 200 else final_text
+        summaries.append(
+            SessionSummary(
+                session_id=r["id"],
+                status=r["status"],
+                pathway=Pathway(r["pathway"]),
+                iterative=bool(r["iterative"]),
+                max_strokes=int(r["max_strokes"]),
+                created_at=r["created_at"],
+                completed_at=r["completed_at"],
+                error_message=r["error_message"],
+                scenario=scenario,
+                final_text_preview=preview,
+            )
+        )
+
+    return SessionsListResponse(
+        sessions=summaries, total=total, limit=limit, offset=offset,
+    )
+
+
 @router.get("/sessions/{session_id}", response_model=SessionStateResponse)
 async def get_session(session_id: str) -> SessionStateResponse:
     """Get a snapshot of the session's current state."""
     return _state(_require_session(session_id))
+
+
+@router.get(
+    "/sessions/{session_id}/strokes",
+    response_model=SessionStrokesResponse,
+)
+async def get_session_strokes(session_id: str) -> SessionStrokesResponse:
+    """Return all strokes recorded on a session, plus any Operator Lens
+    translations keyed by ``{stroke_number}:{register}``.
+
+    Pl2-01: the natural endpoint Z-SPAN hits when the operator clicks
+    into a prior session from the list view. State summary is on
+    ``GET /sessions/{id}``; the event timeline is on
+    ``GET /sessions/{id}/events``; this one is the stroke-detail view.
+    """
+    session = _require_session(session_id)
+    return SessionStrokesResponse(
+        session_id=session.id,
+        strokes=session.strokes,
+        translations=session.translations,
+    )
 
 
 @router.post(
