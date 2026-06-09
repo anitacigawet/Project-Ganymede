@@ -33,6 +33,8 @@ from pydantic import BaseModel, Field
 
 from app.services.notebooklm import NotebookLMService
 from app.services.orchestrator import GanymedeOrchestrator
+from app.services.session import registry as session_registry
+from app.services.session_store import SessionStore, default_db_path
 
 # Always-on file logging. Without this, the app's logging only ends up in
 # backend.log if the backend was launched via run_dev.bat (which routes
@@ -119,6 +121,35 @@ app.include_router(v2_notebook_router)
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    # ---- Pl2-01 session persistence: bind store + rehydrate prior sessions ----
+    # Done before NotebookLM init so prior sessions are visible even if
+    # auth is currently broken — the operator can still browse history
+    # without NotebookLM up. Failure here degrades to in-memory-only mode
+    # rather than killing startup.
+    db_override = os.getenv("GANYMEDE_SESSION_DB")
+    db_path = db_override if db_override else str(default_db_path())
+    if os.getenv("GANYMEDE_DISABLE_SESSION_PERSISTENCE") == "1":
+        logger.warning(
+            "GANYMEDE_DISABLE_SESSION_PERSISTENCE=1 — running registry "
+            "in in-memory-only mode (sessions will NOT survive restart)"
+        )
+    else:
+        try:
+            store = SessionStore(db_path)
+            session_registry().bind_store(store)
+            rehydrated = await session_registry().rehydrate()
+            logger.info(
+                "Session persistence: store at %s, rehydrated %d prior session(s)",
+                db_path, rehydrated,
+            )
+        except Exception as exc:
+            logger.error(
+                "Session persistence init failed at %s: %s — continuing "
+                "in in-memory-only mode (sessions created this session "
+                "will NOT survive restart)",
+                db_path, exc,
+            )
+
     try:
         await notebooklm_svc.initialize()
         logger.info("NotebookLM client initialized.")
