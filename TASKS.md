@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-08 (post-Pl2-02 — Z-SPAN consumer-spec walkthrough doc shipped at docs/integration/examples/zspan_consumer.md. Pl2-01 persistent session state shipped earlier same day in milestone 46. **All claude-autonomous Pl2 chunks are done.** Only Pl2-03 first live Z-SPAN strategic-planning session remains, and it's operator-driven — requires Z-SPAN's session to produce a real positioning question + call the v2 API end-to-end + James to courier results).
+Last updated: 2026-06-09 (post-milestone 47 — persistence-discipline closeout: Pl2-02 consumer-spec doc + canonical-API-doc updates + BridgeNotebookRegistry persistence parity. **Every claude-autonomous chunk on the project's current scope is done.** Remaining items are all operator-gated or calendar-gated: Pl2-03 first live Z-SPAN strategic-planning session, E1-06 first live Bicameral Level 2 run, 2026-06-30 LMArena leaderboard-rank resolution, M2 leaner-corpus side-by-side test, P1-01 upstream notebooklm-py PR submission).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -30,7 +30,7 @@ Shipped pieces:
 
 Verified end-to-end via FastAPI TestClient lifecycle: create session via registry → record stroke → complete → list shows total 1 → simulated process death (`_sessions.clear()` + drop `_store`) → fresh boot → `rehydrate()` reports 1 prior session → GET / strokes / state all surface the rehydrated session with original `final_resolution` intact. Orphan-rescue path verified separately: a session left in `running` is flipped to `error` with a synthetic ERROR event appended so the events endpoint stays consistent.
 
-### ~~Pl2-02 · Z-SPAN consumer-spec walkthrough doc~~ ✅ SHIPPED 2026-06-08
+### ~~Pl2-02 · Z-SPAN consumer-spec walkthrough doc~~ ✅ SHIPPED 2026-06-08 (rolled into milestone 47)
 
 Shipped pieces:
 
@@ -40,6 +40,31 @@ Shipped pieces:
 - **ROADMAP.md** § Pl2 deliverables — Z-SPAN integration spec line struck as shipped.
 
 **Cross-cutting principle surfaced for the general API:** Z-SPAN's case validates that some consumers are sessions, not apps. The v2 API has to be ergonomic from both shapes. Pl2-01 persistent state + Pl3 Operator Lens + the closed-RAG-sphere discipline are what make the session-as-consumer shape viable for long-running strategic-planning work.
+
+### ~~Pl2-02b · Canonical-API-doc parity for Pl2-01 endpoints~~ ✅ SHIPPED 2026-06-09 (milestone 47)
+
+`docs/integration/consuming_the_v2_api.md` predated Pl2-01. Updated to:
+
+- TL;DR now mentions persistence as first-class.
+- § Session persistence rewritten from "(or lack of)" to the Pl2-01 reality (save-on-mutation, rehydrate-on-startup, orphan-rescue, opt-out env vars, schema overview).
+- New § `GET /api/v2/sessions` reference entry with the full query-param table + response shape.
+- New § `GET /api/v2/sessions/{id}/strokes` reference entry.
+
+Future consumers reading the canonical reference now discover the Pl2-01 surface without having to read zspan_consumer.md.
+
+### ~~Pl2-02c · BridgeNotebookRegistry persistence parity~~ ✅ SHIPPED 2026-06-09 (milestone 47)
+
+Symmetric sister chunk to Pl2-01's SessionStore. The `BridgeNotebookRegistry` was in-memory-only; restart orphaned its metadata even though the actual notebooks persist in NotebookLM. Long-running Z-SPAN sessions span weeks → bridge notebooks live weeks → registry has to outlive the process.
+
+Shipped:
+
+- `BridgeNotebookRegistry(persistence_path=...)` + `bind_persistence(path)` + `load_from_disk()` + `_persist_locked()` atomic-write helper in `ganymede-backend/app/services/bridge_registry.py`.
+- JSON-file backing (vs SQLite — small N, no querying beyond `list_all`, simpler).
+- `default_persistence_path()` resolves to `ganymede-backend/data/bridge_registry.json` (env override: `GANYMEDE_BRIDGE_REGISTRY_DB`).
+- `app/main.py` startup wiring alongside the SessionStore init.
+- Corrupt-file handling: log warning + start empty; next mutation rewrites.
+
+Verified across simulated restarts via TestClient lifecycle.
 
 ### Pl2-03 · First live Z-SPAN strategic-planning session (operator-driven)
 

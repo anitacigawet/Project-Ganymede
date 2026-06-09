@@ -900,6 +900,66 @@ Driven via FastAPI's `TestClient` lifecycle (so the real `startup_event` fires):
 
 ---
 
+## 47. Persistence-discipline closeout — Pl2-02 consumer-spec doc + bridge-registry persistence parity (2026-06-09)
+
+Cleanup pass over the persistence-discipline arc started in milestone 46, plus the Pl2-02 deliverable. Three pieces:
+
+### Pl2-02 — Z-SPAN consumer-spec walkthrough doc
+
+Shipped `docs/integration/examples/zspan_consumer.md` as the named-consumer integration doc Z-SPAN's session reads. Follows the `prisonbreak_consumer.md` template but adapted for Z-SPAN's distinct shape: **the consumer is a session, not an app**. PrisonBreak embeds Ganymede via tRPC in a running web app; Z-SPAN's Claude session calls the v2 API directly via curl / HTTP. Both shapes have to be ergonomic from the v2 surface — they exercise different parts of it (PrisonBreak relies on WebSocket streaming + RAG-derived Truth Packets; Z-SPAN relies on persistent-session state + operator-curated Truth Packets + Operator Lens translation).
+
+The doc's "What this case taught the general API design" section names five generalizable principles surfaced by the Z-SPAN case: (1) some consumers are sessions, not apps; (2) operator-curated Truth Packets are first-class; (3) Operator Lens is load-bearing for non-framework-native audiences; (4) Bicameral Level 2 escalation rule when Level 1 surfaces friction; (5) persistent session state should be the default, not the exception; (6) closed-RAG-sphere discipline is non-negotiable. These should generalize to any future consumer.
+
+### Consuming-v2-API canonical-doc updates
+
+The `docs/integration/consuming_the_v2_api.md` reference predated Pl2-01. Updated to:
+
+- Replace the "Session persistence (or lack of)" stub with the Pl2-01 reality (save-on-mutation, rehydrate-on-startup, orphan rescue, opt-out env vars, schema overview).
+- Add `GET /api/v2/sessions` reference entry with the full query-param table + response shape.
+- Add `GET /api/v2/sessions/{id}/strokes` reference entry.
+- Update the TL;DR so future consumers discover persistence from the first paragraph.
+
+Without this, the canonical reference doc would still tell consumers "sessions are in-memory in v1." Now consumers reading either `consuming_the_v2_api.md` (the abstract reference) or `examples/zspan_consumer.md` (the concrete walkthrough) see the same persistence-aware shape.
+
+### BridgeNotebookRegistry persistence parity
+
+Symmetric chunk to Pl2-01's SessionStore work. The `BridgeNotebookRegistry` (P1-04, milestone 44) was the operator-facing registry for auto-provisioned Bridge notebooks but was in-memory-only; restart orphaned its metadata even though the actual notebooks persist in NotebookLM. With strategic-planning sessions spanning weeks, the bridge notebooks live weeks too — the registry needs to outlive the process.
+
+Implementation:
+
+- **`BridgeNotebookRegistry(persistence_path=...)` + `bind_persistence(path)` + `load_from_disk()` + `_persist_locked()`** in `app/services/bridge_registry.py`. JSON-file backing (vs SQLite for SessionStore) because N is small (≤ ~20 entries typical), no querying beyond `list_all`. Writes atomically via tempfile + `os.replace`.
+- **`default_persistence_path()`** resolves to `ganymede-backend/data/bridge_registry.json`. Env override: `GANYMEDE_BRIDGE_REGISTRY_DB`.
+- **`app/main.py` startup wiring** alongside the SessionStore init — degrades to in-memory-only if file I/O fails rather than blocking startup.
+- **Corrupt-file handling**: load_from_disk catches JSON decode errors, logs a warning, starts empty. The next mutation rewrites the file. Verified via smoke test.
+
+Verified end-to-end: register → file written → new registry instance with same path loads N=1 → deregister → next reload reflects the removal → corrupted JSON degrades gracefully → startup wiring through TestClient persists across two simulated boot cycles.
+
+### Why JSON file vs SQLite for the bridge registry
+
+The SessionStore picked SQLite because list/filter/search are the dominant query shapes. The BridgeNotebookRegistry's dominant query is `list_all` (the management UI renders every tracked notebook) — no filter, no search, no pagination. JSON is simpler, has no schema-migration concerns, and "render the entire file in `cat`" is the right operator-debug experience for a registry this small. If the registry grows past ~100 entries this assumption should be revisited; not blocking now.
+
+### What this milestone closes
+
+- The persistence-discipline gap surfaced by milestone 46 — both module-global registries (`SessionRegistry` for sessions, `BridgeNotebookRegistry` for bridge notebooks) now outlive process lifetime.
+- The Pl2-02 deliverable (consumer-spec walkthrough doc).
+- The canonical-API-doc / consumer-doc consistency gap — both surfaces now describe the same persistent-by-default reality.
+
+### What this milestone does NOT close
+
+- **Pl2-03** — first live Z-SPAN strategic-planning session. Operator-driven; requires Z-SPAN's session to produce a real positioning question + call the v2 API end-to-end. Outside Claude-autonomous scope.
+
+### Pending after this milestone
+
+- Pl2-03 (operator-driven).
+- E1-06 first live Bicameral Level 2 run (operator-driven).
+- 2026-06-30 LMArena leaderboard-rank resolution (calendar-gated).
+- M2 leaner-corpus side-by-side test (operator-gated, major scope shift).
+- P1-01 upstream `notebooklm-py` PR submission (operator action, held with submission package ready).
+
+All remaining items are operator-gated or calendar-gated. **Every claude-autonomous chunk on the project's current scope is now done.**
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -957,3 +1017,5 @@ Driven via FastAPI's `TestClient` lifecycle (so the real `startup_event` fires):
 | P1-04 Bridge notebook lifecycle (44) | `ganymede-backend/app/services/bridge_registry.py` + `GET /api/v2/bridge/notebooks` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/BridgeNotebookManager.tsx` + `/bridge-notebooks` route at `ganymede-ui/src/app/bridge-notebooks/page.tsx` |
 | Pl3 Operator Lens (45) | `TranslationRegister` enum in `ganymede-backend/app/contracts.py` + `Session._translations` in `ganymede-backend/app/services/session.py` + `GeminiService.translate_with_register` + `_TRANSLATION_PROMPTS` in `ganymede-backend/app/services/gemini_service.py` + `GanymedeOrchestrator.run_translation` in `ganymede-backend/app/services/orchestrator.py` + `POST /api/v2/sessions/{id}/translate` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/StrokeTranslator.tsx` |
 | Pl2-01 SessionStore persistence (46) | `ganymede-backend/app/services/session_store.py` (`SessionStore` + `default_db_path`) + `ganymede-backend/app/services/session.py` (`Session._store` + `_persist` + `from_persisted_state` + `SessionRegistry.bind_store` + `rehydrate` + `store` accessor) + `ganymede-backend/app/main.py` startup wiring + `GET /api/v2/sessions` (list/filter/search) + `GET /api/v2/sessions/{id}/strokes` in `ganymede-backend/app/v2_routes.py` |
+| Pl2-02 Z-SPAN consumer-spec walkthrough (47) | [`../integration/examples/zspan_consumer.md`](../integration/examples/zspan_consumer.md) + cross-references in [`../integration/examples/README.md`](../integration/examples/README.md) + [`../integration/operator_courier_protocol.md`](../integration/operator_courier_protocol.md) + ROADMAP.md § Pl2 deliverables |
+| BridgeNotebookRegistry persistence (47) | `ganymede-backend/app/services/bridge_registry.py` (`BridgeNotebookRegistry.bind_persistence` + `load_from_disk` + `_persist_locked` atomic-write + `default_persistence_path`) + `ganymede-backend/app/main.py` startup wiring + `consuming_the_v2_api.md` § Session persistence (Pl2-01) for canonical surface description |

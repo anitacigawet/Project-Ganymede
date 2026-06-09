@@ -12,14 +12,14 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 
 ---
 
-## Status at a glance (2026-06-08)
+## Status at a glance (2026-06-09)
 
 | Silo | Last shipped | Active phase | Next phase |
 |---|---|---|---|
 | **1. Predictor** | LMArena Cleanroom partially validated 2026-06-05 (milestone 42) — Bridge's mechanism-category catch landed in reality as Anthropic's pause call, 10 days early | **P1: Bridge robustness** (2 of 3 exit criteria met) | P2: 2026-06-30 leaderboard-rank resolution (secondary, mechanism-category already validated) |
 | **2. Envisioner** | Bicameral Convergence Level 2 build E1-01 through E1-05 + E1-06 prep shipped 2026-06-06 (milestones 38, 42) | **E1 mostly built** — E1-06 first live run remains operator-driven | E2: Bicameral Level 3 |
 | **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1/Pl2 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
-| **4. Pluggable** | Pl2-01 persistent session state (milestone 46) + Pl2-02 Z-SPAN consumer-spec doc both shipped 2026-06-08 | **Pl2: Z-SPAN as first consumer** — Pl2-03 first live session is the only remaining chunk, operator-driven | (no Pl-phase scheduled after Pl2) |
+| **4. Pluggable** | Pl2-01 SessionStore (46) + Pl2-02 consumer-spec doc + consuming_the_v2_api.md parity + BridgeNotebookRegistry persistence (47) all shipped 2026-06-08/09 | **Pl2-03 first live session — operator-driven, the only remaining Pl2 chunk** | (no Pl-phase scheduled after Pl2) |
 
 ---
 
