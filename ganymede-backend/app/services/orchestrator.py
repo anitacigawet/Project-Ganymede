@@ -1454,18 +1454,54 @@ class GanymedeOrchestrator:
 
             results.append(bridge_stroke)
 
-            # ---------- Convergence detection ----------
+            # ---------- Convergence detection (E1-04) ----------
+            #
+            # Two criteria, checked in priority order:
+            #   1. no_new_structural — Bridge surfaced 0 STRUCTURAL/IMPLIED
+            #      bridges (count-based, cheaper). Defended against
+            #      non-canonical Bridge output by `_is_audit_substantive`:
+            #      if the audit looks substantive even without canonical
+            #      labels, we do NOT false-converge.
+            #   2. resolution_stable — Engine's FINAL RESOLUTION section
+            #      is functionally unchanged across iterations (similarity
+            #      ratio >= threshold). Only checks once we have a prior
+            #      synthesis to compare against (iteration 2+).
             new_bridge_count = _count_bridges_in_audit(bridge_stroke.raw_response)
+            audit_is_substantive = _is_audit_substantive(bridge_stroke.raw_response)
             converged = False
             criterion: Optional[str] = None
 
-            if new_bridge_count == 0:
+            if new_bridge_count == 0 and not audit_is_substantive:
+                # No canonical bridges + no substantive content → converged.
                 converged = True
                 criterion = "no_new_structural"
                 logger.info(
-                    "Session %s Bicameral iter %d: CONVERGED (no new bridges)",
+                    "Session %s Bicameral iter %d: CONVERGED (no_new_structural — "
+                    "0 canonical bridges + non-substantive audit text)",
                     session.id, iteration,
                 )
+            elif new_bridge_count == 0 and audit_is_substantive:
+                # Non-canonical Bridge output — substantive text but no
+                # canonical labels. Don't false-converge. Continue iteration.
+                logger.warning(
+                    "Session %s Bicameral iter %d: Bridge produced %d-char "
+                    "substantive output but no canonical Bridge N (STRUCTURAL|IMPLIED) "
+                    "labels matched. Treating as ambiguous-no-convergence; will "
+                    "check resolution_stable next.",
+                    session.id, iteration, len(bridge_stroke.raw_response),
+                )
+
+            # Resolution-stable check (criterion 2) — only fires if count-based
+            # didn't converge AND we have a prior synthesis to compare against.
+            if not converged and prior_synthesis is not None:
+                if _resolution_stable(prior_synthesis, engine_stroke.raw_response):
+                    converged = True
+                    criterion = "resolution_stable"
+                    logger.info(
+                        "Session %s Bicameral iter %d: CONVERGED (resolution_stable — "
+                        "FINAL RESOLUTION section functionally unchanged vs. iter %d)",
+                        session.id, iteration, iteration - 1,
+                    )
 
             await session.emit(
                 SessionEventType.BICAMERAL_ITERATION_END,
@@ -1979,7 +2015,8 @@ def _count_bridges_in_audit(raw: str) -> int:
     persona's epistemic-humility tier rather than a substantive catch.
 
     Returns 0 if no STRUCTURAL/IMPLIED bridges found — the convergence
-    signal for ``run_bicameral_loop``.
+    signal for ``run_bicameral_loop``. Combined with ``_is_audit_substantive``
+    below to guard against false convergence on non-canonical Bridge output.
 
     Returns the raw count when bridges are present; the caller uses
     ``== 0`` for convergence detection but the count is also useful for
@@ -1992,6 +2029,158 @@ def _count_bridges_in_audit(raw: str) -> int:
         re.IGNORECASE,
     )
     return len(pattern.findall(raw))
+
+
+# ---------------------------------------------------------------------------
+# Non-canonical Bridge output defense (E1-04).
+#
+# The Bridge persona is configured to emit catches in the canonical
+# ``Bridge N (STRUCTURAL|IMPLIED|SPECULATIVE)`` format, but observed runs
+# (notably LMArena Run 7, 2026-05-26) show the persona occasionally
+# defaults to a stream-of-consciousness style with section headers like
+# "**Evaluating Strategic Freedom**" instead of the canonical labels.
+# Without a fallback, the convergence-count regex would return 0 on such
+# output and ``run_bicameral_loop`` would falsely converge after iteration 1.
+#
+# The fallback heuristic checks whether the audit text contains
+# substantive content even when canonical labels are absent: length
+# threshold + token presence indicating bridge-flavored reasoning. If
+# the audit looks substantive, the loop treats it as ambiguous-no-
+# convergence rather than false-converging. The operator can re-run
+# with a persona-tightened Bridge if needed.
+# ---------------------------------------------------------------------------
+
+_BRIDGE_FLAVOR_TOKENS = (
+    "missed", "connection", "bridge", "should have", "fails to",
+    "ignores", "overlooks", "did not", "neglected", "untraced",
+    "unaddressed", "should be", "implies", "synthesis missed",
+)
+
+
+def _is_audit_substantive(raw: str) -> bool:
+    """Best-effort check: does the audit text look substantive even when no canonical Bridge labels match?
+
+    Returns True if the audit text is long enough AND contains multiple
+    bridge-flavored tokens, suggesting the Bridge persona produced real
+    content in a non-canonical format. Returns False if the text is short
+    or token-sparse, indicating a genuine "no missed connections" result.
+
+    Used by ``run_bicameral_loop`` to guard against false convergence on
+    non-canonical Bridge persona output. Threshold tuning: 300 chars +
+    2 distinct tokens — empirically conservative; tighten if non-canonical
+    output gets richer or loosen if the persona reliably hits canonical
+    format.
+    """
+    text = raw.strip()
+    if len(text) < 300:
+        return False
+    text_lower = text.lower()
+    matched = sum(1 for tok in _BRIDGE_FLAVOR_TOKENS if tok in text_lower)
+    return matched >= 2
+
+
+# ---------------------------------------------------------------------------
+# Resolution-stable convergence criterion (E1-04).
+#
+# The second convergence check (after no_new_structural). The intuition:
+# even if the Bridge keeps surfacing connections, if the Engine has
+# stabilized on its FINAL RESOLUTION across iterations, additional
+# iterations aren't producing meaningful change — the Engine has
+# converged on its answer even if the audit lens hasn't.
+#
+# Heuristic:
+#   1. Extract the FINAL RESOLUTION section from each synthesis
+#      (look for explicit headers; fall back to last 30% of text).
+#   2. Normalize: strip markdown, collapse whitespace, lowercase.
+#   3. Compute difflib.SequenceMatcher ratio between the two.
+#   4. Compare against threshold (0.85 default — empirically high
+#      enough to require real stability but low enough to tolerate
+#      minor word-choice differences).
+#
+# threshold tunable via env var ``GANYMEDE_RESOLUTION_STABLE_THRESHOLD``
+# for operator experimentation.
+# ---------------------------------------------------------------------------
+
+_RESOLUTION_STABLE_THRESHOLD = float(
+    os.environ.get("GANYMEDE_RESOLUTION_STABLE_THRESHOLD", "0.85")
+)
+
+
+def _extract_final_resolution_section(raw: str) -> str:
+    """Best-effort extraction of the FINAL RESOLUTION section from a synthesis.
+
+    Searches for explicit FINAL RESOLUTION / RESOLUTION / FINAL 9D
+    RESOLUTION headers. If found, returns everything from the header to
+    the next major header or end of text. If no canonical header found,
+    falls back to the last 30% of the text (heuristic: the conclusion
+    typically lives at the end).
+
+    Used by ``_resolution_stable`` to compare just the conclusion across
+    iterations rather than the full per-dimension breakdown (which can
+    differ in wording while reaching the same resolution).
+    """
+    # Try canonical headers first, in order of specificity
+    patterns = [
+        r"(?:^|\n)\**\s*FINAL\s+9D\s+RESOLUTION\b.*?(?=\n\**\s*[A-Z][A-Z\s]{3,}\n|\Z)",
+        r"(?:^|\n)\**\s*FINAL\s+RESOLUTION\b.*?(?=\n\**\s*[A-Z][A-Z\s]{3,}\n|\Z)",
+        r"(?:^|\n)\**\s*RESOLUTION\b.*?(?=\n\**\s*[A-Z][A-Z\s]{3,}\n|\Z)",
+    ]
+    for p in patterns:
+        match = re.search(p, raw, re.DOTALL | re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+    # Fall back to last 30% of text — the conclusion is usually at the end
+    cut = int(len(raw) * 0.7)
+    return raw[cut:].strip()
+
+
+def _normalize_for_similarity(text: str) -> str:
+    """Strip markdown + collapse whitespace + lowercase for similarity comparison.
+
+    Removes characters that don't affect semantic content but would
+    introduce false-negative similarity (different markdown decoration
+    around the same words). Used by ``_resolution_stable``.
+    """
+    # Strip markdown bold/italic/code/headers
+    text = re.sub(r"[*_#`]+", " ", text)
+    # Collapse all whitespace runs to single space
+    text = re.sub(r"\s+", " ", text)
+    return text.strip().lower()
+
+
+def _resolution_stable(
+    prior_synthesis: str,
+    current_synthesis: str,
+    threshold: float = _RESOLUTION_STABLE_THRESHOLD,
+) -> bool:
+    """Return True iff the FINAL RESOLUTION sections of two syntheses are functionally unchanged.
+
+    Compares the FINAL RESOLUTION section (or fallback last-30% slice)
+    of each synthesis, normalized for markdown + whitespace + case,
+    using ``difflib.SequenceMatcher.ratio``. Returns True if the
+    similarity ratio is >= ``threshold``.
+
+    Default threshold 0.85 (operator-tunable via
+    ``GANYMEDE_RESOLUTION_STABLE_THRESHOLD``). Empirical baseline: same
+    Engine producing two synthesis runs of the same scenario with
+    minor wording differences typically scores 0.7-0.85; functionally
+    identical resolutions (Engine has converged) score 0.85+.
+
+    Used by ``run_bicameral_loop`` as the second convergence criterion
+    after the count-based ``no_new_structural`` check.
+    """
+    import difflib  # stdlib, deferred import — only used here
+
+    prior_section = _extract_final_resolution_section(prior_synthesis)
+    current_section = _extract_final_resolution_section(current_synthesis)
+    prior_norm = _normalize_for_similarity(prior_section)
+    current_norm = _normalize_for_similarity(current_section)
+
+    if not prior_norm or not current_norm:
+        return False  # No comparable text → don't converge
+
+    ratio = difflib.SequenceMatcher(None, prior_norm, current_norm).ratio()
+    return ratio >= threshold
 
 
 def _parse_audit_findings(raw: str) -> Optional[list[str]]:

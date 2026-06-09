@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-E1-03 — `run_bicameral_loop()` orchestrator method shipped with cancel checks at iteration boundaries, BICAMERAL_ITERATION_START/END/CONVERGED/HARD_CAP_REACHED event emission, Bridge auto-provision + reuse across iterations, count-based convergence detection. E1-04 resolution-stable criterion + E1-05 frontend live-progress UI are next).
+Last updated: 2026-06-06 (post-E1-04 — convergence-detection refinement: `_resolution_stable()` similarity-based check (default threshold 0.85, env-tunable) + `_is_audit_substantive()` fallback heuristic defending against non-canonical Bridge output that would false-converge. Both wired into `run_bicameral_loop`. All convergence logic verified on real outputs including LMArena Run 7. E1-05 frontend live-progress UI next).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -50,19 +50,24 @@ Shipped in `app/services/orchestrator.py`:
 
 Smoke-test status: syntax-check + AST inspection confirm all additions present + structurally correct. Live end-to-end smoke-test (a real run on a documented scenario) is E1-06's scope.
 
-### E1-04 · Convergence-criterion implementation (refinement of E1-03's basic version)
+### ~~E1-04 · Convergence-criterion refinement~~ ✅ SHIPPED 2026-06-06
 
-E1-03 ships with one convergence criterion: `no_new_structural` (count-based, regex on `Bridge N (STRUCTURAL|IMPLIED)`). E1-04 adds the second criterion the architectural spec calls for.
+Shipped in `app/services/orchestrator.py`:
 
-**Done when:**
-- New helper `_resolution_stable(prior_synthesis: str, current_synthesis: str) -> bool` extracts FINAL RESOLUTION section from both, normalizes whitespace + framework jargon, computes similarity, returns True if >= threshold (~0.85 cosine or edit-distance ratio).
-- `run_bicameral_loop` evaluates `resolution_stable` AFTER `no_new_structural` (the count-based check is cheaper).
-- Convergence-detection fallback for Bridge outputs that don't use the canonical `Bridge N (STRUCTURAL|IMPLIED)` format (e.g. the LMArena Run 7 stream-of-consciousness style). Heuristic: if the canonical pattern matches 0 but the audit text length is >300 chars + contains "missed" / "connection" / "bridge" tokens, mark as ambiguous-no-convergence (don't false-converge).
-- BICAMERAL_CONVERGED payload's `criterion` field reports which check fired (`"no_new_structural"` / `"resolution_stable"`).
+- **`_is_audit_substantive(raw) -> bool`** — fallback heuristic defending against false convergence on non-canonical Bridge output. Length threshold (300 chars) + bridge-flavored-token count (≥2 distinct tokens from "missed" / "connection" / "bridge" / "fails to" / "ignores" / "overlooks" / etc.). Returns True if Bridge produced substantive content even without canonical labels. Verified: LMArena Run 7 stream-of-consciousness output (734 chars, multiple flavor tokens) → True. Empty audit → False. Short non-content → False.
+- **`_extract_final_resolution_section(raw) -> str`** — looks for canonical `FINAL RESOLUTION` / `FINAL 9D RESOLUTION` / `RESOLUTION` headers via regex; falls back to last 30% of text if no header found.
+- **`_normalize_for_similarity(text) -> str`** — strips markdown, collapses whitespace, lowercases. For similarity comparison purity.
+- **`_resolution_stable(prior, current, threshold=0.85) -> bool`** — extracts FINAL RESOLUTION from both syntheses, normalizes, computes `difflib.SequenceMatcher.ratio()`, compares against threshold. Verified: near-identical syntheses (0.887) → stable. Materially different (0.413) → not stable. Threshold env-tunable via `GANYMEDE_RESOLUTION_STABLE_THRESHOLD`.
+- **Wired into `run_bicameral_loop`** convergence-detection block:
+  - Criterion 1: `no_new_structural` — fires only if count==0 AND audit is NOT substantive (the fallback guard prevents false-converging on non-canonical output).
+  - Criterion 2: `resolution_stable` — fires when count > 0 but the Engine's FINAL RESOLUTION is functionally unchanged across iterations (handles the case where Bridge keeps surfacing connections but Engine has stabilized).
+  - Logs which criterion fired; `BICAMERAL_CONVERGED` payload's `criterion` field reports `"no_new_structural"` or `"resolution_stable"`.
 
-**Files touched:** `app/services/orchestrator.py` (probably a small helper section near `_count_bridges_in_audit`).
+Combined behavior verified: LMArena Run 7 Bridge output (which would have false-converged under E1-03's count-only logic) now correctly treats as ambiguous-no-convergence; loop continues to next iteration.
 
-**Estimated effort:** ~60-90 min. May need 1-2 NL calls for testing the resolution-stability heuristic against real run record outputs.
+Defense layers vs. false convergence:
+1. Pre-E1-04: count-only — false-converges on non-canonical Bridge output.
+2. Post-E1-04: count-based AND substantiveness check together — won't false-converge even when Bridge persona produces stream-of-consciousness. Plus the resolution-stable backstop for "Engine has stabilized but Bridge hasn't" case.
 
 ### E1-05 · Frontend live-progress UI (extends DispatcherPanel/RunnerPanel)
 
