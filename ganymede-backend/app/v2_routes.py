@@ -181,6 +181,72 @@ class IterateResponse(BaseModel):
     state: SessionStateResponse
 
 
+class BicameralLoopRequest(BaseModel):
+    """Drive the Bicameral Convergence Level 2 closed-loop mirror-bounce.
+
+    Engine ↔ Bridge iteration until convergence or hard cap. Where
+    ``/iterate`` (Level 1) is a 3-stroke thesis-antithesis-synthesis with
+    single-pass audit, this is N-stroke closed-loop convergence with
+    Bridge as the sole friction lens.
+
+    The endpoint blocks until the loop terminates. WS subscribers see
+    BICAMERAL_ITERATION_START/END events around each iteration and one of
+    BICAMERAL_CONVERGED / BICAMERAL_HARD_CAP_REACHED at termination. The
+    operator can cancel mid-loop via ``POST /sessions/{id}/cancel``; the
+    loop observes the flag at its next NotebookLM-call boundary, raises
+    ``SessionCancelledError``, and this endpoint returns 200 with the
+    strokes that landed before cancellation (per the same pattern as
+    ``/iterate``).
+    """
+    model_config = ConfigDict(extra="forbid")
+    truth_packets: list[TruthPacket] = Field(min_length=1)
+    max_iterations: int = Field(
+        default=5, ge=1, le=10,
+        description=(
+            "Hard iteration cap. Loop terminates with "
+            "BICAMERAL_HARD_CAP_REACHED if no convergence by this point. "
+            "1-10 inclusive. Default 5."
+        ),
+    )
+    min_inter_iteration_delay: float = Field(
+        default=5.0, ge=2.0, le=30.0,
+        description=(
+            "Seconds to sleep between iterations (after Bridge audit, "
+            "before next Engine synthesis). Operator-tunable inspection "
+            "window — gives time to watch WS events + decide whether to "
+            "cancel before the next iteration kicks off. 2-30s inclusive. "
+            "Default 5s."
+        ),
+    )
+    bridge_notebook_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Existing Bridge notebook ID to reuse across all iterations. "
+            "Optional. When None, auto-provisions on iteration 1 and "
+            "reuses across subsequent iterations. Reusing pre-built "
+            "Bridge notebooks across runs is faster but only valid if "
+            "the substrate (foundations + Truth Packets) hasn't changed. "
+            "Must NOT be a canonical notebook ID."
+        ),
+    )
+
+
+class BicameralLoopResponse(BaseModel):
+    """Response shape for ``POST /api/v2/sessions/{id}/bicameral-loop``.
+
+    ``strokes`` includes every stroke produced during the loop — 2 per
+    iteration (Engine synthesis + Bridge audit), plus partial strokes if
+    cancellation interrupted mid-iteration. ``state`` reflects terminal
+    status (``complete`` on natural termination after caller's
+    ``/complete``, ``cancelled`` on operator cancel, ``error`` on
+    failure mid-loop, ``running`` if the caller invokes
+    ``/bicameral-loop`` and then handles ``/complete`` separately).
+    """
+    model_config = ConfigDict(extra="forbid")
+    strokes: list[StrokeResult]
+    state: SessionStateResponse
+
+
 class BridgeAuditRequest(BaseModel):
     """Run a single Connection Bridge audit stroke against a Stroke 1 (or
     arbitrary target) text. Bicameral Convergence Level 1.
@@ -587,6 +653,88 @@ async def iterate_session(
         raise HTTPException(status_code=500, detail=str(exc))
 
     return IterateResponse(strokes=strokes, state=_state(session))
+
+
+@router.post(
+    "/sessions/{session_id}/bicameral-loop",
+    response_model=BicameralLoopResponse,
+)
+async def bicameral_loop_session(
+    session_id: str,
+    req: BicameralLoopRequest,
+) -> BicameralLoopResponse:
+    """Run the Bicameral Convergence Level 2 closed-loop mirror-bounce (E1-06).
+
+    Each iteration: Engine synthesizes (with prior iteration's Bridge
+    findings as friction, if any) → Bridge audits → convergence check.
+    Loop terminates when no new STRUCTURAL/IMPLIED bridges are surfaced
+    (no_new_structural criterion), when the Engine's FINAL RESOLUTION
+    section is functionally unchanged across iterations (resolution_stable
+    criterion), or when ``max_iterations`` is reached without convergence
+    (hard cap).
+
+    Subscribe to the WS stream at
+    ``/api/v2/sessions/{id}/events/stream`` to render live progress —
+    BICAMERAL_ITERATION_START/END events around each iteration plus one
+    of BICAMERAL_CONVERGED / BICAMERAL_HARD_CAP_REACHED at termination.
+
+    Long-running: each iteration is ~2-3 min (Engine synthesis + Bridge
+    audit + delay), plus ~3-5 min on iteration 1 for Bridge notebook
+    auto-provisioning if no ``bridge_notebook_id`` is supplied. Worst-
+    case wall time at default settings (5 iterations, 5s delay): ~20 min.
+
+    Cancel handling: operator hits ``POST /sessions/{id}/cancel`` to
+    interrupt mid-loop. The loop observes the cancel flag at iteration
+    boundaries + before each NotebookLM call, raises
+    ``SessionCancelledError``, and this endpoint returns 200 with
+    ``session.strokes`` (partial progress preserved). Same pattern as
+    ``/iterate``.
+
+    Errors:
+        404 if the session doesn't exist.
+        409 if the session is not in a runnable state (already completed,
+            not iterative).
+        422 if ``max_iterations`` / ``min_inter_iteration_delay`` are
+            out of bounds or the session is not iterative.
+        500 on unexpected orchestrator failure (the session is also
+            transitioned to error state internally).
+    """
+    session = _require_session(session_id)
+    orch = _get_orchestrator()
+
+    if session.status != "running":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session {session_id} is not running (status={session.status})",
+        )
+
+    try:
+        strokes = await orch.run_bicameral_loop(
+            session,
+            truth_packets=req.truth_packets,
+            max_iterations=req.max_iterations,
+            min_inter_iteration_delay=req.min_inter_iteration_delay,
+            bridge_notebook_id=req.bridge_notebook_id,
+        )
+    except SessionCancelledError as exc:
+        # Operator cancelled mid-loop. session.strokes is the source of
+        # truth for what landed before cancellation. Return 200 with
+        # the partial result list — same pattern as iterate_session.
+        logger.info(
+            "bicameral_loop_session: session %s cancelled at %s; returning %d partial stroke(s)",
+            session_id, exc.where, len(session.strokes),
+        )
+        return BicameralLoopResponse(strokes=session.strokes, state=_state(session))
+    except ValueError as exc:
+        # Non-iterative session, max_iterations out of range, or delay out of range
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        logger.exception("bicameral_loop_session failed for session %s", session_id)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return BicameralLoopResponse(strokes=strokes, state=_state(session))
 
 
 @router.post(

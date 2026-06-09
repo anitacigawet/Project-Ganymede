@@ -91,19 +91,25 @@ Smoke-test status: `npx tsc --noEmit` against the project's tsconfig passes clea
 
 **DispatcherPanel deferred**: DispatcherPanel doesn't use WebSocket (it's fetch-based, blocking until /iterate returns). Wiring bicameral live-progress there requires adding a WS subscription during the /iterate call — separate work, lower priority. The RunnerPanel is the canonical operator-driven surface; Z-SPAN as Pl2 first consumer will use the v2 API directly, not the DispatcherPanel UI.
 
-### E1-06 · First live run on a documented test scenario
+### E1-06 · First live run on a documented test scenario (operator-driven)
 
 Run the new loop end-to-end on a scenario the operator approves; write up the run record.
 
+**Pre-E1-06 prep landed:** the HTTP endpoint `POST /api/v2/sessions/{id}/bicameral-loop` wiring `BicameralLoopRequest` → `orch.run_bicameral_loop` is shipped in `app/v2_routes.py` (2026-06-06). `SessionCancelledError` caught and returns 200 with partial strokes per the same pattern as `/iterate`. Same response shape as `/iterate` (strokes + state).
+
 **Done when:**
 - Operator-approved test scenario selected (candidates per ROADMAP: a fresh Cleanroom-shape question similar to LMArena but different domain — non-political per standing rule).
-- `run_bicameral_loop` fires end-to-end; converges or hits hard cap cleanly; cancel-test verified mid-loop.
-- New run record at `docs/experiments/runs/` documenting Stroke 1, iteration trace, convergence outcome.
-- Architecture_History milestone (43) capturing what shipped + what the loop showed about the partial-validation gap from milestone 42.
+- Backend running with a healthy NotebookLM session.
+- `run_bicameral_loop` fires end-to-end via the new endpoint; converges or hits hard cap cleanly; cancel-test verified mid-loop (POST /cancel during iteration N+1 → SessionCancelledError → partial result returned, WS subscribers see SESSION_CANCELLED).
+- Frontend live-progress UI verified: BicameralProgressIndicator renders iteration counter, side indicator, cancel button while running; terminal-state messaging (CONVERGED / HARD_CAP_REACHED) renders correctly.
+- New run record at `docs/experiments/runs/Bicameral_Loop_First_Run.md` documenting scenario, iteration trace (per-iteration Engine + Bridge strokes), convergence outcome, observed wall time, and any persona-output observations.
+- Architecture_History milestone 44 capturing what shipped + what the loop showed about the partial-validation gap from milestone 42.
 
 **Files touched:** `docs/experiments/runs/<new-record>.md`, `docs/history/Architecture_History.md`.
 
-**Estimated effort:** ~2-3 hours including write-up. NotebookLM calls per loop iteration; budget ~15-25 calls for a full run with cancel-test and second-run verification.
+**Estimated effort:** ~2-3 hours including write-up. NotebookLM call budget: ~14 for Bridge provisioning (iter 1) + 2 per iteration × ~3 iterations = ~20 calls. Plus cancel-test re-run if needed.
+
+**Operator-gated.** Requires live NotebookLM session + operator-approved scenario. Not autonomous-territory; flag for next session where backend + auth + scenario approval are available.
 
 ---
 
