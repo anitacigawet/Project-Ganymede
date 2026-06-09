@@ -225,6 +225,49 @@ class SessionEventType(str, Enum):
     has been recorded. Payload: ``{ "stroke": StrokeResult }``."""
 
     STROKE_COMPLETED = "stroke_completed"
+
+    # ---- Bicameral Convergence Level 2 events (E1-02 / E1-03) ----
+    # Emitted by ``run_bicameral_loop`` to give operators visual transparency
+    # into the closed-loop mirror-bounce. Per the architectural spec at
+    # ``docs/concepts/Bicameral_Convergence.md``, visual transparency is one
+    # of the five mandatory operator control surfaces — the operator needs
+    # to be able to see iteration progress in real time to know when to
+    # intervene (cancel, adjust delays, etc.).
+    #
+    # Each iteration emits START + END around its Engine + Bridge pair.
+    # Terminal outcomes emit either CONVERGED (clean termination — no new
+    # bridges surfaced or resolution stabilized) or HARD_CAP_REACHED
+    # (hit the iteration cap without converging, partial result returned).
+
+    BICAMERAL_ITERATION_START = "bicameral_iteration_start"
+    """Fired at the top of each Bicameral loop iteration, before the
+    Engine synthesis kicks off. Payload: ``{ "iteration": int,
+    "max_iterations": int, "include_bridge": bool }``."""
+
+    BICAMERAL_ITERATION_END = "bicameral_iteration_end"
+    """Fired at the bottom of each Bicameral loop iteration, after the
+    Bridge audit completes (or after the Engine synthesis if Bridge was
+    skipped this iteration). Payload: ``{ "iteration": int,
+    "engine_stroke_number": int, "bridge_stroke_number": Optional[int],
+    "new_bridges_surfaced": Optional[int] }``."""
+
+    BICAMERAL_CONVERGED = "bicameral_converged"
+    """Terminal event for ``run_bicameral_loop``. Indicates the loop
+    detected convergence (no new STRUCTURAL/IMPLIED bridges in the last
+    iteration, or resolution text stabilized between iterations). The
+    session is NOT auto-completed by this event — the caller drives
+    ``/complete`` afterward to finalize. Payload:
+    ``{ "iterations": int, "criterion": str }``
+    where ``criterion`` is one of ``"no_new_structural"``,
+    ``"resolution_stable"``."""
+
+    BICAMERAL_HARD_CAP_REACHED = "bicameral_hard_cap_reached"
+    """Terminal event for ``run_bicameral_loop``. Indicates the loop
+    hit ``max_iterations`` without converging. The partial result is
+    still returned; the operator may choose to re-run with a higher
+    cap or accept the partial. Payload: ``{ "iterations": int,
+    "max_iterations": int }``."""
+
     SESSION_COMPLETE = "session_complete"
     """Terminal event. Payload: ``{ "final_resolution": FinalResolution }``."""
 
