@@ -9,6 +9,83 @@ import json
 DISPATCHER_PATHWAYS = ("cleanroom", "genie", "offensive", "mirror_audit")
 
 
+# ---------------------------------------------------------------------------
+# Pl3 Operator Lens — translation register library
+#
+# The translation stroke takes a previously-recorded stroke's raw_response
+# and re-expresses it in the chosen register, preserving analytical claims
+# 1:1 while swapping framework jargon for legible operator-facing vocabulary.
+#
+# Each register is a system-prompt instruction that's prepended to the
+# source text in the Gemini Flash call. The constraint shared across all
+# registers: NO new claims, NO softening of conclusions, NO hedging the
+# original didn't carry. Just translate the vocabulary.
+#
+# Why Gemini Flash and not NotebookLM: translation is a reformulation,
+# not new analysis. Gemini Flash is faster (~1-2s vs NotebookLM's 30-50s),
+# cheaper, and doesn't require provisioning a sibling notebook. Doesn't
+# fight the canonical Engine/Auditor/Bridge personas either.
+# ---------------------------------------------------------------------------
+
+TRANSLATION_REGISTERS = ("plain_english", "cube_of_space", "executive_brief")
+
+
+_TRANSLATION_PROMPTS = {
+    "plain_english": """You are a translator. Re-express the following analysis in plain everyday English suitable for someone unfamiliar with the 9D-Chess strategic-physics framework. Preserve the analytical claims and structural reasoning 1:1 — do NOT add new claims, soften conclusions, introduce hedging the original didn't carry, or change the strategic logic.
+
+Translate the jargon while preserving the meaning:
+- "DAI" / "Dimensional Awareness Index" → "how many dimensions of the situation each actor can see"
+- "DAP" / "Dimensional Awareness Profile" → "which dimensions the actor pays attention to"
+- "SDS" / "Set of Disadvantageous States" → "the bad outcomes the opponent gets funneled into"
+- "ROEM" / "Reverse Observer Effect Model" → "the trap where being observed forces the opponent into bad moves"
+- "Strategic Lasso" / "Strategic Funnel" → "the gradual narrowing of the opponent's options"
+- "Incomprehensible Move" → "a move so dimensionally different the opponent can't process it in time"
+- "Convergence Theorem" → "the structural certainty that the opponent's options collapse to a bad outcome"
+- "Set" archetype → "chaotic disruption" or "disruptive force"
+- "Horus" archetype → "established order" or "legitimate authority"
+- "Go-like" → "long-term territorial / positional"
+- "Chess-like" → "direct tactical confrontation"
+- "Ω" / "strategic universe" → "the full strategic situation"
+- "Ω'" / "perceived sub-universe" → "the limited view the opponent operates with"
+
+Keep the per-dimension breakdown structure if present, but use plain words for dimension names where possible. Keep the FINAL RESOLUTION section. Don't omit anything substantive. The output should read like a thoughtful colleague explaining the same conclusion in clearer words.
+
+Source analysis to translate:
+{source_text}""",
+
+    "cube_of_space": """You are a translator using the Cube of Space register — visceral geometric vocabulary surfaced in the 2026-06-06 framework exchange. Re-express the following analysis preserving the analytical claims and structural reasoning 1:1, but using more legible spatial/geometric framing.
+
+Translate the framework jargon while preserving meaning:
+- "DAI" / "dimensional awareness" → "higher-dimensional perception", "seeing the full topology"
+- "SDS" / "Set of Disadvantageous States" → "gravity well of bad outcomes", "predefined collapse basin", "geometric trap"
+- "ROEM" → "the reverse observer effect: being watched forces collapse"
+- "Strategic Lasso" / "Funnel" → "the narrowing geometric path", "the closing trap", "the funnel tightening"
+- "Convergence Theorem" → "the inevitable collapse into the predefined basin"
+- "Set" / "Horus" archetypes — keep these; the Cube uses similar archetypal vocabulary
+- "central intersection", "North face / South face", "ascending / descending spirals" — use where natural
+- Embrace geometric metaphors: "the opponent's path runs through a narrowing corridor", "they cross into the gravity well at the central intersection"
+- Goal phrase: "actualizes the concept instead of avoiding it" — use when describing how the strategist operates the meta-position
+
+Preserve all analytical content; just shift the vocabulary toward geometric/spatial visceral framing. Keep per-dimension breakdown if present. Keep FINAL RESOLUTION. Don't add new claims or change conclusions.
+
+Source analysis to translate:
+{source_text}""",
+
+    "executive_brief": """You are producing an executive brief. Re-express the following analysis as a tight 3-5 paragraph summary suitable for a busy decision-maker. Preserve the analytical claims and strategic conclusions 1:1, but cut the per-dimension breakdown, framework vocabulary (DAI / SDS / ROEM / Strategic Lasso / Set / Horus / etc.), and procedural detail.
+
+Structure exactly:
+1. **Bottom line** (1 sentence): the predicted outcome or recommended action.
+2. **Why this is the move** (2-3 sentences): the underlying strategic mechanism, in plain business / strategy language.
+3. **Risk that would falsify this** (1-2 sentences): what would have to be true for the conclusion to be wrong.
+4. **What to watch for** (1-2 sentences): concrete indicators the operator should track to validate or falsify.
+
+Drop framework jargon entirely. Don't add new claims or soften conclusions. If the source is ambivalent or has multiple paths, the brief reflects that ambivalence honestly — don't manufacture confidence.
+
+Source analysis to translate:
+{source_text}""",
+}
+
+
 DISPATCHER_PROMPT = """You are an intent router for a strategic-analysis system that supports four pathways:
 
 1. cleanroom -- predict whether a specific outcome will happen.
@@ -59,6 +136,58 @@ class GeminiService:
     def __init__(self):
         # The client automatically picks up GOOGLE_API_KEY from environment variables
         self.client = genai.Client()
+
+    async def translate_with_register(
+        self,
+        source_text: str,
+        register: str,
+    ) -> str:
+        """Pl3 Operator Lens — translate a stroke's analytical output into the chosen register.
+
+        Args:
+            source_text: the raw stroke text to translate.
+            register: one of ``TRANSLATION_REGISTERS`` — selects the
+                register-specific prompt from ``_TRANSLATION_PROMPTS``.
+
+        Returns:
+            The translated text. Plain string — no JSON parsing,
+            no extraction; the model returns its translation directly.
+
+        Raises:
+            ValueError: if ``register`` is not in the registry.
+            RuntimeError: if Gemini returns an empty / unparseable
+                response (transient — caller can retry).
+        """
+        if register not in _TRANSLATION_PROMPTS:
+            raise ValueError(
+                f"Unknown translation register: {register!r}. "
+                f"Choose one of: {', '.join(TRANSLATION_REGISTERS)}"
+            )
+        if not source_text or not source_text.strip():
+            raise ValueError("source_text must be non-empty")
+
+        prompt = _TRANSLATION_PROMPTS[register].replace(
+            "{source_text}", source_text,
+        )
+
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            text = response.text.strip() if response.text else ""
+            if not text:
+                raise RuntimeError(
+                    f"Gemini returned empty translation for register={register}"
+                )
+            return text
+        except Exception as exc:
+            # Re-raise so the orchestrator can surface to the caller —
+            # translation failures are caller-visible (not silent), the
+            # operator should know if the model can't translate.
+            raise RuntimeError(
+                f"Translation failed for register={register}: {exc}"
+            ) from exc
 
     async def identify_entities(self, scenario: str) -> list[str]:
         """

@@ -33,6 +33,7 @@ import {
   type ConvergenceCriterion,
   IDLE_BICAMERAL_STATE,
 } from './BicameralProgressIndicator';
+import { StrokeTranslator } from './StrokeTranslator';
 
 type Pathway = 'cleanroom' | 'genie' | 'offensive' | 'mirror_audit';
 type RunMode = 'triage' | 'full_loop' | 'synthesis';
@@ -87,6 +88,11 @@ interface StrokeResult {
   /** Which audit instance produced this stroke, when pathway is mirror_audit.
    *  "mirror_auditor" or "bridge". Null for synthesis strokes. */
   audit_kind?: 'mirror_auditor' | 'bridge' | null;
+  /** P1-03b: cleaned text when a trailing chatbot-CTA was stripped from
+   *  raw_response. UI prefers cleaned_response when present. */
+  cleaned_response?: string | null;
+  /** P1-03b: the stripped CTA text, preserved for forensic visibility. */
+  stripped_cta?: string | null;
   started_at: string;
   completed_at: string;
 }
@@ -1136,7 +1142,11 @@ export function RunnerPanel({
 
         {/* Stroke results */}
         {strokes.map((stroke) => (
-          <StrokeCard key={stroke.stroke_number} stroke={stroke} />
+          <StrokeCard
+            key={stroke.stroke_number}
+            stroke={stroke}
+            sessionId={sessionId}
+          />
         ))}
 
         {/* Output handoff. Single behaviour for every pathway: copy the
@@ -1194,7 +1204,13 @@ function Field({ label, hint, value, onChange, rows = 4 }: FieldProps) {
   );
 }
 
-function StrokeCard({ stroke }: { stroke: StrokeResult }) {
+function StrokeCard({
+  stroke,
+  sessionId,
+}: {
+  stroke: StrokeResult;
+  sessionId: string | null;
+}) {
   // Audit-style strokes (pathway=mirror_audit) split into Mirror Auditor and
   // Connection Bridge by audit_kind. Auditor strokes carry a parsed
   // audit_findings list (four fault categories); Bridge strokes leave that
@@ -1262,6 +1278,20 @@ function StrokeCard({ stroke }: { stroke: StrokeResult }) {
           {stroke.raw_response}
         </pre>
       </details>
+
+      {/* Pl3 Operator Lens — per-stroke translation panel. Sits below the
+          raw-response details so it's discoverable but doesn't dominate
+          the card. Each register's translation is fetched lazily on
+          selection and cached for the session's life. */}
+      {sessionId && (
+        <StrokeTranslator
+          sessionId={sessionId}
+          strokeNumber={stroke.stroke_number}
+          sourceLength={
+            (stroke.cleaned_response ?? stroke.raw_response).length
+          }
+        />
+      )}
     </div>
   );
 }

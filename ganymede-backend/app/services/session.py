@@ -89,6 +89,12 @@ class Session:
         self._events: list[SessionEvent] = []
         self._strokes: list[StrokeResult] = []
         self._final: Optional[FinalResolution] = None
+        # Pl3 Operator Lens — translations of strokes into operator-facing
+        # registers. Keyed by ``f"{stroke_number}:{register}"`` so the same
+        # stroke can be translated into multiple registers without
+        # collision. Set via ``record_translation``; read via
+        # ``get_translation`` / ``translations``.
+        self._translations: dict[str, str] = {}
 
         # Lock to serialize state mutations from concurrent orchestrator
         # tasks. Reads (e.g. ``events``, ``strokes``) are not locked —
@@ -313,6 +319,37 @@ class Session:
     def strokes(self) -> list[StrokeResult]:
         """Snapshot of strokes recorded so far. Returns a copy."""
         return list(self._strokes)
+
+    # ------------------------------------------- Pl3 Operator Lens translations
+
+    async def record_translation(
+        self,
+        stroke_number: int,
+        register: str,
+        translated_text: str,
+    ) -> None:
+        """Record a translation of ``stroke_number`` into ``register``.
+
+        Overwrites any prior translation for the same (stroke, register)
+        pair — re-translating is allowed and produces the latest result.
+        """
+        key = f"{stroke_number}:{register}"
+        async with self._lock:
+            self._translations[key] = translated_text
+
+    def get_translation(
+        self,
+        stroke_number: int,
+        register: str,
+    ) -> Optional[str]:
+        """Return the translation of ``stroke_number`` in ``register``, or None."""
+        return self._translations.get(f"{stroke_number}:{register}")
+
+    @property
+    def translations(self) -> dict[str, str]:
+        """Snapshot of all recorded translations. Keyed by
+        ``f"{stroke_number}:{register}"``. Returns a copy."""
+        return dict(self._translations)
 
     @property
     def final(self) -> Optional[FinalResolution]:

@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-milestone 44 — P1-04 Bridge notebook lifecycle decision shipped: operator picked Option C (operator-managed with categorized delete-suggestions); backend registry + survey endpoint + UI panel + `/bridge-notebooks` route all in head. Per operator-locked sequence: Pl3 (Operator Lens) next, then Pl2 at the end).
+Last updated: 2026-06-06 (post-milestone 45 — Pl3 Operator Lens shipped: TranslationRegister enum + Session._translations + GeminiService.translate_with_register + Gemini-Flash-backed run_translation method + POST /sessions/{id}/translate endpoint + StrokeTranslator.tsx self-contained UI component mounted in StrokeCard. Three registers: plain_english, cube_of_space, executive_brief. Per operator-locked sequence: Pl2 (Z-SPAN as first consumer) is now the final remaining phase).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the

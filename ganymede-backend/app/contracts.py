@@ -32,6 +32,38 @@ from pydantic import BaseModel, ConfigDict, Field
 # Pathway — which 9D-Chess Engine framing the Session uses
 # ---------------------------------------------------------------------------
 
+class TranslationRegister(str, Enum):
+    """Pl3 Operator Lens — vocabulary register for downstream translation
+    of a stroke's analytical output.
+
+    The translation stroke (``GanymedeOrchestrator.run_translation``)
+    takes a previously-recorded stroke's ``raw_response`` and re-expresses
+    it in the chosen register, preserving the analytical claims 1:1 while
+    swapping the framework jargon for legible operator-facing vocabulary.
+
+    Pl3 surfaced 2026-06-06 from the Cube-of-Space transcript exchange.
+    The kernel does the analytical work; the register shifts vocabulary.
+    """
+
+    PLAIN_ENGLISH = "plain_english"
+    """Strip framework jargon (DAI / SDS / ROEM / Strategic Lasso /
+    Set/Horus / Go/Chess) and re-express in plain everyday English while
+    preserving the analytical structure (per-dimension breakdown + final
+    resolution). Useful for non-framework-native operators + first-touch
+    consumer-facing surfaces."""
+
+    CUBE_OF_SPACE = "cube_of_space"
+    """Visceral geometric vocabulary from the 2026-06-06 Frameworks
+    Notebook exchange: gravity well, central intersection, North/South
+    face, "actualizes the concept instead of avoiding it", inward-outward
+    spirals. Same analytical kernel; spatial/geometric register."""
+
+    EXECUTIVE_BRIEF = "executive_brief"
+    """Tight 3-5 paragraph decision-maker summary. Bottom-line claim +
+    mechanism + falsification risk + what-to-watch. Drops the
+    per-dimension breakdown + framework vocabulary entirely."""
+
+
 class Pathway(str, Enum):
     """The four pathways currently defined in ``docs/experiments/pathways/``.
 

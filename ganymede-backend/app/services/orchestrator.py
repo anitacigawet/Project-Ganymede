@@ -1018,6 +1018,101 @@ class GanymedeOrchestrator:
             "bridge_persona_applied": True,
         }
 
+    async def run_translation(
+        self,
+        session: Session,
+        stroke_number: int,
+        register: str,
+    ) -> str:
+        """Pl3 Operator Lens — translate one of the session's strokes into a register.
+
+        Looks up the stroke by stroke_number, calls the GeminiService's
+        ``translate_with_register`` with the stroke's ``raw_response``
+        (or ``cleaned_response`` if a CTA was stripped via P1-03b — the
+        cleaned version is what the operator was meant to read), records
+        the result on the session, and returns it.
+
+        Stateless from the caller's perspective — repeated calls produce
+        the same translation (Gemini is deterministic enough at default
+        sampling for this use case). The result is cached server-side
+        on session state for retrieval without re-calling Gemini.
+
+        Args:
+            session: the session containing the stroke to translate.
+            stroke_number: the stroke to translate (1-indexed).
+            register: one of ``TRANSLATION_REGISTERS``.
+
+        Returns:
+            The translated text. Also recorded on ``session._translations``
+            for future retrieval.
+
+        Raises:
+            ValueError: if the stroke doesn't exist, the stroke has empty
+                response text, or the register is invalid.
+            RuntimeError: if Gemini fails — caller-visible.
+        """
+        # Import here to avoid a circular dependency at module load
+        from app.services.gemini_service import GeminiService, TRANSLATION_REGISTERS
+
+        if register not in TRANSLATION_REGISTERS:
+            raise ValueError(
+                f"Unknown translation register: {register!r}. "
+                f"Choose one of: {', '.join(TRANSLATION_REGISTERS)}"
+            )
+
+        # Find the stroke by number
+        target_stroke = None
+        for s in session.strokes:
+            if s.stroke_number == stroke_number:
+                target_stroke = s
+                break
+        if target_stroke is None:
+            raise ValueError(
+                f"Session {session.id}: stroke {stroke_number} not found "
+                f"(have {len(session.strokes)} strokes)"
+            )
+
+        # Prefer cleaned_response (post-P1-03b strip) when it's distinct from
+        # raw_response — that's what the operator was meant to read.
+        source = target_stroke.cleaned_response or target_stroke.raw_response
+        if not source or not source.strip():
+            raise ValueError(
+                f"Session {session.id}: stroke {stroke_number} has empty "
+                f"response — nothing to translate"
+            )
+
+        # Use the orchestrator's own GeminiService instance if one is
+        # already attached (set in main.py at startup) or construct one
+        # on demand. Lazy construction defers the GOOGLE_API_KEY env-var
+        # check until first use.
+        gemini = getattr(self, "_gemini_for_translation", None)
+        if gemini is None:
+            gemini = GeminiService()
+            self._gemini_for_translation = gemini
+
+        logger.info(
+            "Session %s: translating stroke %d (%d chars) into register %r",
+            session.id, stroke_number, len(source), register,
+        )
+
+        translated = await gemini.translate_with_register(
+            source_text=source, register=register,
+        )
+
+        # Persist on session state for future retrieval.
+        await session.record_translation(
+            stroke_number=stroke_number,
+            register=register,
+            translated_text=translated,
+        )
+
+        logger.info(
+            "Session %s: stroke %d translated (%d → %d chars) register=%r",
+            session.id, stroke_number, len(source), len(translated), register,
+        )
+
+        return translated
+
     def _check_cancelled(self, session: Session, where: str) -> None:
         """Raise :class:`SessionCancelledError` if the session has been cancelled.
 

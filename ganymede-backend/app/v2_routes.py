@@ -1062,6 +1062,107 @@ async def stream_events(websocket: WebSocket, session_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Pl3 Operator Lens — translation endpoint
+#
+# Takes a previously-recorded stroke + a register, returns the translation.
+# Translation is server-cached on the session so re-fetching the same
+# (stroke, register) pair doesn't burn another Gemini call.
+# ---------------------------------------------------------------------------
+
+class TranslateRequest(BaseModel):
+    """Translate a stroke into an operator-facing vocabulary register.
+
+    The translation preserves the analytical claims 1:1 while swapping
+    framework jargon for legible operator-facing vocabulary. Backed by
+    Gemini Flash (fast, ~1-2s) rather than NotebookLM — translation is a
+    reformulation, not new analysis.
+    """
+    model_config = ConfigDict(extra="forbid")
+    stroke_number: int = Field(ge=1)
+    """The stroke to translate (1-indexed). Use the stroke_number from
+    StrokeResult or the SYNTHESIS_COMPLETE event's payload."""
+    register: str = Field(min_length=1)
+    """One of: ``plain_english`` / ``cube_of_space`` / ``executive_brief``.
+    See ``app.contracts.TranslationRegister`` for descriptions."""
+
+
+class TranslateResponse(BaseModel):
+    """Response shape for ``POST /api/v2/sessions/{id}/translate``."""
+    model_config = ConfigDict(extra="forbid")
+    stroke_number: int
+    register: str
+    translated_text: str
+    source_length: int
+    """Length of the source text (cleaned_response if P1-03b stripped a
+    CTA, otherwise raw_response). Useful for the UI to compute compression
+    ratio + decide whether to show side-by-side or stacked."""
+    translated_length: int
+
+
+@router.post(
+    "/sessions/{session_id}/translate",
+    response_model=TranslateResponse,
+)
+async def translate_stroke(
+    session_id: str,
+    req: TranslateRequest,
+) -> TranslateResponse:
+    """Translate a stroke into the chosen operator-facing register (Pl3).
+
+    Preserves the analytical claims 1:1 while swapping framework jargon
+    for legible vocabulary. Backed by Gemini Flash — fast (~1-2s wall),
+    cheap, no NotebookLM provisioning. Cached server-side on the session
+    so re-fetching the same (stroke, register) returns the prior result
+    without burning another Gemini call. (Operator can re-call manually
+    to refresh if they want a re-translation — currently the endpoint
+    always re-translates and overwrites; future polish: ``?cached=true``
+    query arg to use the cache.)
+
+    Errors:
+        404 if the session doesn't exist.
+        422 if the stroke doesn't exist on the session, the stroke has
+            empty response text, or the register is invalid.
+        500 if Gemini fails — caller-visible (translation transients
+            don't fail the session itself).
+    """
+    session = _require_session(session_id)
+    orch = _get_orchestrator()
+
+    try:
+        translated = await orch.run_translation(
+            session,
+            stroke_number=req.stroke_number,
+            register=req.register,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        logger.exception(
+            "translate_stroke: Gemini failed for session %s stroke %d register %s",
+            session_id, req.stroke_number, req.register,
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    # Find the source length for the response payload — the orchestrator
+    # used cleaned_response or raw_response; we replicate that lookup so
+    # the UI can show the compression ratio.
+    source_length = 0
+    for s in session.strokes:
+        if s.stroke_number == req.stroke_number:
+            source = s.cleaned_response or s.raw_response
+            source_length = len(source or "")
+            break
+
+    return TranslateResponse(
+        stroke_number=req.stroke_number,
+        register=req.register,
+        translated_text=translated,
+        source_length=source_length,
+        translated_length=len(translated),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Bridge notebook survey endpoint (P1-04 — operator-managed lifecycle)
 #
 # Per the 2026-06-06 operator decision: Bridge notebooks stay until the

@@ -760,6 +760,58 @@ This matches the operator's pattern for MLMS-style tools where the AI can catego
 
 ---
 
+## 45. Pl3 Operator Lens shipped — translation stroke for operator-facing output legibility (2026-06-06)
+
+The Operator Lens primitive surfaced in milestone 43 (the 2026-06-06 Cube-of-Space transcript exchange) is now built end-to-end. Operator can translate any recorded stroke into one of three vocabulary registers — `plain_english`, `cube_of_space`, `executive_brief` — preserving the analytical claims 1:1 while swapping framework jargon for legible operator-facing vocabulary.
+
+### Architectural call: Gemini Flash, not NotebookLM
+
+Translation is a *reformulation*, not new analysis. Choosing Gemini Flash over a NotebookLM-backed Translation Persona:
+
+- **Speed**: ~1-2s wall vs. NotebookLM's 30-50s. The operator can flip between registers fast enough that comparison feels real-time.
+- **No provisioning overhead**: NotebookLM-backed approach would require either a fresh per-translation notebook (~3-5 min provisioning) or a dedicated long-lived Translation notebook (operator approval needed for spawning a new persistent notebook).
+- **No persona conflicts**: NotebookLM notebooks support one persona at a time; the canonical Engine notebook has the "infallible 9D-Chess Umpire" persona which is jargon-heavy by design. Routing translations through Gemini Flash avoids fighting the canonical persona.
+- **Cost**: Gemini Flash is cheap; NotebookLM calls go through the cooldown gate.
+
+The Engine + Auditor + Bridge stay on NotebookLM for their actual analytical work. The Operator Lens sits downstream as a presentation-layer reformulation.
+
+### Three registers shipped
+
+- **`plain_english`** — strip framework jargon (DAI / SDS / ROEM / Strategic Lasso / Set / Horus / Go / Chess / Ω / Ω') and re-express in plain everyday English. Preserves per-dimension breakdown structure + FINAL RESOLUTION. Useful for non-framework-native operators + first-touch consumer surfaces.
+- **`cube_of_space`** — visceral geometric vocabulary from the milestone 43 transcript: gravity well, central intersection, narrowing corridor, "actualizes the concept instead of avoiding it", inward-outward spirals. Same analytical kernel; spatial / geometric register.
+- **`executive_brief`** — tight 3-5 paragraph decision-maker summary. Drops per-dimension breakdown + framework vocabulary entirely. Structure: bottom-line → mechanism → falsification risk → what-to-watch.
+
+The shared discipline across all three: **NO new claims, NO softening of conclusions, NO hedging the original didn't carry**. The prompt enforces this explicitly. Adding new registers is a one-entry addition to `_TRANSLATION_PROMPTS` in `gemini_service.py`.
+
+### What this milestone closes
+
+- The "framework output is correct but jargon-heavy" UX problem flagged in milestone 43. Operator can now translate any stroke into legible language without contaminating upstream reasoning (NOT a persona change) and without compounding scaffolding (NOT a corpus addition).
+- Pl3 is shipped per the operator-locked sequence (P1-03b → P1-04 → Pl3 → Pl2).
+
+### Shipped
+
+- **`TranslationRegister` enum** in `ganymede-backend/app/contracts.py` — three registers + docstrings explaining the intent of each.
+- **Session translation storage** in `ganymede-backend/app/services/session.py` — `Session._translations: dict[str, str]` keyed by `f"{stroke_number}:{register}"`. `record_translation()` async method (acquires session lock) + `get_translation()` getter + `translations` property snapshot.
+- **`GeminiService.translate_with_register(source_text, register)`** + **`_TRANSLATION_PROMPTS`** library in `ganymede-backend/app/services/gemini_service.py`. Prompts are register-specific system instructions that prepend the source text in the Gemini Flash call. Each register's prompt explicitly forbids new claims / softening / hedging.
+- **`GanymedeOrchestrator.run_translation(session, stroke_number, register)`** in `ganymede-backend/app/services/orchestrator.py`. Looks up the stroke, prefers `cleaned_response` over `raw_response` when P1-03b's CTA-strip ran, calls Gemini, records the result on the session, returns the translated text.
+- **`POST /api/v2/sessions/{id}/translate`** endpoint in `ganymede-backend/app/v2_routes.py`. Body: `{stroke_number, register}`. Returns: `{stroke_number, register, translated_text, source_length, translated_length}` for the UI to compute compression-ratio indicators.
+- **`StrokeTranslator.tsx`** self-contained UI component. Three register-selection buttons with color-coded badges (sky for plain_english, violet for cube_of_space, emerald for executive_brief). Per-stroke local cache so re-selecting a register without explicit refresh doesn't re-fire. Refresh button for explicit re-translation. Compression-ratio indicator (`X% shorter` / `X% longer` vs. source). Loading + error states inline.
+- **Mounted in `StrokeCard`** inside `RunnerPanel.tsx` — every stroke now has the Operator Lens panel below the raw-response details.
+
+### What this milestone does NOT close
+
+- **First live comparison run** (Pl3 deliverable per ROADMAP) — operator-driven, requires backend + live session. The infrastructure is in head; the run + write-up is the operator's call.
+- **DispatcherPanel integration** — DispatcherPanel doesn't use WebSocket and doesn't render strokes the same way; translation UI in that surface is a separate small chunk if needed.
+- **More registers** — the three shipped cover the immediate Cube-of-Space-inspired use case. Adding registers (operator-fluent, technical-tight, etc.) is one entry per register in `_TRANSLATION_PROMPTS`.
+
+### Pending after this milestone
+
+- Per operator-locked sequence: **Pl2 Z-SPAN as first consumer** at the very end (persistent session state + integration spec + first live Z-SPAN strategic-planning session).
+- E1-06 first live Bicameral Level 2 run still operator-driven.
+- 2026-06-30 LMArena leaderboard-rank resolution still on calendar.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -815,3 +867,4 @@ This matches the operator's pattern for MLMS-style tools where the AI can catego
 | LMArena partial validation — Anthropic pause call (42) | [`../experiments/runs/06_LMArena_Anthropic_Cleanroom.md`](../experiments/runs/06_LMArena_Anthropic_Cleanroom.md) § "Real-world outcome — 2026-06-05" |
 | Z-SPAN pattern-recognition + Operator Lens primitive (43) | Transcripts at `C:\Users\james\Documents\NotebookLM Transcript.txt` + `C:\Users\james\Documents\Gemini Transcript.txt` (operator filesystem, not in repo); Onboarding handoff at `C:\Users\james\Desktop\Z-SPAN_Ganymede_Onboarding.md`; Pl3 Operator Lens spec in [`../../ROADMAP.md`](../../ROADMAP.md) § "Silo 4 — Pluggable" |
 | P1-04 Bridge notebook lifecycle (44) | `ganymede-backend/app/services/bridge_registry.py` + `GET /api/v2/bridge/notebooks` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/BridgeNotebookManager.tsx` + `/bridge-notebooks` route at `ganymede-ui/src/app/bridge-notebooks/page.tsx` |
+| Pl3 Operator Lens (45) | `TranslationRegister` enum in `ganymede-backend/app/contracts.py` + `Session._translations` in `ganymede-backend/app/services/session.py` + `GeminiService.translate_with_register` + `_TRANSLATION_PROMPTS` in `ganymede-backend/app/services/gemini_service.py` + `GanymedeOrchestrator.run_translation` in `ganymede-backend/app/services/orchestrator.py` + `POST /api/v2/sessions/{id}/translate` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/StrokeTranslator.tsx` |
