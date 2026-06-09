@@ -12,10 +12,13 @@ orchestrator's auto-provision path) — those aren't in the registry and
 remain operator-managed via the bare ``DELETE /api/v2/notebooks/{id}``
 endpoint.
 
-Persistence: in-memory for v1. Survives within a backend process but
-clears on restart. Follow-up: file-backed persistence so the registry
-survives across backend restarts (the actual notebooks still exist in
-NotebookLM either way; the registry just loses the metadata).
+Persistence: JSON file at ``ganymede-backend/data/bridge_registry.json``
+by default (override via ``GANYMEDE_BRIDGE_REGISTRY_DB``). Written
+atomically (temp + rename) on every ``register`` / ``deregister`` so a
+backend crash doesn't lose tracking metadata. Loaded on startup. This
+is the symmetric companion to the Pl2-01 SessionStore — both registries
+now outlive process lifetime so the operator-facing management UIs keep
+working across restarts.
 
 Lifecycle:
 - Orchestrator auto-provisions a Bridge notebook → calls ``register``.
@@ -32,10 +35,14 @@ ones look safe to delete; the operator makes the call.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import tempfile
 import threading
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -104,15 +111,127 @@ class BridgeNotebookSurveyRow:
 
 
 class BridgeNotebookRegistry:
-    """Thread-safe in-memory registry of auto-provisioned Bridge notebooks.
+    """Thread-safe registry of auto-provisioned Bridge notebooks with
+    optional JSON-file persistence.
 
     Single instance per backend process (module-global below). Tests that
-    need an isolated registry should instantiate this directly.
+    need an isolated registry should instantiate this directly with
+    ``persistence_path=None`` (the in-memory-only mode).
+
+    When ``persistence_path`` is set, every register / deregister writes
+    the full registry atomically (temp file + rename) so a backend crash
+    doesn't lose metadata. Load any existing file at construction time
+    via :meth:`load_from_disk`.
     """
 
-    def __init__(self):
+    def __init__(self, persistence_path: Optional[Path | str] = None):
         self._entries: dict[str, BridgeNotebookEntry] = {}
         self._lock = threading.Lock()
+        self._persistence_path: Optional[Path] = (
+            Path(persistence_path) if persistence_path else None
+        )
+        if self._persistence_path is not None:
+            self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # ---- persistence helpers ----
+
+    def load_from_disk(self) -> int:
+        """Load entries from the persistence file if one exists. Returns
+        the count loaded. No-op if no persistence path is set or the file
+        doesn't exist. Called from ``app/main.py`` on startup, before
+        any register/deregister.
+
+        Failures to parse the file log a warning and start empty rather
+        than killing startup. The in-memory registry is the working
+        copy; on the next mutation, the corrupted file is replaced.
+        """
+        if self._persistence_path is None or not self._persistence_path.exists():
+            return 0
+        try:
+            with open(self._persistence_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(
+                "BridgeNotebookRegistry: could not load %s (%s) — starting empty",
+                self._persistence_path, exc,
+            )
+            return 0
+        entries = data.get("entries", [])
+        loaded = 0
+        with self._lock:
+            for raw in entries:
+                try:
+                    entry = BridgeNotebookEntry(
+                        notebook_id=raw["notebook_id"],
+                        title=raw["title"],
+                        created_at=datetime.fromisoformat(raw["created_at"]),
+                        session_id=raw.get("session_id"),
+                        provision_path=raw["provision_path"],
+                        foundations_uploaded=raw.get("foundations_uploaded", 0),
+                        truth_packets_uploaded=raw.get("truth_packets_uploaded", 0),
+                    )
+                except (KeyError, ValueError) as exc:
+                    logger.warning(
+                        "BridgeNotebookRegistry: skipping malformed entry "
+                        "(%s): %s",
+                        exc, raw,
+                    )
+                    continue
+                self._entries[entry.notebook_id] = entry
+                loaded += 1
+        logger.info(
+            "BridgeNotebookRegistry: loaded %d entry/entries from %s",
+            loaded, self._persistence_path,
+        )
+        return loaded
+
+    def _persist_locked(self) -> None:
+        """Write the full registry to the persistence file atomically.
+        Must be called while ``self._lock`` is held — reads ``self._entries``
+        directly.
+
+        Persistence failure logs but does NOT raise — a disk hiccup
+        should not kill an in-progress operation.
+        """
+        if self._persistence_path is None:
+            return
+        try:
+            payload = {
+                "entries": [
+                    {
+                        "notebook_id": e.notebook_id,
+                        "title": e.title,
+                        "created_at": e.created_at.isoformat(),
+                        "session_id": e.session_id,
+                        "provision_path": e.provision_path,
+                        "foundations_uploaded": e.foundations_uploaded,
+                        "truth_packets_uploaded": e.truth_packets_uploaded,
+                    }
+                    for e in self._entries.values()
+                ]
+            }
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=".bridge_registry.",
+                suffix=".tmp",
+                dir=str(self._persistence_path.parent),
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=2)
+                os.replace(tmp_path, self._persistence_path)
+            except Exception:
+                # Clean up the temp file if rename never happened
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as exc:
+            logger.error(
+                "BridgeNotebookRegistry: persist failed (%s) — registry will "
+                "diverge from disk until next successful write",
+                exc,
+            )
 
     def register(
         self,
@@ -134,6 +253,7 @@ class BridgeNotebookRegistry:
                 foundations_uploaded=foundations_uploaded,
                 truth_packets_uploaded=truth_packets_uploaded,
             )
+            self._persist_locked()
             logger.info(
                 "BridgeNotebookRegistry: registered %s (%s, session=%s, path=%s)",
                 notebook_id, title, session_id, provision_path,
@@ -148,6 +268,7 @@ class BridgeNotebookRegistry:
         with self._lock:
             entry = self._entries.pop(notebook_id, None)
             if entry is not None:
+                self._persist_locked()
                 logger.info(
                     "BridgeNotebookRegistry: deregistered %s (%s)",
                     notebook_id, entry.title,
@@ -259,6 +380,31 @@ class BridgeNotebookRegistry:
         """Snapshot count of registered notebooks. For ops/tests."""
         with self._lock:
             return len(self._entries)
+
+    def bind_persistence(self, path: Path | str) -> None:
+        """Attach a persistence path to the (otherwise in-memory) registry.
+
+        Used by ``app/main.py`` on startup so the module-global registry
+        created at import time can be paired with the file-path that's
+        env-resolvable at startup. After binding, every subsequent
+        register/deregister persists; calling ``load_from_disk()``
+        immediately after bind hydrates any prior state.
+        """
+        self._persistence_path = Path(path)
+        self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def default_persistence_path() -> Path:
+    """Canonical path for the production BridgeNotebookRegistry JSON file.
+
+    Resolves to ``ganymede-backend/data/bridge_registry.json`` relative to
+    this module. Override at construction time via the
+    ``GANYMEDE_BRIDGE_REGISTRY_DB`` env var, read by ``app/main.py`` on
+    startup.
+    """
+    here = Path(__file__).resolve().parent  # app/services/
+    backend_root = here.parent.parent  # ganymede-backend/
+    return backend_root / "data" / "bridge_registry.json"
 
 
 # Module-global registry. Single instance per process — same pattern as

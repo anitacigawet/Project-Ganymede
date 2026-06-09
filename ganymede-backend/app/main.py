@@ -31,6 +31,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from app.services.bridge_registry import (
+    default_persistence_path as default_bridge_registry_path,
+    registry as bridge_registry,
+)
 from app.services.notebooklm import NotebookLMService
 from app.services.orchestrator import GanymedeOrchestrator
 from app.services.session import registry as session_registry
@@ -149,6 +153,30 @@ async def startup_event() -> None:
                 "will NOT survive restart)",
                 db_path, exc,
             )
+
+    # ---- Bridge notebook registry persistence (symmetric to SessionStore) ----
+    # The orchestrator-side BridgeNotebookRegistry tracks auto-provisioned
+    # Bridge notebooks so the /bridge-notebooks management UI can surface
+    # categorized delete suggestions. Without persistence, every backend
+    # restart orphaned the metadata (the notebooks themselves persist in
+    # NotebookLM but the survey UI lost them). Pl2-01 sister chunk.
+    bridge_db_override = os.getenv("GANYMEDE_BRIDGE_REGISTRY_DB")
+    bridge_db_path = (
+        bridge_db_override if bridge_db_override else str(default_bridge_registry_path())
+    )
+    try:
+        bridge_registry().bind_persistence(bridge_db_path)
+        bridge_loaded = bridge_registry().load_from_disk()
+        logger.info(
+            "BridgeNotebookRegistry persistence: file at %s, loaded %d prior entry/entries",
+            bridge_db_path, bridge_loaded,
+        )
+    except Exception as exc:
+        logger.error(
+            "BridgeNotebookRegistry persistence init failed at %s: %s — "
+            "continuing in in-memory-only mode for bridge tracking",
+            bridge_db_path, exc,
+        )
 
     try:
         await notebooklm_svc.initialize()
