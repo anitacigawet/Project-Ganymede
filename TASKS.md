@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-E1-01 — cancel endpoint + thread-safe flag + orchestrator plumbing shipped; E1-02 SessionEventType extensions partially landed (SESSION_CANCELLED added with E1-01); E1-03 run_bicameral_loop is next).
+Last updated: 2026-06-06 (post-E1-03 — `run_bicameral_loop()` orchestrator method shipped with cancel checks at iteration boundaries, BICAMERAL_ITERATION_START/END/CONVERGED/HARD_CAP_REACHED event emission, Bridge auto-provision + reuse across iterations, count-based convergence detection. E1-04 resolution-stable criterion + E1-05 frontend live-progress UI are next).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -29,53 +29,40 @@ Shipped pieces:
 
 Smoke-test status: 4 modified Python files compile cleanly (`py_compile`). Live smoke-test (curl cancel mid-iterate, verify clean termination + WS event delivery) deferred to next session-with-backend-running.
 
-### E1-02 · New SessionEventType entries for the bicameral loop (partially shipped with E1-01)
+### ~~E1-02 · New SessionEventType entries for the bicameral loop~~ ✅ SHIPPED 2026-06-06
 
-### E1-02 · New SessionEventType entries for the bicameral loop
+Full set landed across E1-01 (SESSION_CANCELLED) and E1-02 (BICAMERAL_ITERATION_START, BICAMERAL_ITERATION_END, BICAMERAL_CONVERGED, BICAMERAL_HARD_CAP_REACHED) in `app/contracts.py`. Each event carries the payload fields the frontend needs for live rendering (iteration index, max_iterations, stroke numbers, new_bridges_surfaced, convergence criterion). WS stream recognizes all terminal events.
 
-Per [`docs/concepts/Bicameral_Convergence.md`](docs/concepts/Bicameral_Convergence.md), the Level 2 loop emits iteration-boundary events for WS subscribers. Add the event types so frontend can subscribe before the orchestrator method is built.
+### ~~E1-03 · `run_bicameral_loop()` orchestrator method~~ ✅ SHIPPED 2026-06-06
 
-**Done when:**
-- New SessionEventType entries: `BICAMERAL_ITERATION_START`, `BICAMERAL_ITERATION_END`, `BICAMERAL_CONVERGED`, `BICAMERAL_HARD_CAP_REACHED`, `SESSION_CANCELLED` (the cancel event from E1-01 lives here).
-- Each event carries iteration index, side (engine/bridge), and any convergence-criterion metadata.
-- Contracts in `app/contracts.py`; serializer covers the new types; WS endpoint passes through.
+Shipped in `app/services/orchestrator.py`:
 
-**Files touched:** `app/contracts.py`, possibly `app/services/session.py` if event registry needs updating.
+- `run_bicameral_loop(session, truth_packets, *, max_iterations=5, min_inter_iteration_delay=5.0, bridge_notebook_id=None)` orchestrator method
+- Closed-loop Engine ↔ Bridge mirror-bounce with iteration cap
+- Bridge auto-provisioning on iteration 1, reuse across all subsequent iterations
+- Cancel-flag checks at iteration boundaries (top + before Bridge + after delay)
+- Bridge transient handling: terminate loop early with partial results (no Auditor fallback in Level 2 since the loop needs Bridge findings to continue)
+- New `ITERATIVE_BICAMERAL_LOOP_TEMPLATE` for iteration-2+ re-synthesis (Bridge-only friction; no Auditor in the loop)
+- Count-based convergence detection via `_count_bridges_in_audit(raw) -> int` (regex match on `Bridge N (STRUCTURAL|IMPLIED)`; SPECULATIVE excluded)
+- Convergence-count regex verified against Powell (4), Amnesia (3), empty (0), SPECULATIVE-only (0), case-insensitive, no-bold-markers, mixed-tier cases — all pass
+- Inter-iteration delay (operator-tunable 2-30s, default 5s) + cancel check after delay
+- BICAMERAL_ITERATION_START emitted at top of each iteration; BICAMERAL_ITERATION_END at bottom with payload; BICAMERAL_CONVERGED on clean termination; BICAMERAL_HARD_CAP_REACHED on cap hit
 
-**Estimated effort:** ~30 min. No NotebookLM calls.
+Smoke-test status: syntax-check + AST inspection confirm all additions present + structurally correct. Live end-to-end smoke-test (a real run on a documented scenario) is E1-06's scope.
 
-### E1-03 · `run_bicameral_loop()` orchestrator method
+### E1-04 · Convergence-criterion implementation (refinement of E1-03's basic version)
 
-The core of Level 2 — the closed-loop mirror-bounce between Engine and Bridge until convergence. Inherits cancel-flag plumbing from E1-01.
-
-**Done when:**
-- New method `run_bicameral_loop(session, scenario, packets, max_iterations: int = 5, min_delay: float = 5.0)` in `app/services/orchestrator.py`.
-- Each iteration: Engine synthesizes → Bridge audits → if Bridge surfaces new STRUCTURAL/IMPLIED bridges, feed them back as friction; otherwise mark converged.
-- Sequential mirror-bounce respecting the 8s cooldown gate.
-- Hard iteration cap (default 5, configurable 1-10 per the architectural spec).
-- Inter-iteration delay (default 5s, configurable 2-30s) — gives the operator time to inspect intermediate state if desired.
-- Cancel-flag check between iterations.
-- Emits `BICAMERAL_ITERATION_START/END` events around each iteration.
-
-**Files touched:** `app/services/orchestrator.py`, possibly templates in same file.
-
-**Estimated effort:** ~2-3 hours. Touches NotebookLM (will need a smoke-test run, ~3-5 calls).
-
-### E1-04 · Convergence-criterion implementation
-
-The decision logic that makes the loop terminate cleanly.
+E1-03 ships with one convergence criterion: `no_new_structural` (count-based, regex on `Bridge N (STRUCTURAL|IMPLIED)`). E1-04 adds the second criterion the architectural spec calls for.
 
 **Done when:**
-- Three convergence criteria per the architectural spec, in priority order:
-  1. **No new STRUCTURAL bridges** in two consecutive iterations → converged.
-  2. **Resolution-stable** — Engine's FINAL RESOLUTION text is materially unchanged between two iterations → converged.
-  3. **Hard iteration cap** reached → emit `BICAMERAL_HARD_CAP_REACHED`, terminate with partial result.
-- Convergence detection runs after each iteration's Bridge audit.
-- Emits `BICAMERAL_CONVERGED` with the winning criterion + iteration count.
+- New helper `_resolution_stable(prior_synthesis: str, current_synthesis: str) -> bool` extracts FINAL RESOLUTION section from both, normalizes whitespace + framework jargon, computes similarity, returns True if >= threshold (~0.85 cosine or edit-distance ratio).
+- `run_bicameral_loop` evaluates `resolution_stable` AFTER `no_new_structural` (the count-based check is cheaper).
+- Convergence-detection fallback for Bridge outputs that don't use the canonical `Bridge N (STRUCTURAL|IMPLIED)` format (e.g. the LMArena Run 7 stream-of-consciousness style). Heuristic: if the canonical pattern matches 0 but the audit text length is >300 chars + contains "missed" / "connection" / "bridge" tokens, mark as ambiguous-no-convergence (don't false-converge).
+- BICAMERAL_CONVERGED payload's `criterion` field reports which check fired (`"no_new_structural"` / `"resolution_stable"`).
 
-**Files touched:** `app/services/orchestrator.py` (probably a helper module).
+**Files touched:** `app/services/orchestrator.py` (probably a small helper section near `_count_bridges_in_audit`).
 
-**Estimated effort:** ~60-90 min. May need 1-2 NL calls for testing the resolution-stability heuristic.
+**Estimated effort:** ~60-90 min. May need 1-2 NL calls for testing the resolution-stability heuristic against real run record outputs.
 
 ### E1-05 · Frontend live-progress UI (extends DispatcherPanel/RunnerPanel)
 

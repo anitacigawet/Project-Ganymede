@@ -1222,6 +1222,302 @@ class GanymedeOrchestrator:
         return results
 
     # =====================================================================
+    # Bicameral Convergence Level 2 — closed-loop mirror-bounce.
+    #
+    # Per docs/concepts/Bicameral_Convergence.md, Level 2 is the iterative
+    # Engine ↔ Bridge loop: Engine synthesizes → Bridge audits → if Bridge
+    # surfaces NEW missed connections, Engine re-synthesizes with those
+    # connections as friction → Bridge re-audits → ... until convergence
+    # (no new bridges) or hard iteration cap.
+    #
+    # Distinct from run_iterative_engine (Level 1): that's a 3-stroke
+    # thesis-antithesis-synthesis with single-pass audit. This is N-stroke
+    # closed-loop convergence with only Bridge as the friction lens.
+    #
+    # Five mandatory operator control surfaces (per the architectural
+    # spec): visual transparency (BICAMERAL_ITERATION_START/END events),
+    # cancel endpoint (E1-01, observed at iteration boundaries), inter-
+    # iteration delay (operator-tunable 2-30s, gives time to inspect),
+    # hard iteration cap (operator-tunable 1-10, default 5), and operator
+    # approval gate for new Oracle spawn (Level 3 only — stubbed here).
+    # =====================================================================
+
+    async def run_bicameral_loop(
+        self,
+        session: Session,
+        truth_packets: list[TruthPacket],
+        *,
+        max_iterations: int = 5,
+        min_inter_iteration_delay: float = 5.0,
+        bridge_notebook_id: Optional[str] = None,
+    ) -> list[StrokeResult]:
+        """Run the closed-loop Bicameral Convergence Level 2 mirror-bounce.
+
+        Each iteration: Engine synthesizes (with prior iteration's Bridge
+        findings as friction, if any) → Bridge audits the new synthesis →
+        convergence check. Loop terminates when no new STRUCTURAL/IMPLIED
+        bridges are surfaced (clean convergence) or when ``max_iterations``
+        is reached (hard cap).
+
+        Convergence criteria for E1-03 scope:
+            1. ``no_new_structural`` — Bridge audit produced zero
+               STRUCTURAL/IMPLIED bridges in the most recent iteration.
+
+        Additional criterion ``resolution_stable`` (Engine FINAL RESOLUTION
+        text functionally unchanged across iterations) is deferred to E1-04
+        which refines the convergence-detection helper. For E1-03, only the
+        count-based criterion fires.
+
+        Bridge notebook lifecycle:
+            - If ``bridge_notebook_id`` is supplied, reused across all
+              iterations (it has the same substrate; no re-provision needed).
+            - Else auto-provisioned on iteration 1 (~3-5 min wall), then
+              reused for every subsequent iteration's audit.
+
+        Cancel handling:
+            - Cancel-flag checked at each iteration boundary (top of
+              iteration + after inter-iteration delay).
+            - Cancel-flag also checked between Engine synthesis and Bridge
+              audit within each iteration.
+            - On cancel, :class:`SessionCancelledError` propagates out and
+              the caller (HTTP endpoint or test harness) returns partial
+              results from ``session.strokes``.
+
+        Bridge transient handling:
+            - If the Bridge stroke fails on any iteration (provisioning or
+              audit query), the loop terminates early with current results
+              + a warning log. Unlike Level 1's ``run_iterative_engine``
+              which falls back to Auditor-only friction, Level 2 has no
+              fallback lens — without Bridge findings there's no friction
+              to re-synthesize against, so terminating gracefully is the
+              right move.
+
+        Args:
+            session: must have ``iterative=True`` and ``max_strokes`` large
+                enough to accommodate all expected strokes (2 per iteration,
+                so ``max_strokes >= 2 * max_iterations`` for unconditional
+                fit). The orchestrator does NOT enforce this hard cap —
+                it relies on the session-level cap being permissive enough.
+            truth_packets: the substrate the Engine synthesizes against
+                (and Bridge audits over) every iteration.
+            max_iterations: hard iteration cap. 1-10 inclusive. Default 5.
+            min_inter_iteration_delay: seconds to sleep between iterations
+                (after Bridge audit, before next Engine synthesis). 2-30s
+                inclusive. Default 5s. Gives the operator time to inspect
+                intermediate state via the WS stream + decide whether to
+                cancel.
+            bridge_notebook_id: pre-existing Bridge notebook to reuse.
+                Optional. When None, auto-provisions on iteration 1.
+
+        Returns:
+            List of all StrokeResults produced. Length depends on how many
+            iterations ran before convergence/cap: 2 per iteration (Engine
+            + Bridge), except the final iteration on convergence which
+            still includes both strokes (the converged synthesis + the
+            audit that confirmed no new bridges).
+
+        Raises:
+            ValueError: bad arguments (non-iterative session, max_iterations
+                out of range, delay out of range).
+            SessionCancelledError: operator cancelled mid-loop.
+        """
+        # ---------------- input validation ----------------
+        if not session.iterative:
+            raise ValueError(
+                f"Session {session.id} is not iterative — Bicameral Loop "
+                f"requires iterative=True"
+            )
+        if max_iterations < 1 or max_iterations > 10:
+            raise ValueError(
+                f"max_iterations ({max_iterations}) must be 1..10"
+            )
+        if min_inter_iteration_delay < 2.0 or min_inter_iteration_delay > 30.0:
+            raise ValueError(
+                f"min_inter_iteration_delay ({min_inter_iteration_delay}) "
+                f"must be 2.0..30.0 seconds"
+            )
+
+        results: list[StrokeResult] = []
+        prior_synthesis: Optional[str] = None
+        prior_bridge_findings: Optional[str] = None
+        prior_bridge_count: int = 0
+
+        logger.info(
+            "Session %s: starting Bicameral Convergence Level 2 loop "
+            "(max_iterations=%d, delay=%.1fs, bridge_notebook_id=%s)",
+            session.id, max_iterations, min_inter_iteration_delay,
+            bridge_notebook_id or "<auto-provision>",
+        )
+
+        for iteration in range(1, max_iterations + 1):
+            self._check_cancelled(session, f"bicameral-iter-{iteration}-start")
+
+            await session.emit(
+                SessionEventType.BICAMERAL_ITERATION_START,
+                payload={
+                    "iteration": iteration,
+                    "max_iterations": max_iterations,
+                    "include_bridge": True,
+                },
+            )
+
+            # ---------- Engine synthesis ----------
+            if iteration == 1:
+                # First iteration — no prior synthesis, default scenario framing.
+                engine_stroke = await self.run_synthesis_stroke(
+                    session, truth_packets,
+                )
+            else:
+                # Subsequent iterations — Bicameral loop template with prior
+                # synthesis + Bridge findings as friction. Structural extraction
+                # to keep the prompt under the NotebookLM input cap.
+                assert prior_synthesis is not None
+                assert prior_bridge_findings is not None
+                prior_extracted = _extract_for_resynthesis(
+                    prior_synthesis, max_chars=_S1_INJECTION_BUDGET,
+                )
+                bridge_extracted = _truncate_bridge_for_injection(
+                    prior_bridge_findings, max_chars=_S2_BRIDGE_BUDGET,
+                )
+                # Escape curly braces in extracted text — synthesize() does
+                # .format() on the framing; literal {DAI}/{ROEM} in the
+                # Engine's prior output would raise KeyError otherwise.
+                prior_escaped = prior_extracted.replace("{", "{{").replace("}", "}}")
+                bridge_escaped = bridge_extracted.replace("{", "{{").replace("}", "}}")
+                framing = (
+                    ITERATIVE_BICAMERAL_LOOP_TEMPLATE
+                    .replace("{prior_synthesis}", prior_escaped)
+                    .replace("{bridge_findings}", bridge_escaped)
+                    .replace("{prior_iteration}", str(iteration - 1))
+                    .replace("{current_iteration}", str(iteration))
+                )
+                logger.info(
+                    "Session %s Bicameral iter %d injection budgets: "
+                    "prior synthesis %d→%d (budget %d), Bridge %d→%d (budget %d)",
+                    session.id, iteration,
+                    len(prior_synthesis), len(prior_extracted), _S1_INJECTION_BUDGET,
+                    len(prior_bridge_findings), len(bridge_extracted), _S2_BRIDGE_BUDGET,
+                )
+                engine_stroke = await self.run_synthesis_stroke(
+                    session, truth_packets, framing=framing,
+                )
+
+            results.append(engine_stroke)
+
+            self._check_cancelled(
+                session, f"bicameral-iter-{iteration}-before-bridge",
+            )
+
+            # ---------- Bridge auto-provision (iteration 1 only) ----------
+            if bridge_notebook_id is None:
+                logger.info(
+                    "Session %s Bicameral iter %d: auto-provisioning Bridge notebook",
+                    session.id, iteration,
+                )
+                try:
+                    provision_result = await self.provision_bridge_notebook(
+                        truth_packets=truth_packets,
+                        title=f"Bicameral Loop — {session.id[:8]}",
+                    )
+                    bridge_notebook_id = provision_result["notebook_id"]
+                    logger.info(
+                        "Session %s Bicameral iter %d: Bridge notebook %s ready",
+                        session.id, iteration, bridge_notebook_id,
+                    )
+                except SessionCancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Session %s Bicameral iter %d: Bridge provisioning failed; "
+                        "terminating loop early with %d stroke(s).",
+                        session.id, iteration, len(results),
+                    )
+                    return results
+
+            # ---------- Bridge audit ----------
+            try:
+                bridge_stroke = await self.audit_with_bridge(
+                    session,
+                    bridge_notebook_id=bridge_notebook_id,
+                    target_text=engine_stroke.raw_response,
+                    fail_session_on_error=False,
+                )
+            except SessionCancelledError:
+                raise
+            except Exception:
+                logger.exception(
+                    "Session %s Bicameral iter %d: Bridge audit failed; "
+                    "terminating loop early with %d stroke(s).",
+                    session.id, iteration, len(results),
+                )
+                return results
+
+            results.append(bridge_stroke)
+
+            # ---------- Convergence detection ----------
+            new_bridge_count = _count_bridges_in_audit(bridge_stroke.raw_response)
+            converged = False
+            criterion: Optional[str] = None
+
+            if new_bridge_count == 0:
+                converged = True
+                criterion = "no_new_structural"
+                logger.info(
+                    "Session %s Bicameral iter %d: CONVERGED (no new bridges)",
+                    session.id, iteration,
+                )
+
+            await session.emit(
+                SessionEventType.BICAMERAL_ITERATION_END,
+                payload={
+                    "iteration": iteration,
+                    "engine_stroke_number": engine_stroke.stroke_number,
+                    "bridge_stroke_number": bridge_stroke.stroke_number,
+                    "new_bridges_surfaced": new_bridge_count,
+                },
+            )
+
+            if converged:
+                await session.emit(
+                    SessionEventType.BICAMERAL_CONVERGED,
+                    payload={
+                        "iterations": iteration,
+                        "criterion": criterion,
+                    },
+                )
+                return results
+
+            # ---------- Save state for next iteration ----------
+            prior_synthesis = engine_stroke.raw_response
+            prior_bridge_findings = bridge_stroke.raw_response
+            prior_bridge_count = new_bridge_count
+
+            # ---------- Inter-iteration delay ----------
+            if iteration < max_iterations:
+                logger.debug(
+                    "Session %s Bicameral iter %d: sleeping %.1fs before next iteration",
+                    session.id, iteration, min_inter_iteration_delay,
+                )
+                await asyncio.sleep(min_inter_iteration_delay)
+                self._check_cancelled(
+                    session, f"bicameral-iter-{iteration}-after-delay",
+                )
+
+        # Hit hard iteration cap without convergence
+        logger.info(
+            "Session %s Bicameral: HARD CAP reached (%d iterations) without convergence",
+            session.id, max_iterations,
+        )
+        await session.emit(
+            SessionEventType.BICAMERAL_HARD_CAP_REACHED,
+            payload={
+                "iterations": max_iterations,
+                "max_iterations": max_iterations,
+            },
+        )
+        return results
+
+    # =====================================================================
     # Full Universal Logic Loop — Phase 1 (Triage) → Phase 2 (Oracle swarm
     # with programmatic Deep Research + Import) → Phase 3 (Synthesis).
     #
@@ -1610,6 +1906,92 @@ BRIDGE FINDINGS (Connection Bridge — connections the synthesis missed):
 
 MISSION:
 Re-fire the synthesis. The Stroke-1 resolution above is your prior pass. The Auditor block above identifies failure modes IN that reasoning; the Bridge block above identifies connections the reasoning MISSED. These are two orthogonal lenses — neither subsumes the other. The Stroke-3 resolution should be the move that survives BOTH the original physics AND both audit lenses' friction. If any finding is itself mistaken, say so explicitly and explain why; otherwise integrate them into a tighter synthesis."""
+
+
+# ---------------------------------------------------------------------------
+# Bicameral Convergence Level 2 closed-loop template.
+#
+# Used by ``run_bicameral_loop`` on iterations 2+. Iteration 1 uses the
+# default scenario framing from ``run_synthesis_stroke``; subsequent
+# iterations feed the prior iteration's synthesis + prior iteration's
+# Bridge findings back as friction. No Auditor in the Level 2 loop —
+# the closed loop is Engine ↔ Bridge only.
+#
+# Note the mission framing differs from Level 1's: Level 1 asks the
+# Engine to integrate one-shot audits into a tighter synthesis; Level 2
+# asks the Engine to converge — produce a synthesis the next Bridge
+# audit will find no further missed connections in. The framing
+# encourages the Engine to either (a) genuinely integrate the Bridge
+# findings, or (b) explicitly rebut them when they don't apply, both
+# of which contribute to convergence.
+# ---------------------------------------------------------------------------
+
+ITERATIVE_BICAMERAL_LOOP_TEMPLATE = """\
+ORIGINAL SCENARIO:
+{scenario}
+
+AUTHENTICATED TRUTH PACKETS (from PKI Oracle swarm):
+{packets_block}
+
+PRIOR ITERATION SYNTHESIS (Iteration {prior_iteration}):
+=====
+{prior_synthesis}
+=====
+
+BRIDGE FINDINGS (Connection Bridge — missed connections in the prior synthesis):
+=====
+{bridge_findings}
+=====
+
+MISSION:
+You are in Iteration {current_iteration} of a closed-loop Bicameral Convergence run. The prior iteration's synthesis above is your work-in-progress; the Bridge has identified connections that synthesis missed. Re-fire the synthesis to integrate these missed connections.
+
+Preserve the kernel of the prior reasoning where it stands. Where the Bridge surfaced load-bearing missed connections, incorporate them. If any Bridge finding is itself mistaken — e.g., the connection it surfaces isn't actually supported by the substrate, or the prior synthesis already addressed it — say so explicitly and explain why.
+
+The goal of this iteration is convergence: produce a synthesis the next Bridge audit will find no further missed connections in. Use the standard 9-dimensional resolution structure with FINAL RESOLUTION at the end."""
+
+
+# ---------------------------------------------------------------------------
+# Convergence-detection helper.
+#
+# Counts the number of STRUCTURAL or IMPLIED bridges in a Bridge audit
+# output. Used by ``run_bicameral_loop`` to detect convergence (count == 0
+# means the Bridge found no further missed connections).
+#
+# E1-03 implementation: regex-based count of "Bridge N (STRUCTURAL)" and
+# "Bridge N (IMPLIED)" patterns. The Bridge persona is configured to emit
+# its catches in that format (see docs/protocols/Connection_Bridge_Persona.md).
+# SPECULATIVE bridges are NOT counted — they're the persona's epistemic-
+# humility tier and don't indicate substantive missed connections.
+#
+# E1-04 will refine convergence detection by adding the resolution-stable
+# criterion (Engine FINAL RESOLUTION text functionally unchanged across
+# iterations). For now only the count-based criterion fires.
+# ---------------------------------------------------------------------------
+
+def _count_bridges_in_audit(raw: str) -> int:
+    """Count STRUCTURAL + IMPLIED bridges in a Connection Bridge audit response.
+
+    Looks for patterns like ``Bridge 1 (STRUCTURAL)`` / ``Bridge 2 (IMPLIED)``
+    in any case + with optional markdown bolding. SPECULATIVE bridges are
+    intentionally excluded — they signal "I see a possible connection but
+    can't substantively support it from the packets," which is the
+    persona's epistemic-humility tier rather than a substantive catch.
+
+    Returns 0 if no STRUCTURAL/IMPLIED bridges found — the convergence
+    signal for ``run_bicameral_loop``.
+
+    Returns the raw count when bridges are present; the caller uses
+    ``== 0`` for convergence detection but the count is also useful for
+    BICAMERAL_ITERATION_END event payload (``new_bridges_surfaced``).
+    """
+    # Match: "Bridge N (STRUCTURAL)" or "Bridge N (IMPLIED)" with optional
+    # markdown bolding and case-insensitive tier. Whitespace tolerant.
+    pattern = re.compile(
+        r"\*{0,2}\s*Bridge\s+\d+\s*\(\s*(?:STRUCTURAL|IMPLIED)\s*\)",
+        re.IGNORECASE,
+    )
+    return len(pattern.findall(raw))
 
 
 def _parse_audit_findings(raw: str) -> Optional[list[str]]:
