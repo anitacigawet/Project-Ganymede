@@ -189,6 +189,22 @@ class StrokeResult(BaseModel):
     Lets UI consumers render Auditor and Bridge strokes distinctly without
     inspecting the stroke event payloads."""
 
+    cleaned_response: Optional[str] = None
+    """P1-03b CTA-suppression post-processor output. Populated only when
+    the orchestrator's ``_strip_trailing_cta`` helper detected a trailing
+    chatbot-CTA paragraph in ``raw_response`` and stripped it. UI consumers
+    should display ``cleaned_response`` when present, falling back to
+    ``raw_response`` otherwise — same display semantics as a pre-cleaning
+    stroke. None when no CTA was found (most strokes — observed leak rate
+    is ~33-43%). ``raw_response`` is left untouched in either case as the
+    source of truth."""
+
+    stripped_cta: Optional[str] = None
+    """The actual CTA text that was stripped by ``_strip_trailing_cta``,
+    preserved for forensic visibility + analysis of substrate behavior
+    over time. None when no CTA was found. When set, it's the verbatim
+    paragraph that was sliced from the trailing end of ``raw_response``."""
+
     # Metadata
     started_at: datetime
     completed_at: datetime

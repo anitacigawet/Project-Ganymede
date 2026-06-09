@@ -510,6 +510,17 @@ class GanymedeOrchestrator:
             raise
 
         completed = utcnow()
+        # P1-03b: strip trailing CTA paragraph if the substrate leaked one
+        # despite the persona's prohibition. cleaned == raw when no CTA;
+        # consumers prefer cleaned_response when it's distinct from raw.
+        cleaned, stripped_cta = _strip_trailing_cta(raw)
+        cleaned_response = cleaned if stripped_cta is not None else None
+        if stripped_cta is not None:
+            logger.info(
+                "Session %s stroke %d: stripped trailing CTA (%d chars)",
+                session.id, stroke_number, len(stripped_cta),
+            )
+
         stroke = StrokeResult(
             stroke_number=stroke_number,
             pathway=session.pathway,
@@ -519,6 +530,8 @@ class GanymedeOrchestrator:
             # too much for hardcoded extraction to be reliable. raw_response
             # is the source of truth; consumers display it directly.
             final_resolution=raw,
+            cleaned_response=cleaned_response,
+            stripped_cta=stripped_cta,
             started_at=started,
             completed_at=completed,
         )
@@ -614,12 +627,25 @@ class GanymedeOrchestrator:
             raise
 
         completed = utcnow()
+        # P1-03b: strip trailing CTA paragraph (audit strokes typically
+        # don't leak CTAs since the Auditor persona is stricter, but apply
+        # for symmetry — the helper is conservative and won't false-positive).
+        cleaned, stripped_cta = _strip_trailing_cta(raw)
+        cleaned_response = cleaned if stripped_cta is not None else None
+        if stripped_cta is not None:
+            logger.info(
+                "Session %s stroke %d (auditor): stripped trailing CTA (%d chars)",
+                session.id, stroke_number, len(stripped_cta),
+            )
+
         stroke = StrokeResult(
             stroke_number=stroke_number,
             pathway=Pathway.MIRROR_AUDIT,
             raw_response=raw,
             audit_findings=_parse_audit_findings(raw),
             audit_kind="mirror_auditor",
+            cleaned_response=cleaned_response,
+            stripped_cta=stripped_cta,
             started_at=started,
             completed_at=completed,
         )
@@ -792,6 +818,18 @@ class GanymedeOrchestrator:
             raise
 
         completed = utcnow()
+        # P1-03b: strip trailing CTA paragraph (Bridge output occasionally
+        # follows persona-deviating CTA patterns; safe to apply since the
+        # helper only strips when the LAST paragraph starts with a
+        # canonical CTA opener).
+        cleaned, stripped_cta = _strip_trailing_cta(raw)
+        cleaned_response = cleaned if stripped_cta is not None else None
+        if stripped_cta is not None:
+            logger.info(
+                "Session %s stroke %d (bridge): stripped trailing CTA (%d chars)",
+                session.id, stroke_number, len(stripped_cta),
+            )
+
         stroke = StrokeResult(
             stroke_number=stroke_number,
             pathway=Pathway.MIRROR_AUDIT,  # structurally an audit stroke
@@ -801,6 +839,8 @@ class GanymedeOrchestrator:
             # doesn't apply — leave audit_findings None and let consumers
             # read raw_response directly.
             audit_kind="bridge",
+            cleaned_response=cleaned_response,
+            stripped_cta=stripped_cta,
             started_at=started,
             completed_at=completed,
         )
@@ -2181,6 +2221,109 @@ def _resolution_stable(
 
     ratio = difflib.SequenceMatcher(None, prior_norm, current_norm).ratio()
     return ratio >= threshold
+
+
+# ---------------------------------------------------------------------------
+# CTA-suppression post-processor (P1-03b).
+#
+# Backend boundary mitigation for the partially-effective persona CTA-
+# suppression observed in P1-03 (3/7 ≈ 43% inclusive, 2/6 ≈ 33% strict).
+# Stroke 1 outputs occasionally leak chatbot-CTA endings ("Would you
+# like me to...", "Shall I...", "If you'd like...") despite the persona's
+# explicit prohibition — NotebookLM substrate behavior overrides persona
+# text per the corpus-dominance lesson (Framework Cleanup Hypothesis
+# evidence #7: "all persona-override attempts have failed when fighting
+# the corpus").
+#
+# Approach: conservative trailing-paragraph strip. Split the response on
+# paragraph breaks; examine the LAST non-empty paragraph; case-insensitive
+# match against a curated list of CTA opener phrases. If match, slice the
+# whole paragraph off + return it separately for forensic preservation.
+#
+# Conservative deliberately:
+#   - Only strips the LAST paragraph (CTAs are end-of-message)
+#   - Only matches phrases that START the paragraph (not mid-paragraph CTA
+#     attempts; those are usually genuine content)
+#   - Returns the response unchanged if stripping would leave empty
+#     content (degenerate case — would indicate a fully-CTA stroke
+#     which is upstream-broken; let it surface)
+#   - Strips leading markdown/whitespace before matching (so a paragraph
+#     starting with "**Would you like me to...**" still matches)
+#
+# Engine persona text left in place as defense-in-depth — both layers run.
+# ---------------------------------------------------------------------------
+
+_CTA_OPENERS = (
+    "would you like me to",
+    "would you like to",
+    "shall i",
+    "let me know",
+    "if you'd like",
+    "if you would like",
+    "do you want",
+    "want me to",
+    "happy to",
+    "i can also",
+    "do let me know",
+    "feel free to",
+    "would you prefer",
+)
+
+
+def _strip_trailing_cta(raw_response: str) -> tuple[str, Optional[str]]:
+    """Strip a trailing CTA paragraph from a stroke response.
+
+    Returns ``(cleaned, stripped_cta)``. When no CTA is detected, returns
+    ``(raw_response, None)`` — the cleaned text is identical to the
+    original so callers can compare ``stripped_cta is None`` to decide
+    whether to surface ``cleaned_response`` separately on StrokeResult.
+
+    Detection: split on paragraph breaks (``\\n\\n``); examine the last
+    non-empty paragraph; strip leading markdown/whitespace; check
+    case-insensitively against the ``_CTA_OPENERS`` curated phrase list.
+    If match, return everything but that paragraph as cleaned + the
+    matched paragraph as stripped_cta.
+
+    Refuses to strip if it would leave the cleaned response empty
+    (degenerate case — surface raw_response unchanged so the empty-
+    stroke handling elsewhere catches it).
+    """
+    if not raw_response or not raw_response.strip():
+        return raw_response, None
+
+    # Split into paragraphs; track the last non-empty one
+    paragraphs = raw_response.split("\n\n")
+    last_idx = -1
+    for i in range(len(paragraphs) - 1, -1, -1):
+        if paragraphs[i].strip():
+            last_idx = i
+            break
+    if last_idx < 0:
+        return raw_response, None
+
+    last_para = paragraphs[last_idx]
+    # Strip leading markdown decoration + whitespace before matching
+    last_para_normalized = re.sub(
+        r"^[\s\*#\-_>`]+", "", last_para.strip(),
+    ).lower()
+
+    # Check if the last paragraph starts with a CTA opener
+    matched = False
+    for opener in _CTA_OPENERS:
+        if last_para_normalized.startswith(opener):
+            matched = True
+            break
+
+    if not matched:
+        return raw_response, None
+
+    # Strip the last paragraph; refuse if cleaned would be empty
+    cleaned_paragraphs = paragraphs[:last_idx] + paragraphs[last_idx + 1:]
+    cleaned = "\n\n".join(cleaned_paragraphs).rstrip()
+    if not cleaned.strip():
+        return raw_response, None
+
+    return cleaned, last_para.strip()
 
 
 def _parse_audit_findings(raw: str) -> Optional[list[str]]:

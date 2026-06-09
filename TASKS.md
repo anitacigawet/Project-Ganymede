@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-E1-05 — frontend live-progress UI shipped: `BicameralProgressIndicator.tsx` self-contained component + RunnerPanel.tsx wired with bicameral state tracking + cancel button + side-flip on synthesis_complete during bicameral iterations. TypeScript clean via `npx tsc --noEmit`. E1-06 first live run is the final E1 chunk).
+Last updated: 2026-06-06 (post-P1-03b — CTA-suppression post-processor shipped: `_strip_trailing_cta()` helper + `cleaned_response` / `stripped_cta` optional fields on `StrokeResult` + wired into all 3 stroke construction sites. Verified against P1-03's 3 confirmed leak phrases + edge cases. Per operator-locked sequence: P1-04 (operator-gated) next, then Pl3, then Pl2).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -189,19 +189,25 @@ Observed leak rate: 3 / 7 ≈ 43% (consistent with the operator's standing ~50% 
 
 **Key carryforward finding:** the CTA-leak persistence is empirical evidence that persona text changes are not the right lever for substrate-behavior shaping — same lesson as the Framework Cleanup Hypothesis's "corpus dominance overwhelms persona" finding.
 
-### P1-03b · Implement CTA-suppression post-processor (follow-up to P1-03)
+### ~~P1-03b · CTA-suppression post-processor~~ ✅ SHIPPED 2026-06-06
 
-Implementation chunk for the mitigation recommended by P1-03.
+Shipped:
+- **`_strip_trailing_cta(raw_response) -> tuple[str, Optional[str]]`** in `app/services/orchestrator.py`. Conservative trailing-paragraph strip: splits on `\n\n`, examines the last non-empty paragraph, strips leading markdown/whitespace, case-insensitive match against 13 curated CTA opener phrases ("Would you like me to", "Shall I", "Let me know", "If you'd like", "Feel free to", etc.). Refuses to strip if it would leave empty content (degenerate single-paragraph CTA case).
+- **`cleaned_response` and `stripped_cta` optional fields** added to `StrokeResult` in `app/contracts.py`. `raw_response` is left untouched as source of truth; `cleaned_response` is populated only when a CTA was stripped. UI consumers display `cleaned_response ?? raw_response`.
+- **Wired into all 3 StrokeResult construction sites** in `orchestrator.py`: synthesis stroke, Mirror Auditor stroke, Connection Bridge stroke. Logs at INFO when a strip happens (count of chars stripped) for ops visibility.
 
-**Done when:**
-- New helper `_strip_trailing_cta(raw_response: str) -> tuple[str, str | None]` lives in `app/services/orchestrator.py` (or `app/services/notebooklm/client.py`). Match against canonical CTA-start patterns; if found in the final paragraph (after the last `### FINAL` / `**Final Resolution**` / equivalent capstone marker), slice it off.
-- Wired into the synthesize-stroke return path so the UI receives the cleaned text and the session state preserves both `cleaned` and `stripped_cta` for forensic visibility.
-- Verified against the three confirmed leak phrases from P1-03's table (the *"Would you like me to run a web search..."* / *"Shall I initialize a Bayesian Network projection..."* / *"Would you like me to elaborate..."* shapes) as test cases.
-- Engine persona text left in place as defense-in-depth (don't fight one battle on two fronts).
+Verified against P1-03's 3 confirmed leak phrases + edge cases (9 test cases total):
+- ✅ LMArena Run 3: *"Shall I initialize a Bayesian Network projection..."* — stripped
+- ✅ LMArena Run 6: *"Would you like me to run a web search..."* — stripped
+- ✅ Musk-Altman: *"Would you like me to elaborate..."* — stripped
+- ✅ Powell substantive ending (no CTA shape) — NOT stripped
+- ✅ Markdown-bold CTA `**Would you like me to**` — stripped (leading markdown normalizer handles it)
+- ✅ Mid-paragraph CTA — NOT stripped (conservative; mid-paragraph CTAs often part of substantive content)
+- ✅ Empty response — NOT stripped (no-op)
+- ✅ Single-paragraph CTA-only — NOT stripped (refuse to leave empty)
+- ✅ CTA after separator paragraph — stripped
 
-**Files touched:** `app/services/orchestrator.py` or `app/services/notebooklm/client.py`; possibly `app/contracts.py` if a new field is added to StrokeResult for the stripped CTA.
-
-**Estimated effort:** ~30 minutes. No NotebookLM calls.
+Engine persona text left in place as defense-in-depth — both layers running per the P1-03 recommendation. Frontend updates to render `cleaned_response ?? raw_response` deferred as small polish chunk (the data is available on session state for forensic visibility today; UI just needs to opt-in).
 
 ---
 
