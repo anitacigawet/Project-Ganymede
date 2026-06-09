@@ -764,16 +764,19 @@ This matches the operator's pattern for MLMS-style tools where the AI can catego
 
 The Operator Lens primitive surfaced in milestone 43 (the 2026-06-06 Cube-of-Space transcript exchange) is now built end-to-end. Operator can translate any recorded stroke into one of three vocabulary registers — `plain_english`, `cube_of_space`, `executive_brief` — preserving the analytical claims 1:1 while swapping framework jargon for legible operator-facing vocabulary.
 
-### Architectural call: Gemini Flash, not NotebookLM
+### Architectural call: canonical NotebookLM Engine (corrected mid-milestone)
 
-Translation is a *reformulation*, not new analysis. Choosing Gemini Flash over a NotebookLM-backed Translation Persona:
+**Initial implementation attempted Gemini Flash; operator caught the divergence + the milestone was corrected.** The pushback (paraphrased): *"This kinda goes against the whole notebook RAG closed information sphere thing since Gemini was only used for that one specific thing of deducing my query. I was just envisioning another couple of final queries to the notebook before we stopped using it for the final lens thing."*
 
-- **Speed**: ~1-2s wall vs. NotebookLM's 30-50s. The operator can flip between registers fast enough that comparison feels real-time.
-- **No provisioning overhead**: NotebookLM-backed approach would require either a fresh per-translation notebook (~3-5 min provisioning) or a dedicated long-lived Translation notebook (operator approval needed for spawning a new persistent notebook).
-- **No persona conflicts**: NotebookLM notebooks support one persona at a time; the canonical Engine notebook has the "infallible 9D-Chess Umpire" persona which is jargon-heavy by design. Routing translations through Gemini Flash avoids fighting the canonical persona.
-- **Cost**: Gemini Flash is cheap; NotebookLM calls go through the cooldown gate.
+The operator's reasoning is correct and load-bearing:
 
-The Engine + Auditor + Bridge stay on NotebookLM for their actual analytical work. The Operator Lens sits downstream as a presentation-layer reformulation.
+- **Closed RAG sphere is the design principle.** Gemini was deliberately scoped to dispatcher intent classification only — a thin "what does the operator want?" call that doesn't touch analytical content. Everything analytical lives in the closed sphere.
+- **Translation IS analytical content.** It carries strategic claims forward; a distorted translation distorts the operator's read of the analysis. So it belongs inside the sphere alongside Engine / Auditor / Bridge — not in an ungrounded Gemini Flash path.
+- **The grounding is what makes the translation work.** What made the milestone 43 Cube-of-Space exchange land so well was that the notebook produced visceral geometric vocabulary BECAUSE the grounded model understood what the framework concepts actually meant. Gemini Flash without the foundations-corpus grounding would only know surface-level jargon mapping, not the structural meaning. The grounded approach is what reproduces the milestone 43 quality.
+
+**Corrected implementation:** translation routes through ``self.svc.query_chess_engine`` (the canonical NotebookLM Engine) with a register-specific translation prompt. Cost goes up from ~1-2s to ~30-50s wall per translation (single cooldown-gated NL call) — matching the speed of every other analytical surface in the project. The Engine's existing persona ("supreme order and precision") is jargon-heavy by default, but the translation prompt explicitly instructs the Engine to re-express AGAINST that default — the persona's discipline holds the analytical claims stable while the prompt shifts the vocabulary register.
+
+The original Gemini Flash translation method is preserved as ``_DEPRECATED_GEMINI_TRANSLATION_PROMPTS`` in ``gemini_service.py`` for historical reference; ``translate_with_register`` was removed from the class surface.
 
 ### Three registers shipped
 

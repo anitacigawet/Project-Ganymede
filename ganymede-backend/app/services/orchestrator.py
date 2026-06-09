@@ -1026,16 +1026,29 @@ class GanymedeOrchestrator:
     ) -> str:
         """Pl3 Operator Lens — translate one of the session's strokes into a register.
 
-        Looks up the stroke by stroke_number, calls the GeminiService's
-        ``translate_with_register`` with the stroke's ``raw_response``
-        (or ``cleaned_response`` if a CTA was stripped via P1-03b — the
-        cleaned version is what the operator was meant to read), records
-        the result on the session, and returns it.
+        Architectural call (corrected post-milestone 45): translation
+        is routed through the canonical NotebookLM Engine (NOT Gemini
+        Flash) so the model has the foundations-corpus grounding to
+        understand what the framework concepts ACTUALLY MEAN when
+        translating. This preserves the project's closed-RAG-sphere
+        design principle (Gemini is scoped to dispatcher intent
+        classification only; everything analytical lives in the closed
+        sphere) and matches what made the milestone 43 Cube-of-Space
+        exchange work in the first place — the notebook produced
+        visceral geometric vocabulary because the grounded model
+        understood the underlying structural primitives.
 
-        Stateless from the caller's perspective — repeated calls produce
-        the same translation (Gemini is deterministic enough at default
-        sampling for this use case). The result is cached server-side
-        on session state for retrieval without re-calling Gemini.
+        Looks up the stroke by stroke_number, builds a register-specific
+        translation prompt (from ``TRANSLATION_PROMPT_TEMPLATES``) with
+        the stroke's ``cleaned_response`` or ``raw_response`` as the
+        source, calls the canonical Engine via
+        ``self.svc.query_chess_engine``, records the result on the
+        session, and returns it.
+
+        Operational cost: one cooldown-gated NotebookLM call per
+        translation (~30-50s wall — same speed as a normal synthesis
+        stroke). Source-plus-framing typically lands at 3-5k chars,
+        well under the NotebookLM input-size cap.
 
         Args:
             session: the session containing the stroke to translate.
@@ -1043,17 +1056,14 @@ class GanymedeOrchestrator:
             register: one of ``TRANSLATION_REGISTERS``.
 
         Returns:
-            The translated text. Also recorded on ``session._translations``
-            for future retrieval.
+            The translated text. Also recorded on
+            ``session._translations`` for future retrieval.
 
         Raises:
-            ValueError: if the stroke doesn't exist, the stroke has empty
-                response text, or the register is invalid.
-            RuntimeError: if Gemini fails — caller-visible.
+            ValueError: if the stroke doesn't exist, the stroke has
+                empty response text, or the register is invalid.
+            RuntimeError: if the NotebookLM call fails — caller-visible.
         """
-        # Import here to avoid a circular dependency at module load
-        from app.services.gemini_service import GeminiService, TRANSLATION_REGISTERS
-
         if register not in TRANSLATION_REGISTERS:
             raise ValueError(
                 f"Unknown translation register: {register!r}. "
@@ -1081,23 +1091,49 @@ class GanymedeOrchestrator:
                 f"response — nothing to translate"
             )
 
-        # Use the orchestrator's own GeminiService instance if one is
-        # already attached (set in main.py at startup) or construct one
-        # on demand. Lazy construction defers the GOOGLE_API_KEY env-var
-        # check until first use.
-        gemini = getattr(self, "_gemini_for_translation", None)
-        if gemini is None:
-            gemini = GeminiService()
-            self._gemini_for_translation = gemini
+        # Build the register-specific prompt with the source text injected.
+        # Escape literal { } in the source so the .replace() below stays
+        # safe even if the Engine's prior output contains framework jargon
+        # like "{DAI}" / "{ROEM}" literally (P1-03b's pattern from
+        # run_iterative_engine — defensive copy of the same escape).
+        source_escaped = source.replace("{", "{{").replace("}", "}}")
+        template = TRANSLATION_PROMPT_TEMPLATES[register]
+        prompt = template.replace("{source_text}", source_escaped)
 
         logger.info(
-            "Session %s: translating stroke %d (%d chars) into register %r",
-            session.id, stroke_number, len(source), register,
+            "Session %s: translating stroke %d (%d chars source, %d chars prompt) "
+            "into register %r via canonical Engine",
+            session.id, stroke_number, len(source), len(prompt), register,
         )
 
-        translated = await gemini.translate_with_register(
-            source_text=source, register=register,
-        )
+        try:
+            translated = await self.svc.query_chess_engine(prompt)
+        except Exception as exc:
+            logger.exception(
+                "Session %s: translation Engine call failed for stroke %d register %r",
+                session.id, stroke_number, register,
+            )
+            raise RuntimeError(
+                f"Translation failed for stroke {stroke_number} register {register}: "
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+
+        if not translated or not translated.strip():
+            raise RuntimeError(
+                f"Translation returned empty for stroke {stroke_number} "
+                f"register {register} (possible NotebookLM silent rejection — "
+                f"check the prompt size against the ~5-6k char cap)"
+            )
+
+        # P1-03b: strip trailing CTA from the translation too — the Engine's
+        # persona occasionally leaks CTAs even in translation mode.
+        cleaned_translation, stripped_cta = _strip_trailing_cta(translated)
+        if stripped_cta is not None:
+            logger.info(
+                "Session %s: stripped trailing CTA from translation (%d chars)",
+                session.id, len(stripped_cta),
+            )
+            translated = cleaned_translation
 
         # Persist on session state for future retrieval.
         await session.record_translation(
@@ -2124,6 +2160,129 @@ Re-fire the synthesis. The Stroke-1 resolution above is your prior pass. The Aud
 # findings, or (b) explicitly rebut them when they don't apply, both
 # of which contribute to convergence.
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Pl3 Operator Lens — translation prompt library (milestone 45 corrected).
+#
+# Translation is routed through the canonical NotebookLM Engine (NOT Gemini
+# Flash) so the model has the foundations-corpus grounding to understand
+# what the framework concepts actually MEAN when translating. This is what
+# made the milestone 43 Cube-of-Space exchange work — the notebook
+# produced visceral geometric vocabulary because the grounded model
+# understood the underlying primitives. A Gemini Flash translator would
+# only know surface-level jargon mapping, not the structural meaning.
+#
+# The Engine's existing persona ("infallible 9D-Chess Umpire... supreme
+# order and precision") is jargon-heavy by design. The translation prompts
+# explicitly instruct the Engine to re-express AGAINST that default and
+# drop the jargon — the persona's discipline is what holds the analytical
+# claims stable while the prompt shifts the vocabulary register.
+#
+# Each register is a prompt template with a single {source_text}
+# placeholder. The translation call is one NotebookLM Engine query —
+# subject to the cooldown gate and the input-size cap. Source text plus
+# framing typically lands at 3-5k chars, well under the cap.
+#
+# Closed-RAG-sphere discipline: we DELIBERATELY do not route translation
+# through Gemini Flash. Gemini is scoped to dispatcher intent
+# classification (a thin "what does the operator want" call that doesn't
+# touch analytical content). Translation IS analytical — carrying
+# strategic claims forward — so it stays inside the closed sphere.
+# ---------------------------------------------------------------------------
+
+TRANSLATION_REGISTERS = ("plain_english", "cube_of_space", "executive_brief")
+
+
+TRANSLATION_PROMPT_TEMPLATES = {
+    "plain_english": """\
+You produced the following analysis. Your task now is to re-express it in plain everyday English suitable for someone unfamiliar with the 9D-Chess framework, preserving the analytical claims and structural reasoning 1:1.
+
+CONSTRAINTS — these are non-negotiable:
+- Do NOT add new claims the original didn't make.
+- Do NOT soften conclusions or introduce hedging the original didn't carry.
+- Do NOT change the strategic logic.
+- DROP the framework jargon entirely; translate the vocabulary while preserving the meaning.
+
+Translate by mapping the jargon to plain words:
+- "DAI" / "Dimensional Awareness Index" → "how many dimensions of the situation each actor can see"
+- "DAP" / "Dimensional Awareness Profile" → "which dimensions the actor pays attention to"
+- "SDS" / "Set of Disadvantageous States" → "the bad outcomes the opponent gets funneled into"
+- "ROEM" / "Reverse Observer Effect Model" → "the trap where being observed forces the opponent into bad moves"
+- "Strategic Lasso" / "Strategic Funnel" → "the gradual narrowing of the opponent's options"
+- "Incomprehensible Move" → "a move so dimensionally different the opponent can't process it in time"
+- "Convergence Theorem" → "the structural certainty that the opponent's options collapse to a bad outcome"
+- "Set" archetype → "chaotic disruption" or "disruptive force"
+- "Horus" archetype → "established order" or "legitimate authority"
+- "Go-like" → "long-term territorial / positional"
+- "Chess-like" → "direct tactical confrontation"
+- "Ω" / "strategic universe" → "the full strategic situation"
+- "Ω'" / "perceived sub-universe" → "the limited view the opponent operates with"
+
+Keep the per-dimension breakdown structure if present, but use plain words for dimension names where possible. Keep the FINAL RESOLUTION section. Don't omit anything substantive. The output should read like a thoughtful colleague explaining the same conclusion in clearer words.
+
+Source analysis to translate:
+=====
+{source_text}
+=====
+
+Plain-English translation:""",
+
+    "cube_of_space": """\
+You produced the following analysis. Your task now is to re-express it using the Cube-of-Space register — visceral geometric vocabulary that maps the framework's structural reasoning onto spatial primitives. Preserve the analytical claims and structural reasoning 1:1.
+
+CONSTRAINTS — these are non-negotiable:
+- Do NOT add new claims the original didn't make.
+- Do NOT soften conclusions or introduce hedging the original didn't carry.
+- Do NOT change the strategic logic.
+- Shift the vocabulary toward geometric/spatial visceral framing; preserve the meaning underneath.
+
+Translate by mapping the framework primitives onto geometric primitives:
+- "DAI" / "dimensional awareness" → "higher-dimensional perception", "seeing the full topology"
+- "SDS" / "Set of Disadvantageous States" → "gravity well of bad outcomes", "predefined collapse basin", "geometric trap"
+- "ROEM" → "the reverse observer effect: being watched forces collapse"
+- "Strategic Lasso" / "Funnel" → "the narrowing geometric path", "the closing trap", "the funnel tightening"
+- "Convergence Theorem" → "the inevitable collapse into the predefined basin"
+- "Set" / "Horus" archetypes — keep these (Cube-of-Space uses similar archetypal vocabulary)
+- "central intersection", "North face / South face", "ascending / descending spirals" — use where natural
+- Embrace geometric metaphors: "the opponent's path runs through a narrowing corridor", "they cross into the gravity well at the central intersection"
+- Goal phrase: "actualizes the concept instead of avoiding it" — use when describing how the strategist operates the meta-position
+
+Preserve all analytical content. Keep per-dimension breakdown if present. Keep FINAL RESOLUTION. The output should read like the same analysis written by a strategist who thinks in spatial / geometric vocabulary natively.
+
+Source analysis to translate:
+=====
+{source_text}
+=====
+
+Cube-of-Space translation:""",
+
+    "executive_brief": """\
+You produced the following analysis. Your task now is to compress it into a tight executive brief suitable for a busy decision-maker. Preserve the analytical claims and strategic conclusions 1:1, but cut everything that isn't a decision-maker-relevant claim.
+
+CONSTRAINTS — these are non-negotiable:
+- Do NOT add new claims the original didn't make.
+- Do NOT soften conclusions or introduce hedging the original didn't carry.
+- Do NOT change the strategic logic.
+- DROP framework vocabulary entirely (DAI / SDS / ROEM / Strategic Lasso / Set / Horus / Ω / etc.).
+- DROP the per-dimension breakdown and procedural detail.
+
+Structure the brief in EXACTLY these four sections, each labeled:
+
+1. **Bottom line** (1 sentence): the predicted outcome or recommended action.
+2. **Why this is the move** (2-3 sentences): the underlying strategic mechanism, in plain business/strategy language.
+3. **Risk that would falsify this** (1-2 sentences): what would have to be true for the conclusion to be wrong.
+4. **What to watch for** (1-2 sentences): concrete indicators the operator should track to validate or falsify.
+
+If the source is ambivalent or has multiple paths, the brief reflects that honestly — don't manufacture confidence. The output should read like a 3-5 paragraph summary the operator could forward to a non-framework-native stakeholder without further explanation.
+
+Source analysis to translate:
+=====
+{source_text}
+=====
+
+Executive brief:""",
+}
+
 
 ITERATIVE_BICAMERAL_LOOP_TEMPLATE = """\
 ORIGINAL SCENARIO:

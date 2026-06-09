@@ -10,27 +10,25 @@ DISPATCHER_PATHWAYS = ("cleanroom", "genie", "offensive", "mirror_audit")
 
 
 # ---------------------------------------------------------------------------
-# Pl3 Operator Lens — translation register library
+# Pl3 Operator Lens — translation moved to NotebookLM Engine (milestone 45
+# corrected). Translation is analytical content (it carries strategic
+# claims forward; a distorted translation distorts the operator's read of
+# the analysis), so it belongs inside the closed RAG sphere alongside
+# Engine / Auditor / Bridge — NOT in Gemini Flash which is scoped to
+# dispatcher intent classification only.
 #
-# The translation stroke takes a previously-recorded stroke's raw_response
-# and re-expresses it in the chosen register, preserving analytical claims
-# 1:1 while swapping framework jargon for legible operator-facing vocabulary.
-#
-# Each register is a system-prompt instruction that's prepended to the
-# source text in the Gemini Flash call. The constraint shared across all
-# registers: NO new claims, NO softening of conclusions, NO hedging the
-# original didn't carry. Just translate the vocabulary.
-#
-# Why Gemini Flash and not NotebookLM: translation is a reformulation,
-# not new analysis. Gemini Flash is faster (~1-2s vs NotebookLM's 30-50s),
-# cheaper, and doesn't require provisioning a sibling notebook. Doesn't
-# fight the canonical Engine/Auditor/Bridge personas either.
+# The translation prompt library + run_translation() method now live in
+# app/services/orchestrator.py (see TRANSLATION_PROMPT_TEMPLATES) and
+# route through self.svc.query_chess_engine. The notebook's foundations-
+# corpus grounding is what makes the translations actually understand
+# what the framework concepts mean — which is what made the milestone 43
+# Cube-of-Space exchange work in the first place.
 # ---------------------------------------------------------------------------
 
 TRANSLATION_REGISTERS = ("plain_english", "cube_of_space", "executive_brief")
 
 
-_TRANSLATION_PROMPTS = {
+_DEPRECATED_GEMINI_TRANSLATION_PROMPTS = {
     "plain_english": """You are a translator. Re-express the following analysis in plain everyday English suitable for someone unfamiliar with the 9D-Chess strategic-physics framework. Preserve the analytical claims and structural reasoning 1:1 — do NOT add new claims, soften conclusions, introduce hedging the original didn't carry, or change the strategic logic.
 
 Translate the jargon while preserving the meaning:
@@ -137,57 +135,17 @@ class GeminiService:
         # The client automatically picks up GOOGLE_API_KEY from environment variables
         self.client = genai.Client()
 
-    async def translate_with_register(
-        self,
-        source_text: str,
-        register: str,
-    ) -> str:
-        """Pl3 Operator Lens — translate a stroke's analytical output into the chosen register.
-
-        Args:
-            source_text: the raw stroke text to translate.
-            register: one of ``TRANSLATION_REGISTERS`` — selects the
-                register-specific prompt from ``_TRANSLATION_PROMPTS``.
-
-        Returns:
-            The translated text. Plain string — no JSON parsing,
-            no extraction; the model returns its translation directly.
-
-        Raises:
-            ValueError: if ``register`` is not in the registry.
-            RuntimeError: if Gemini returns an empty / unparseable
-                response (transient — caller can retry).
-        """
-        if register not in _TRANSLATION_PROMPTS:
-            raise ValueError(
-                f"Unknown translation register: {register!r}. "
-                f"Choose one of: {', '.join(TRANSLATION_REGISTERS)}"
-            )
-        if not source_text or not source_text.strip():
-            raise ValueError("source_text must be non-empty")
-
-        prompt = _TRANSLATION_PROMPTS[register].replace(
-            "{source_text}", source_text,
-        )
-
-        try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-            text = response.text.strip() if response.text else ""
-            if not text:
-                raise RuntimeError(
-                    f"Gemini returned empty translation for register={register}"
-                )
-            return text
-        except Exception as exc:
-            # Re-raise so the orchestrator can surface to the caller —
-            # translation failures are caller-visible (not silent), the
-            # operator should know if the model can't translate.
-            raise RuntimeError(
-                f"Translation failed for register={register}: {exc}"
-            ) from exc
+    # NOTE: ``translate_with_register`` was removed 2026-06-06 (milestone 45
+    # corrected) — translation now routes through the canonical NotebookLM
+    # Engine via ``GanymedeOrchestrator.run_translation`` so the model has
+    # foundations-corpus grounding when translating. The closed-RAG-sphere
+    # design principle is preserved: Gemini is scoped to dispatcher intent
+    # classification only; everything analytical (including translation)
+    # lives in the closed sphere.
+    #
+    # The deprecated Gemini-Flash translation prompts are preserved at
+    # module scope as ``_DEPRECATED_GEMINI_TRANSLATION_PROMPTS`` for
+    # historical reference — do not call them in new code.
 
     async def identify_entities(self, scenario: str) -> list[str]:
         """

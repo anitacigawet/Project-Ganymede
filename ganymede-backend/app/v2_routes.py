@@ -1073,9 +1073,11 @@ class TranslateRequest(BaseModel):
     """Translate a stroke into an operator-facing vocabulary register.
 
     The translation preserves the analytical claims 1:1 while swapping
-    framework jargon for legible operator-facing vocabulary. Backed by
-    Gemini Flash (fast, ~1-2s) rather than NotebookLM — translation is a
-    reformulation, not new analysis.
+    framework jargon for legible operator-facing vocabulary. Routes
+    through the canonical NotebookLM Engine (NOT Gemini Flash) so the
+    model has foundations-corpus grounding when translating — the same
+    grounding that made the milestone 43 Cube-of-Space exchange work in
+    the first place. Closed-RAG-sphere discipline preserved.
     """
     model_config = ConfigDict(extra="forbid")
     stroke_number: int = Field(ge=1)
@@ -1110,19 +1112,26 @@ async def translate_stroke(
     """Translate a stroke into the chosen operator-facing register (Pl3).
 
     Preserves the analytical claims 1:1 while swapping framework jargon
-    for legible vocabulary. Backed by Gemini Flash — fast (~1-2s wall),
-    cheap, no NotebookLM provisioning. Cached server-side on the session
-    so re-fetching the same (stroke, register) returns the prior result
-    without burning another Gemini call. (Operator can re-call manually
-    to refresh if they want a re-translation — currently the endpoint
-    always re-translates and overwrites; future polish: ``?cached=true``
-    query arg to use the cache.)
+    for legible vocabulary. Routes through the canonical NotebookLM
+    Engine (NOT Gemini Flash) — translation is analytical content (it
+    carries strategic claims forward), so it lives in the closed RAG
+    sphere alongside Engine / Auditor / Bridge. The foundations-corpus
+    grounding is what lets the model actually understand what the
+    framework concepts mean during translation — same grounding that
+    made the milestone 43 Cube-of-Space exchange work.
+
+    Operational cost: one cooldown-gated NotebookLM call per translation
+    (~30-50s wall — same speed as a normal synthesis stroke). Cached
+    server-side on the session so re-fetching the same (stroke, register)
+    pair returns the prior result without another NotebookLM call.
+    (Currently the endpoint always re-translates and overwrites — future
+    polish: ``?cached=true`` query arg to use the server-side cache.)
 
     Errors:
         404 if the session doesn't exist.
         422 if the stroke doesn't exist on the session, the stroke has
             empty response text, or the register is invalid.
-        500 if Gemini fails — caller-visible (translation transients
+        500 if NotebookLM fails — caller-visible (translation transients
             don't fail the session itself).
     """
     session = _require_session(session_id)
