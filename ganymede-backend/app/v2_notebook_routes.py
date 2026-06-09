@@ -324,7 +324,14 @@ async def delete_notebook(notebook_id: str) -> DeleteNotebookResponse:
     orchestrator's failed-oracle cleanup path and by operators running
     Persona-Expansion-style throwaway experiments who want to garbage-
     collect test notebooks afterwards.
+
+    P1-04: also deregisters the notebook from the
+    :mod:`app.services.bridge_registry` if it was registered as an
+    auto-provisioned Bridge notebook. Deregistration is idempotent —
+    safe to call regardless of whether the notebook was registered.
     """
+    from app.services.bridge_registry import registry as bridge_notebook_registry
+
     svc = _get_svc()
     try:
         ok = await svc.delete_notebook(notebook_id)
@@ -333,6 +340,19 @@ async def delete_notebook(notebook_id: str) -> DeleteNotebookResponse:
     except Exception as exc:
         logger.exception("delete_notebook failed for notebook %s", notebook_id)
         raise HTTPException(status_code=500, detail=str(exc))
+
+    # P1-04: deregister from the Bridge notebook registry on successful
+    # delete. Idempotent — no-op when the notebook wasn't registered.
+    if ok:
+        try:
+            bridge_notebook_registry().deregister(notebook_id)
+        except Exception:
+            logger.exception(
+                "delete_notebook: bridge registry deregistration failed for %s "
+                "(non-blocking — notebook is deleted)",
+                notebook_id,
+            )
+
     return DeleteNotebookResponse(notebook_id=notebook_id, deleted=bool(ok))
 
 

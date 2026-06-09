@@ -710,6 +710,56 @@ An onboarding markdown was generated at `C:\Users\james\Desktop\Z-SPAN_Ganymede_
 
 ---
 
+## 44. P1-04 Bridge notebook lifecycle — operator-managed with categorized suggestions (2026-06-06)
+
+The P1-04 decision landed: Bridge notebooks stay until the operator explicitly deletes them (no auto-cleanup, no opt-in flag). The operator handles delete; the system advises. Per operator direction 2026-06-06: *"Lets just do C since its the most safe, just have a little visual thing I can click a 'delete' button on, and maybe suggestions for each 'row' of the notebook... I don't want it to be all or nothing."*
+
+### The decision
+
+Five options were considered (auto-cleanup default / opt-in cleanup flag / operator-managed / TTL sweeper / opt-out cleanup flag). The operator chose **Option C — operator-managed with categorized delete-suggestions**:
+
+- No auto-cleanup. The orchestrator never deletes Bridge notebooks on its own.
+- The system tracks auto-provisioned Bridge notebooks server-side in an in-memory registry as they're created.
+- A survey endpoint lists registered notebooks with per-row categorization (*likely safe to delete* / *review* / *recently used*) + a one-line reason per row.
+- A UI panel renders the survey with delete buttons + color-coded badges. Two-click confirm to prevent accidental deletes.
+- Operator-curated notebooks (created outside the orchestrator's auto-provision paths) are NOT tracked here — they remain manually managed via raw API calls.
+
+This matches the operator's pattern for MLMS-style tools where the AI can categorize/label but the human makes the final delete call.
+
+### Shipped
+
+- **`ganymede-backend/app/services/bridge_registry.py`** — in-memory `BridgeNotebookRegistry` tracking `notebook_id`, `title`, `created_at`, `session_id`, `provision_path` (`iterate_level_1` / `bicameral_loop_level_2` / `standalone_provision`), `foundations_uploaded`, `truth_packets_uploaded`. Thread-safe. Single module-global instance per backend process.
+- **Categorization heuristic** (`list_with_suggestions`):
+  - Session terminal (`complete` / `cancelled` / `error`) AND notebook >2h old → `likely_safe_to_delete` + suggested action `delete`.
+  - Session terminal AND notebook ≤2h old → `review` (operator may re-audit).
+  - Session running → `recently_used` + suggested action `keep`.
+  - Session unknown (process restart or untracked) AND notebook >48h old → `likely_safe_to_delete` + `delete`.
+  - Session unknown AND notebook ≤48h old → `review`.
+- **Orchestrator integration** — `provision_bridge_notebook` gains `session_id` + `provision_path` kwargs and registers in the registry after successful provisioning. `run_iterative_engine` passes `(session.id, "iterate_level_1")`; `run_bicameral_loop` passes `(session.id, "bicameral_loop_level_2")`; the standalone `/bridge/provision` path defaults to `("standalone_provision")`.
+- **HTTP `GET /api/v2/bridge/notebooks`** — returns the categorized survey with summary counts (total / safe_to_delete / needs_review / keep).
+- **HTTP `DELETE /api/v2/notebooks/{id}` hook** — deregisters from the bridge registry on successful delete. Idempotent — safe to call regardless of whether the notebook was registered.
+- **Frontend `BridgeNotebookManager.tsx`** — self-contained component fetching the survey + rendering each notebook as a row with title, ID, age, session info, color-coded category badge (rose / amber / emerald), reason line, two-click confirm delete button. Summary count chips at the top. Refresh button. Help section explaining the heuristic.
+- **`/bridge-notebooks` route** — new page at `ganymede-ui/src/app/bridge-notebooks/page.tsx` rendering the manager component with a back link.
+
+### What this milestone closes
+
+- P1-04 decision is now landed and implemented.
+- The accumulation problem the original P1-04 spec flagged ("auto-provisioned Bridge notebooks aren't auto-deleted; for long-lived ops, this accumulates clutter") is now manageable — operators can see what's accumulated + which ones the system thinks are safe to delete.
+
+### What this milestone does NOT close
+
+- **Persistence across backend restarts.** The registry is in-memory; restarting the backend empties the registry but the actual notebooks persist in NotebookLM. Operator can still see + delete them via the raw `/api/v2/notebooks/{id}` endpoint, but they won't appear in the survey table until they're re-provisioned (which won't happen — they're already provisioned). Follow-up candidate: file-backed persistence (JSON serialization on every register/deregister) so the registry survives restarts.
+- **Operator-curated notebooks.** Notebooks created outside the orchestrator's auto-provision paths (e.g., manual `POST /api/v2/notebooks` calls, persona-expansion experiment notebooks) are NOT tracked. The operator manages those manually. Tracking would require adding a "register externally-created notebook" API surface; not needed for the immediate use case.
+
+### Pending after this milestone
+
+- Per operator-locked sequence: **Pl3 Operator Lens** next (translation stroke for operator-facing output legibility — surfaced by milestone 43's Cube-of-Space exchange).
+- Then **Pl2 Z-SPAN as first consumer** at the very end.
+- E1-06 (first live Bicameral Level 2 run) still on the queue, operator-driven.
+- 2026-06-30 LMArena leaderboard-rank resolution still on calendar.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -764,3 +814,4 @@ An onboarding markdown was generated at `C:\Users\james\Desktop\Z-SPAN_Ganymede_
 | Framework Kernel vs. Scaffolding partition (41) | [`../concepts/Framework_Kernel_vs_Scaffolding_Partition.md`](../concepts/Framework_Kernel_vs_Scaffolding_Partition.md) + [`../scratch/2026-05-31-M1-foundations-deep-read.md`](../scratch/2026-05-31-M1-foundations-deep-read.md) (per-file working notes) |
 | LMArena partial validation — Anthropic pause call (42) | [`../experiments/runs/06_LMArena_Anthropic_Cleanroom.md`](../experiments/runs/06_LMArena_Anthropic_Cleanroom.md) § "Real-world outcome — 2026-06-05" |
 | Z-SPAN pattern-recognition + Operator Lens primitive (43) | Transcripts at `C:\Users\james\Documents\NotebookLM Transcript.txt` + `C:\Users\james\Documents\Gemini Transcript.txt` (operator filesystem, not in repo); Onboarding handoff at `C:\Users\james\Desktop\Z-SPAN_Ganymede_Onboarding.md`; Pl3 Operator Lens spec in [`../../ROADMAP.md`](../../ROADMAP.md) § "Silo 4 — Pluggable" |
+| P1-04 Bridge notebook lifecycle (44) | `ganymede-backend/app/services/bridge_registry.py` + `GET /api/v2/bridge/notebooks` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/BridgeNotebookManager.tsx` + `/bridge-notebooks` route at `ganymede-ui/src/app/bridge-notebooks/page.tsx` |

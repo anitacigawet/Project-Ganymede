@@ -36,6 +36,7 @@ from app.contracts import (
     TruthPacket,
     utcnow,
 )
+from app.services.bridge_registry import registry as bridge_notebook_registry
 from app.services.notebooklm import NotebookLMService
 from app.services.session import Session
 
@@ -868,6 +869,8 @@ class GanymedeOrchestrator:
         title: Optional[str] = None,
         include_foundations: bool = True,
         foundations_dir: Optional[Path] = None,
+        session_id: Optional[str] = None,
+        provision_path: str = "standalone_provision",
     ) -> dict[str, Any]:
         """Create + populate + persona-lock a Connection Bridge notebook.
 
@@ -985,6 +988,27 @@ class GanymedeOrchestrator:
             "provision_bridge_notebook: done. notebook=%s, foundations=%d, packets=%d",
             notebook_id, foundations_uploaded, packets_uploaded,
         )
+
+        # P1-04: register in the in-memory Bridge notebook registry so the
+        # operator-facing survey endpoint can list this notebook + suggest
+        # an action. Registration is fire-and-forget; failure here would
+        # mean the notebook exists but isn't tracked — not blocking.
+        try:
+            bridge_notebook_registry().register(
+                notebook_id=notebook_id,
+                title=title,
+                session_id=session_id,
+                provision_path=provision_path,
+                foundations_uploaded=foundations_uploaded,
+                truth_packets_uploaded=packets_uploaded,
+            )
+        except Exception:
+            logger.exception(
+                "provision_bridge_notebook: registry registration failed for %s "
+                "(non-blocking — notebook exists)",
+                notebook_id,
+            )
+
         return {
             "notebook_id": notebook_id,
             "title": title,
@@ -1120,6 +1144,8 @@ class GanymedeOrchestrator:
                     provision_result = await self.provision_bridge_notebook(
                         truth_packets=truth_packets,
                         title=f"Bridge — {session.id[:8]} iterate",
+                        session_id=session.id,
+                        provision_path="iterate_level_1",
                     )
                     bridge_notebook_id = provision_result["notebook_id"]
                     logger.info(
@@ -1458,6 +1484,8 @@ class GanymedeOrchestrator:
                     provision_result = await self.provision_bridge_notebook(
                         truth_packets=truth_packets,
                         title=f"Bicameral Loop — {session.id[:8]}",
+                        session_id=session.id,
+                        provision_path="bicameral_loop_level_2",
                     )
                     bridge_notebook_id = provision_result["notebook_id"]
                     logger.info(

@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-P1-03b — CTA-suppression post-processor shipped: `_strip_trailing_cta()` helper + `cleaned_response` / `stripped_cta` optional fields on `StrokeResult` + wired into all 3 stroke construction sites. Verified against P1-03's 3 confirmed leak phrases + edge cases. Per operator-locked sequence: P1-04 (operator-gated) next, then Pl3, then Pl2).
+Last updated: 2026-06-06 (post-milestone 44 — P1-04 Bridge notebook lifecycle decision shipped: operator picked Option C (operator-managed with categorized delete-suggestions); backend registry + survey endpoint + UI panel + `/bridge-notebooks` route all in head. Per operator-locked sequence: Pl3 (Operator Lens) next, then Pl2 at the end).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -211,29 +211,22 @@ Engine persona text left in place as defense-in-depth — both layers running pe
 
 ---
 
-### P1-04 · Bridge notebook lifecycle decision
+### ~~P1-04 · Bridge notebook lifecycle decision~~ ✅ SHIPPED 2026-06-06 (milestone 44)
 
-Auto-provisioned Bridge notebooks aren't auto-deleted after the iterate
-run. For long-lived ops, this accumulates clutter.
+Operator chose **Option C — operator-managed with categorized delete-suggestions**. The system tracks auto-provisioned Bridge notebooks server-side, surfaces a categorized survey with per-row delete suggestions, and the operator handles the actual delete clicks. No auto-cleanup, no opt-in flag — explicit operator action via UI.
 
-**Done when:**
-- Survey current Bridge notebooks in the operator's account
-  (`GET` against the NotebookLM dashboard or via a script). Quantify
-  the clutter.
-- Decide: auto-cleanup by default / opt-in via `cleanup_bridge_notebook`
-  flag / operator-managed.
-- If "opt-in flag": implement it in `IterateRequest` and
-  `run_iterative_engine`.
-- Log the decision in `docs/history/Architecture_History.md` as a
-  milestone 39 entry.
+Shipped:
+- **`ganymede-backend/app/services/bridge_registry.py`** — in-memory `BridgeNotebookRegistry` with categorization heuristic (session terminal + age + provision path → `likely_safe_to_delete` / `review` / `recently_used` + suggested action `delete` / `review` / `keep` + human-readable reason).
+- **Orchestrator integration** — `provision_bridge_notebook` registers in the registry; `run_iterative_engine` + `run_bicameral_loop` + standalone `/bridge/provision` all tag with provision_path.
+- **`GET /api/v2/bridge/notebooks`** survey endpoint with summary counts.
+- **`DELETE /api/v2/notebooks/{id}` hook** — deregisters from registry on success.
+- **`ganymede-ui/src/components/BridgeNotebookManager.tsx`** — self-contained UI panel with color-coded category badges, summary count chips, two-click confirm delete buttons, refresh button, help section.
+- **`/bridge-notebooks` route** — page at `ganymede-ui/src/app/bridge-notebooks/page.tsx`.
+- **`docs/history/Architecture_History.md` milestone 44** — full decision + implementation record.
 
-**Files touched:** Possibly `app/v2_routes.py`, `app/services/orchestrator.py`,
-`docs/history/Architecture_History.md`.
-
-**Estimated effort:** ~1 hour including the survey.
-
-**Operator-gated step:** the lifecycle decision itself. Claude proposes
-a default; operator picks if they care.
+Deferred follow-ups (not blocking):
+- **Persistence across backend restarts.** Registry is in-memory; restart loses metadata. Actual notebooks persist in NotebookLM either way. File-backed persistence is a small follow-up candidate.
+- **Operator-curated notebooks.** Notebooks created outside the orchestrator's auto-provision paths aren't tracked. Manual management via raw API calls remains the operator's responsibility there.
 
 ---
 

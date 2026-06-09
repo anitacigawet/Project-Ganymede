@@ -1062,6 +1062,135 @@ async def stream_events(websocket: WebSocket, session_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bridge notebook survey endpoint (P1-04 — operator-managed lifecycle)
+#
+# Per the 2026-06-06 operator decision: Bridge notebooks stay until the
+# operator explicitly deletes them (no auto-cleanup). To make that
+# manageable as the consumer surface grows (Z-SPAN as Pl2 first consumer),
+# the GET /api/v2/bridge/notebooks endpoint returns a categorized survey
+# table the operator UI renders with per-row delete buttons + suggested
+# action labels ("delete" / "review" / "keep") + a one-line reason per
+# suggestion. The operator clicks delete on the rows they decide are
+# safe; the existing DELETE /api/v2/notebooks/{id} endpoint handles the
+# actual delete + deregisters from the survey registry.
+#
+# The registry is populated server-side at provision time
+# (run_iterative_engine Level 1, run_bicameral_loop Level 2, and the
+# standalone /bridge/provision endpoint). It does NOT see operator-
+# curated notebooks created outside the orchestrator's auto-provision
+# paths — those remain manually managed.
+# ---------------------------------------------------------------------------
+
+class BridgeNotebookRow(BaseModel):
+    """One row in the bridge-notebook survey table."""
+    model_config = ConfigDict(extra="forbid")
+    notebook_id: str
+    title: str
+    created_at: str
+    """ISO-8601 UTC timestamp."""
+    age_hours: float
+    session_id: Optional[str] = None
+    session_status: Optional[str] = None
+    """``running`` / ``complete`` / ``cancelled`` / ``error`` if the
+    originating session is still tracked; null when the session is gone
+    (process restart / discard) or wasn't tracked (standalone path)."""
+    provision_path: str
+    """Which code path provisioned this notebook:
+        ``"iterate_level_1"`` / ``"bicameral_loop_level_2"`` / ``"standalone_provision"``."""
+    foundations_uploaded: int
+    truth_packets_uploaded: int
+    suggested_action: str
+    """One of ``"delete"`` / ``"review"`` / ``"keep"`` — advisory.
+    Operator makes the final call; this row reflects what the heuristic
+    thinks based on session status + notebook age."""
+    suggested_category: str
+    """One of ``"likely_safe_to_delete"`` / ``"review"`` / ``"recently_used"``.
+    UI renders with a color-coded badge."""
+    reason: str
+    """Human-readable one-line explanation surfaced inline next to the
+    category badge."""
+
+
+class BridgeNotebookSurveyResponse(BaseModel):
+    """Response shape for ``GET /api/v2/bridge/notebooks``."""
+    model_config = ConfigDict(extra="forbid")
+    notebooks: list[BridgeNotebookRow]
+    total: int
+    safe_to_delete: int
+    """Count of rows where suggested_action == "delete" — drives the
+    UI's badge count for "you could clean N notebooks right now"."""
+    needs_review: int
+    """Count of rows where suggested_action == "review"."""
+    keep: int
+    """Count of rows where suggested_action == "keep"."""
+
+
+@router.get(
+    "/bridge/notebooks",
+    response_model=BridgeNotebookSurveyResponse,
+)
+async def bridge_notebook_survey() -> BridgeNotebookSurveyResponse:
+    """List auto-provisioned Bridge notebooks with per-row delete suggestions.
+
+    Returns every Bridge notebook the orchestrator has auto-provisioned
+    in the current backend process, with metadata + a categorization
+    suggestion per row. The operator UI renders this as a table with
+    delete buttons + color-coded badges; the operator decides which rows
+    to delete.
+
+    Categorization heuristic (see ``BridgeNotebookRegistry.list_with_suggestions``
+    for the exact rules) considers session status + notebook age:
+        - Session terminal AND >2h old → likely_safe_to_delete + delete
+        - Session terminal AND ≤2h old → review (recent — may re-audit)
+        - Session running → recently_used + keep
+        - Session unknown AND >48h old → likely_safe_to_delete + delete
+        - Session unknown AND ≤48h old → review
+
+    The registry is in-memory: clears on backend restart. Operator-
+    curated notebooks (created outside the orchestrator's auto-provision
+    paths) are NOT in this survey; manage those via raw API calls.
+    """
+    from app.services.bridge_registry import registry as bridge_notebook_registry
+
+    # Build the session-status lookup so the survey can categorize based
+    # on whether the originating session is still running.
+    session_status_lookup = {
+        s.id: s.status for s in registry().list_all()
+    }
+    rows_data = bridge_notebook_registry().list_with_suggestions(
+        session_status_lookup=session_status_lookup,
+    )
+
+    rows = [
+        BridgeNotebookRow(
+            notebook_id=r.notebook_id,
+            title=r.title,
+            created_at=r.created_at.isoformat(),
+            age_hours=round(r.age_hours, 2),
+            session_id=r.session_id,
+            session_status=r.session_status,
+            provision_path=r.provision_path,
+            foundations_uploaded=r.foundations_uploaded,
+            truth_packets_uploaded=r.truth_packets_uploaded,
+            suggested_action=r.suggested_action,
+            suggested_category=r.suggested_category,
+            reason=r.reason,
+        )
+        for r in rows_data
+    ]
+    safe_to_delete = sum(1 for r in rows if r.suggested_action == "delete")
+    needs_review = sum(1 for r in rows if r.suggested_action == "review")
+    keep = sum(1 for r in rows if r.suggested_action == "keep")
+    return BridgeNotebookSurveyResponse(
+        notebooks=rows,
+        total=len(rows),
+        safe_to_delete=safe_to_delete,
+        needs_review=needs_review,
+        keep=keep,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Auth pill endpoints (Phase 5 — Z-SPAN bridge integration)
 #
 # Stateless wrappers over the ``app.services.notebooklm.auth_check`` module.
