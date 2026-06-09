@@ -16,11 +16,12 @@ If you're new to the project itself (rather than just the API), [`OVERVIEW.md`](
 
 - Ganymede runs as an HTTP service (FastAPI). Default URL: `http://127.0.0.1:8000`.
 - The API is **session-based**: you create a session, drive one or more "strokes" against it, and finalize.
-- A *stroke* is one Engine invocation. Single-pass = one stroke; iterative = three strokes (synthesis → audit → re-synthesis).
+- A *stroke* is one Engine invocation. Single-pass = one stroke; iterative = three strokes (synthesis → audit → re-synthesis); Bicameral Level 2 = N strokes until convergence.
 - Inputs: a *Scenario* (what to reason about) + *Truth Packets* (your already-harvested research findings, source-cited).
 - Outputs: structured *StrokeResults* with the canonical strategic shapes (Strategic Lasso, Incomprehensible Move, Final Resolution).
 - Real-time progress is available over WebSocket; polling also works.
 - Cooldown discipline is built in. You don't manage rate limits — the backend does.
+- **Sessions persist across backend restarts** (Pl2-01, milestone 46). `GET /sessions` lists prior sessions; `GET /sessions/{id}/strokes` returns full stroke history; sessions are durable for long-running strategic-planning consumers (e.g. Z-SPAN).
 
 ```
 Consumer                                Ganymede
@@ -226,9 +227,74 @@ Errors:
 - `422` — scenario doesn't satisfy the chosen pathway's contract (e.g. genie pathway with no `current_state`/`wished_for_state`).
 - `422` — `iterative=true` with `max_strokes < 2`.
 
+### `GET /api/v2/sessions`
+
+List prior sessions, ordered newest-first (Pl2-01, milestone 46). Backed by the persistent SessionStore — surfaces every session ever created (and persisted) on this backend, including across restarts.
+
+Query parameters:
+
+| Param | Type | Default | Description |
+| --- | --- | --- | --- |
+| `status` | string | (none) | Filter by `running` / `complete` / `error` / `cancelled` (exact match). |
+| `pathway` | string | (none) | Filter by `cleanroom` / `genie` / `offensive` / `mirror_audit`. |
+| `q` | string | (none) | Substring search over scenario JSON + final_text (SQLite LIKE). Combinable with the other filters. |
+| `limit` | int | 50 | 1-200 inclusive. |
+| `offset` | int | 0 | Pagination offset, ≥ 0. |
+
+Response:
+
+```json
+{
+  "sessions": [
+    {
+      "session_id": "5263e33a-...",
+      "status": "complete",
+      "pathway": "genie",
+      "iterative": true,
+      "max_strokes": 3,
+      "created_at": "2026-06-08T18:42:14.123Z",
+      "completed_at": "2026-06-08T18:55:38.456Z",
+      "error_message": null,
+      "scenario": { "current_state": "...", "wished_for_state": "..." },
+      "final_text_preview": "First 200 chars of the final_text…"
+    }
+  ],
+  "total": 12,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+`final_text_preview` is convenience truncation for the list view; the full text is on `GET /sessions/{id}/strokes`. The full `Scenario` is included so consumers can render pathway-specific fields without per-row detail fetches.
+
+Returns an empty list (`total: 0`) in in-memory-only mode (`GANYMEDE_DISABLE_SESSION_PERSISTENCE=1` or store init failed). Errors: `422` for `limit` outside 1-200 or `offset < 0`.
+
 ### `GET /api/v2/sessions/{id}`
 
-Get the session's current state. Returns 404 if not found.
+Get the session's current state. Returns 404 if not found. Works for both live and rehydrated-from-store sessions.
+
+### `GET /api/v2/sessions/{id}/strokes`
+
+Return all strokes recorded on a session, plus any Pl3 Operator Lens translations (Pl2-01, milestone 46). The natural endpoint when a consumer drills into a prior session from `GET /sessions`.
+
+Response:
+
+```json
+{
+  "session_id": "5263e33a-...",
+  "strokes": [
+    { "stroke_number": 1, "raw_response": "...", "final_resolution": "...", ... },
+    { "stroke_number": 2, "audit_findings": ["..."], "audit_kind": "mirror_auditor", ... },
+    { "stroke_number": 3, "raw_response": "...", "cleaned_response": "...", "final_resolution": "...", ... }
+  ],
+  "translations": {
+    "3:executive_brief": "Translated executive brief...",
+    "3:plain_english": "Translated plain English..."
+  }
+}
+```
+
+Translations are keyed by `{stroke_number}:{register}` matching the `Session._translations` in-memory schema. State summary is on `GET /sessions/{id}`; the event timeline is on `GET /sessions/{id}/events`. Errors: `404` if session not found.
 
 ### `POST /api/v2/sessions/{id}/synthesize`
 
@@ -663,15 +729,19 @@ For consumers, this means:
 - **Hitting `/iterate` in a tight loop will block, not 429.** Each call waits its turn against the gate.
 - **Inter-session cooldowns** (60s by default) are advisory; consumers can call `/health` to see current cooldown stats and decide whether to defer a new run.
 
-### Session persistence (or lack of)
+### Session persistence (Pl2-01, milestone 46)
 
-Sessions are **in-memory** in v1. If the Ganymede backend restarts mid-session, all session state is lost. Consumers that need persistence should:
+Sessions persist by default to a single-file SQLite store at `ganymede-backend/data/sessions.db`. Saved on every state mutation (stroke recorded, translation recorded, terminal transition), rehydrated into the registry on backend startup. Backend restart no longer loses session state.
 
-- Persist their own `(consumer_session_id, ganymede_session_id)` mapping in their own DB
-- On Ganymede restart, treat any in-flight session as failed and start a fresh one
-- Frozen `FinalResolution` payloads should be persisted on the consumer side as soon as `/complete` returns
+What this means for consumers:
 
-This is deliberate. Persistence within Ganymede would create cross-consumer state that complicates multi-tenancy. Per [`module_design.md`](module_design.md), each consumer carries its own Ganymede instance OR shares the process and accepts in-memory ephemerality.
+- Capture the `session_id` returned from `POST /sessions`. You can come back to it days or weeks later via `GET /sessions/{id}`, `GET /sessions/{id}/strokes`, or list-browse via `GET /sessions`.
+- A session that was `running` when the backend died is flipped to `error` on the next startup with a "Backend restarted during run" marker (and a synthetic ERROR event appended to its timeline so the events endpoint stays consistent). To continue work, create a NEW session — the orchestrator that owned the previous loop is dead. Prior strokes are still browseable for context.
+- `FinalResolution` payloads for completed sessions are durable. You can still defensively persist them on the consumer side if you want a copy independent of Ganymede's DB, but the Ganymede-side copy is now reliable.
+
+**Opting out**: set `GANYMEDE_DISABLE_SESSION_PERSISTENCE=1` to run with in-memory-only behavior (tests, ephemeral dev sessions). DB path override via `GANYMEDE_SESSION_DB=/some/path/sessions.db`.
+
+**Schema** (informational — consumers should not write directly): `sessions` / `strokes` / `events` / `translations` tables, foreign-keyed with `ON DELETE CASCADE`. Stroke + event bodies are stored as JSON via Pydantic's `model_dump_json`, lossless on round-trip.
 
 ### Concurrency
 
