@@ -263,8 +263,11 @@ automation lift.
 
 ## Related
 
-- [`zspan_consumer.md`](examples/zspan_consumer.md) — once written, will be
-  the Z-SPAN-specific integration walkthrough (Pl2 deliverable).
+- [`zspan_consumer.md`](examples/zspan_consumer.md) — the Z-SPAN-specific
+  integration walkthrough (Pl2-02 deliverable, shipped 2026-06-08). Covers
+  the session-as-consumer pattern, pathway selection for Z-SPAN's typical
+  question shapes, the persistent-session pattern (Pl2-01), and Operator
+  Lens register selection per Z-SPAN audience.
 - [`consuming_the_v2_api.md`](consuming_the_v2_api.md) — current v2 API
   reference.
 - [Architecture_History.md milestone 43](../history/Architecture_History.md) —

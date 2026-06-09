@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-08 (post-milestone 46 — Pl2-01 persistent session state shipped: SessionStore SQLite-backed persistence + Session._store wiring + save-on-mutation + orphan-rescue + rehydrate-on-startup + GET /api/v2/sessions list/filter/search endpoint + GET /sessions/{id}/strokes endpoint. Round-trip verified end-to-end via TestClient lifecycle. Z-SPAN consumer-spec doc + first live Z-SPAN strategic-planning session remain as Pl2 final chunks).
+Last updated: 2026-06-08 (post-Pl2-02 — Z-SPAN consumer-spec walkthrough doc shipped at docs/integration/examples/zspan_consumer.md. Pl2-01 persistent session state shipped earlier same day in milestone 46. **All claude-autonomous Pl2 chunks are done.** Only Pl2-03 first live Z-SPAN strategic-planning session remains, and it's operator-driven — requires Z-SPAN's session to produce a real positioning question + call the v2 API end-to-end + James to courier results).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -30,18 +30,16 @@ Shipped pieces:
 
 Verified end-to-end via FastAPI TestClient lifecycle: create session via registry → record stroke → complete → list shows total 1 → simulated process death (`_sessions.clear()` + drop `_store`) → fresh boot → `rehydrate()` reports 1 prior session → GET / strokes / state all surface the rehydrated session with original `final_resolution` intact. Orphan-rescue path verified separately: a session left in `running` is flipped to `error` with a synthetic ERROR event appended so the events endpoint stays consistent.
 
-### Pl2-02 · Z-SPAN consumer-spec walkthrough doc — `docs/integration/examples/zspan_consumer.md`
+### ~~Pl2-02 · Z-SPAN consumer-spec walkthrough doc~~ ✅ SHIPPED 2026-06-08
 
-The integration example doc Z-SPAN's session reads to know how to call Ganymede for strategic positioning, competitive-response planning, terminology validation. Should cover: v2 API surface (Dispatcher → /sessions → /iterate or /bicameral-loop → /complete), scenario shape for the Z-SPAN use case (open-source civic-data primitive vs. legacy GovTech), expected wall times (~3-5 min /iterate Level 1, ~10-30 min /bicameral-loop), persistent-session pattern (POST /sessions + capture session_id → later GET /sessions to resume browse), Operator Lens register selection (default `plain_english`; `executive_brief` for non-framework-native readers; `cube_of_space` for the geometric / aesthetic exchanges per milestone 43), courier-protocol usage (when to write `Z-SPAN_to_Ganymede__*.md` per the shipped spec at `docs/integration/operator_courier_protocol.md`).
+Shipped pieces:
 
-**Done when:**
-- Doc exists at `docs/integration/examples/zspan_consumer.md` with the sections above + working curl examples + a worked "strategic positioning question" walkthrough.
-- Cross-referenced from `docs/integration/operator_courier_protocol.md` § Related.
-- Cross-referenced from ROADMAP.md § Pl2.
+- **`docs/integration/examples/zspan_consumer.md`** — full walkthrough doc following the prisonbreak_consumer template but adapted for Z-SPAN's session-as-consumer shape. Sections: model (session-as-consumer vs PrisonBreak's app integration), hook point (conceptual — which questions are Ganymede-shaped), what Z-SPAN naturally provides (operator-curated Truth Packets, not RAG-derived), what Z-SPAN wants back (Strategic Lasso / Incomprehensible Move / audience-facing translation), mapping to Ganymede API (pathway selection table, Truth Packet shape per type, iterative vs Bicameral Level 2 selection, Operator Lens register selection), concrete worked walkthrough (curl-by-curl for the Granicus positioning question), persistent-session pattern (GET /sessions + GET /strokes, the "build on prior strokes" manual workflow), courier-protocol usage cross-reference.
+- **`docs/integration/examples/README.md`** — Z-SPAN row added to the consumer table.
+- **`docs/integration/operator_courier_protocol.md`** § Related — link to zspan_consumer.md updated from "once written" to live cross-reference.
+- **ROADMAP.md** § Pl2 deliverables — Z-SPAN integration spec line struck as shipped.
 
-**Files touched:** `docs/integration/examples/zspan_consumer.md` (new), `docs/integration/operator_courier_protocol.md` (link), `ROADMAP.md` (deliverable check).
-
-**Estimated effort:** ~30-45 min. Autonomous — no NotebookLM calls, no operator gates.
+**Cross-cutting principle surfaced for the general API:** Z-SPAN's case validates that some consumers are sessions, not apps. The v2 API has to be ergonomic from both shapes. Pl2-01 persistent state + Pl3 Operator Lens + the closed-RAG-sphere discipline are what make the session-as-consumer shape viable for long-running strategic-planning work.
 
 ### Pl2-03 · First live Z-SPAN strategic-planning session (operator-driven)
 

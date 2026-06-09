@@ -17,6 +17,7 @@ These exist to give a concrete reference when designing a new consumer. Reading 
 | File | Consumer | Domain | Pathway | Stack | UI? |
 | --- | --- | --- | --- | --- | --- |
 | [`prisonbreak_consumer.md`](prisonbreak_consumer.md) | PrisonBreak | Criminal-case wrongful-conviction analysis | Genie | TypeScript (Express + tRPC + React) | Yes — `SimulatePanel` in case-detail page |
+| [`zspan_consumer.md`](zspan_consumer.md) | Z-SPAN | Open-source civic-data primitive vs. legacy GovTech competitive positioning | Genie / Cleanroom | Session-as-consumer (HTTP / curl from Claude session) | No — session reads results + writes artifacts to Z-SPAN's repo |
 
 When more consumers land, they get a row.
 
