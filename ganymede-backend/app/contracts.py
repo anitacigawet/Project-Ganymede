@@ -228,6 +228,15 @@ class SessionEventType(str, Enum):
     SESSION_COMPLETE = "session_complete"
     """Terminal event. Payload: ``{ "final_resolution": FinalResolution }``."""
 
+    SESSION_CANCELLED = "session_cancelled"
+    """Terminal event indicating the operator cancelled the session via
+    ``POST /api/v2/sessions/{id}/cancel`` (E1-01, Bicameral Convergence
+    Level 2 prerequisite). Payload: ``{ "message": str }`` (operator-
+    facing reason). Distinct from ``ERROR`` — no failure occurred;
+    operator chose to stop. Any partial strokes that completed before
+    cancellation remain on the session and are accessible via
+    ``session.strokes``."""
+
     ERROR = "error"
     """Terminal event indicating the Session failed. Payload:
     ``{ "message": str, "exc_type": str }``."""

@@ -53,9 +53,12 @@ class Session:
     :meth:`events`.
 
     Lifecycle states (``status``):
-        ``running``  — created; strokes may still be added
-        ``complete`` — :meth:`complete` was called; final resolution is set
-        ``error``    — :meth:`fail` was called; ``error_message`` is set
+        ``running``    — created; strokes may still be added
+        ``complete``   — :meth:`complete` was called; final resolution is set
+        ``error``      — :meth:`fail` was called; ``error_message`` is set
+        ``cancelled``  — :meth:`request_cancel` was called by the operator;
+                         any in-flight orchestrator loop terminates at its
+                         next check point. Partial strokes are preserved.
     """
 
     def __init__(
@@ -75,6 +78,13 @@ class Session:
         self.error_message: Optional[str] = None
         self.created_at = utcnow()
         self.completed_at: Optional[Any] = None  # set on terminal transition
+
+        # Cancel flag — set by ``request_cancel()`` and observed by the
+        # orchestrator loop at each NotebookLM-call await point. Atomic
+        # reads (bool, GIL-protected) so the orchestrator can check
+        # without locking. Writes go through ``request_cancel()`` which
+        # acquires ``self._lock`` for the state transition.
+        self.cancel_requested: bool = False
 
         self._events: list[SessionEvent] = []
         self._strokes: list[StrokeResult] = []
@@ -218,6 +228,41 @@ class Session:
                 payload={"message": message, "exc_type": exc_type},
                 stroke_number=None,
             )
+
+    async def request_cancel(self, message: str = "Cancelled by operator") -> bool:
+        """Request cancellation of the session. Terminal.
+
+        Atomically:
+            1. Sets ``cancel_requested = True`` (so the in-flight loop's
+               next check point observes it and raises
+               ``SessionCancelledError``).
+            2. Transitions ``status`` to ``"cancelled"``.
+            3. Sets ``completed_at`` to now.
+            4. Emits ``SESSION_CANCELLED`` so live subscribers see the
+               terminal state immediately.
+
+        Idempotent: calling on an already-terminal session returns False
+        without re-emitting. Returns True iff this call transitioned the
+        session.
+
+        Any partial strokes recorded before this call remain on the session
+        and are accessible via ``self.strokes``. Callers that ran a loop
+        which terminated due to cancellation typically return those partial
+        strokes to the HTTP consumer so they can see what work landed.
+        """
+        async with self._lock:
+            if self.status != "running":
+                return False  # idempotent: already complete/error/cancelled
+            self.cancel_requested = True
+            self.status = "cancelled"
+            self.completed_at = utcnow()
+            self._emit_locked(
+                SessionEventType.SESSION_CANCELLED,
+                payload={"message": message},
+                stroke_number=None,
+            )
+            logger.info("Session %s cancelled by operator: %s", self.id, message)
+            return True
 
     # ---------------------------------------------------------------- readers
 

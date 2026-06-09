@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-milestone 43 — Z-SPAN pattern-recognition validation; Operator Lens primitive surfaced as Pl3; Z-SPAN named as Pl2 primary consumer replacing PrisonBreak. E1 remains the immediately-next code chunk per the paused-mid-exploration scratch note; Pl-phase work likely runs in parallel since it touches different files.).
+Last updated: 2026-06-06 (post-E1-01 — cancel endpoint + thread-safe flag + orchestrator plumbing shipped; E1-02 SessionEventType extensions partially landed (SESSION_CANCELLED added with E1-01); E1-03 run_bicameral_loop is next).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -17,20 +17,19 @@ Last updated: 2026-06-06 (post-milestone 43 — Z-SPAN pattern-recognition valid
 
 **Priority elevated by milestone 42 (2026-06-05) — Anthropic's real-world pause call confirmed the Bridge's mechanism-category catch from Run 7 but exposed the architectural gap: Levels 2/3 don't exist, so the Engine itself never made the specific prediction.** The gap is engineering, not research (architectural spec locked in [`docs/concepts/Bicameral_Convergence.md`](docs/concepts/Bicameral_Convergence.md)). Build the loop, and the next prediction of this shape produces the specific synthesis, not just the mechanism-category gesture.
 
-### E1-01 · `POST /api/v2/sessions/{id}/cancel` endpoint + loop-checks-cancel-flag plumbing
+### ~~E1-01 · `POST /api/v2/sessions/{id}/cancel` endpoint + loop-checks-cancel-flag plumbing~~ ✅ SHIPPED 2026-06-06
 
-The first of the five mandatory operator control surfaces for the Bicameral loop. Cancel is foundational because the loop is potentially long-running (5-15 min) and the operator needs an unconditional bail-out.
+Shipped pieces:
+- `SessionEventType.SESSION_CANCELLED` added in `app/contracts.py` (E1-02 partial — the cancel event landed alongside).
+- `Session.cancel_requested: bool` flag + `request_cancel(message)` async method on Session (`app/services/session.py`). Idempotent state transition to `"cancelled"` terminal status; emits `SESSION_CANCELLED` synchronously.
+- New `SessionCancelledError(where, session_id)` exception class + `_check_cancelled(session, where)` method on `GanymedeOrchestrator` (`app/services/orchestrator.py`). Distinct from `asyncio.CancelledError` on purpose. Four check points wired into `run_iterative_engine`: `before-stroke-1`, `before-stroke-2`, `before-bridge-provision`, `before-stroke-2b-bridge`, `before-stroke-3`. The Bridge try/except now re-raises `SessionCancelledError` rather than swallowing it as a Bridge transient.
+- New `POST /api/v2/sessions/{id}/cancel` endpoint in `app/v2_routes.py` returns `CancelResponse(cancelled, session_id, state)`. Idempotent — returns `cancelled=False` if already terminal (no 409 raised for the race). 404 for unknown session.
+- `/iterate` endpoint catches `SessionCancelledError` and returns 200 with `session.strokes` (partial progress preserved).
+- WS stream recognizes `SESSION_CANCELLED` as terminal alongside `SESSION_COMPLETE` and `ERROR`; drains + closes cleanly.
 
-**Done when:**
-- New endpoint `POST /api/v2/sessions/{id}/cancel` in `app/v2_routes.py` returns 200 with `{"cancelled": true, "session_id": ...}` for active sessions, 404 for unknown, 409 for already-terminal.
-- `Session` (in `app/services/session.py` or wherever the registry lives) gains a `cancel_requested: bool` flag + thread-safe setter.
-- Plumbing in the orchestrator: every NotebookLM-call await point in the iterative loop checks `session.cancel_requested` before kicking off the next call; if set, marks session terminal and emits a `SESSION_CANCELLED` event.
-- The existing `run_iterative_engine` is the immediate target (Bicameral Level 1 currently runs there); the new `run_bicameral_loop` (E1-03) inherits the same plumbing.
-- Smoke-test: kick a `/iterate` call, send cancel mid-Stroke-1, verify clean termination + no orphaned background tasks + WS subscribers get `SESSION_CANCELLED`.
+Smoke-test status: 4 modified Python files compile cleanly (`py_compile`). Live smoke-test (curl cancel mid-iterate, verify clean termination + WS event delivery) deferred to next session-with-backend-running.
 
-**Files touched:** `app/v2_routes.py`, `app/services/orchestrator.py`, `app/services/session.py`, `app/contracts.py` (new SessionEventType).
-
-**Estimated effort:** ~45-60 min. No NotebookLM calls required for the wiring; smoke-test fires one short call.
+### E1-02 · New SessionEventType entries for the bicameral loop (partially shipped with E1-01)
 
 ### E1-02 · New SessionEventType entries for the bicameral loop
 

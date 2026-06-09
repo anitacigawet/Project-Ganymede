@@ -50,7 +50,7 @@ from app.contracts import (
     TruthPacket,
 )
 from app.services.notebooklm import auth_check
-from app.services.orchestrator import GanymedeOrchestrator
+from app.services.orchestrator import GanymedeOrchestrator, SessionCancelledError
 from app.services.session import Session, registry
 
 logger = logging.getLogger(__name__)
@@ -240,6 +240,25 @@ class BridgeAuditResponse(BaseModel):
 class CompleteResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     final_resolution: FinalResolution
+    state: SessionStateResponse
+
+
+class CancelResponse(BaseModel):
+    """Response shape for ``POST /api/v2/sessions/{id}/cancel``.
+
+    ``cancelled=True`` means this call transitioned the session to the
+    ``cancelled`` terminal state. ``cancelled=False`` means the session
+    was already terminal (complete / error / cancelled) and this call
+    was a no-op (idempotent).
+
+    Any in-flight orchestrator loop running on the session observes the
+    cancel flag at its next NotebookLM-call boundary and raises
+    ``SessionCancelledError``, which the ``/iterate`` endpoint catches
+    and returns as a 200 with whatever partial strokes had landed.
+    """
+    model_config = ConfigDict(extra="forbid")
+    cancelled: bool
+    session_id: str
     state: SessionStateResponse
 
 
@@ -543,6 +562,21 @@ async def iterate_session(
             include_bridge=req.include_bridge,
             bridge_notebook_id=req.bridge_notebook_id,
         )
+    except SessionCancelledError as exc:
+        # Operator hit POST /sessions/{id}/cancel mid-loop. Session is
+        # already in the "cancelled" terminal state (the cancel endpoint
+        # transitions it synchronously). Return 200 with whatever strokes
+        # had landed before cancellation so the caller can see partial
+        # progress. The session.strokes snapshot is what made it onto the
+        # session via record_stroke; orch.run_iterative_engine's local
+        # `results` list may not have been appended for the in-flight
+        # stroke at cancellation, but session.strokes is the source of
+        # truth and matches what the caller saw via WS events.
+        logger.info(
+            "iterate_session: session %s cancelled at %s; returning %d partial stroke(s)",
+            session_id, exc.where, len(session.strokes),
+        )
+        return IterateResponse(strokes=session.strokes, state=_state(session))
     except ValueError as exc:
         # Non-iterative session or max_strokes out of range
         raise HTTPException(status_code=422, detail=str(exc))
@@ -757,6 +791,43 @@ async def complete_session(session_id: str) -> CompleteResponse:
     return CompleteResponse(final_resolution=final, state=_state(session))
 
 
+@router.post(
+    "/sessions/{session_id}/cancel",
+    response_model=CancelResponse,
+)
+async def cancel_session(session_id: str) -> CancelResponse:
+    """Cancel an in-flight session (E1-01 — Bicameral Convergence Level 2 prerequisite).
+
+    Sets the session's ``cancel_requested`` flag and transitions it to
+    the ``cancelled`` terminal state synchronously. Any in-flight
+    orchestrator loop (e.g. ``run_iterative_engine`` invoked via
+    ``/iterate``) observes the flag at its next NotebookLM-call
+    boundary and raises ``SessionCancelledError``, which the
+    ``/iterate`` endpoint catches and returns as a 200 with whatever
+    partial strokes had landed.
+
+    Idempotent. If the session is already terminal (complete / error /
+    cancelled), returns ``cancelled=False`` and 200 — no exception
+    raised — so polling consumers don't have to special-case the race
+    between "loop finished on its own" and "cancel landed first."
+
+    Errors:
+        404 if the session doesn't exist.
+
+    Returns:
+        200 with ``{cancelled, session_id, state}``. ``cancelled=True``
+        means this call transitioned the session; ``cancelled=False``
+        means the session was already terminal (no-op).
+    """
+    session = _require_session(session_id)
+    cancelled = await session.request_cancel()
+    return CancelResponse(
+        cancelled=cancelled,
+        session_id=session.id,
+        state=_state(session),
+    )
+
+
 @router.get(
     "/sessions/{session_id}/events",
     response_model=EventsResponse,
@@ -818,6 +889,7 @@ async def stream_events(websocket: WebSocket, session_id: str) -> None:
             if event.type in (
                 SessionEventType.SESSION_COMPLETE,
                 SessionEventType.ERROR,
+                SessionEventType.SESSION_CANCELLED,
             ):
                 # Drain any remaining events the emitter may have queued
                 # immediately after the terminal one (defensive — there

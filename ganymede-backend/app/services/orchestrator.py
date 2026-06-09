@@ -43,6 +43,32 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Cancellation
+#
+# Raised by ``GanymedeOrchestrator._check_cancelled`` when the orchestrator
+# observes that the session's ``cancel_requested`` flag has been set (via
+# ``POST /api/v2/sessions/{id}/cancel``). The exception propagates up
+# through the loop; the HTTP endpoint catches it and returns a 200 with
+# the partial strokes that completed before cancellation.
+#
+# Distinct from ``asyncio.CancelledError`` on purpose — asyncio's
+# CancelledError has special semantics in the runtime (it can be re-raised
+# by tasks the runtime is unwinding) and we don't want to confuse the two.
+# This is a cooperative-cancellation signal observed at well-defined check
+# points; it never originates from the runtime.
+# ---------------------------------------------------------------------------
+
+class SessionCancelledError(Exception):
+    """Raised when an orchestrator loop observes that its session has been
+    cancelled by the operator. Carries the check-point name for debugging."""
+
+    def __init__(self, where: str, session_id: str):
+        self.where = where
+        self.session_id = session_id
+        super().__init__(f"Session {session_id} cancelled at {where}")
+
+
+# ---------------------------------------------------------------------------
 # Iterative-Engine Stroke-3 injection budgets.
 #
 # NotebookLM's chat.ask endpoint silently rejects queries above ~5,100-6,000
@@ -928,6 +954,25 @@ class GanymedeOrchestrator:
             "bridge_persona_applied": True,
         }
 
+    def _check_cancelled(self, session: Session, where: str) -> None:
+        """Raise :class:`SessionCancelledError` if the session has been cancelled.
+
+        Called at NotebookLM-call boundaries inside long-running loop
+        methods so the operator's ``POST /api/v2/sessions/{id}/cancel``
+        terminates the loop at the next natural yield point rather than
+        waiting for the next NotebookLM call to return (which can be
+        30s+ on the cooldown gate). Cheap — bool read, atomic under GIL.
+
+        ``where`` is a short string naming the check point for log
+        traceability (e.g. ``"before-stroke-1"``, ``"before-bridge-provision"``).
+        """
+        if session.cancel_requested:
+            logger.info(
+                "Session %s: cancellation observed at %s — aborting loop",
+                session.id, where,
+            )
+            raise SessionCancelledError(where=where, session_id=session.id)
+
     async def run_iterative_engine(
         self,
         session: Session,
@@ -995,11 +1040,19 @@ class GanymedeOrchestrator:
 
         results: list[StrokeResult] = []
 
+        # Cancel check before Stroke 1. Cheap; catches the case where the
+        # operator cancelled after session creation but before any work.
+        self._check_cancelled(session, "before-stroke-1")
+
         # Stroke 1: thesis
         s1 = await self.run_synthesis_stroke(session, truth_packets)
         results.append(s1)
         if max_strokes < 2:
             return results
+
+        # Cancel check before Stroke 2. Stroke 1 may have taken 30-50s on
+        # the gate; the operator may have hit cancel during that window.
+        self._check_cancelled(session, "before-stroke-2")
 
         # Stroke 2: antithesis (Mirror Auditor)
         s2 = await self.run_audit_stroke(session)
@@ -1011,6 +1064,11 @@ class GanymedeOrchestrator:
         # (but serial in execution to respect the cooldown gate).
         s2b: Optional[StrokeResult] = None
         if include_bridge and max_strokes >= bridge_at:
+            # Cancel check before the slowest path in the loop —
+            # auto-provisioning a Bridge notebook is ~3-5 min wall time
+            # and 14 NotebookLM calls. Worth bailing here before kicking
+            # it off.
+            self._check_cancelled(session, "before-bridge-provision")
             try:
                 if bridge_notebook_id is None:
                     # Auto-provision. This is the slow path — ~3-5 min added
@@ -1032,6 +1090,11 @@ class GanymedeOrchestrator:
                         provision_result["truth_packets_uploaded"],
                     )
 
+                # Cancel check before the Bridge audit query — provisioning
+                # may have taken ~3 min if it ran; check before kicking the
+                # final NotebookLM call in the Bridge slot.
+                self._check_cancelled(session, "before-stroke-2b-bridge")
+
                 # Bridge audits Stroke 1 — same target as the Auditor, so we
                 # pass target_text=s1.raw_response explicitly (otherwise the
                 # default-to-last-stroke logic would point at Stroke 2's text,
@@ -1045,6 +1108,12 @@ class GanymedeOrchestrator:
                     fail_session_on_error=False,
                 )
                 results.append(s2b)
+            except SessionCancelledError:
+                # Operator cancelled mid-Bridge. Re-raise so the loop
+                # terminates cleanly with the partial result list. Do NOT
+                # treat as "Bridge transient" — that masks the operator's
+                # intent.
+                raise
             except Exception:
                 # Bridge failures (either provisioning or audit query) must
                 # not kill the iterate run. Log and continue with
@@ -1141,6 +1210,10 @@ class GanymedeOrchestrator:
                 .replace("{stroke_1_response}", s1_escaped)
                 .replace("{audit_findings}", s2_escaped)
             )
+
+        # Cancel check before Stroke 3 — the audits may have taken ~80s
+        # combined; cancel during that window should fire here.
+        self._check_cancelled(session, "before-stroke-3")
 
         s3 = await self.run_synthesis_stroke(
             session, truth_packets, framing=framing_filled,
