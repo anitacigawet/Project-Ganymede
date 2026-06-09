@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Optional
 
 from app.contracts import (
     FinalResolution,
@@ -36,6 +37,9 @@ from app.contracts import (
     new_session_id,
     utcnow,
 )
+
+if TYPE_CHECKING:
+    from app.services.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,7 @@ class Session:
         pathway: Pathway,
         iterative: bool,
         max_strokes: int,
+        store: Optional["SessionStore"] = None,
     ):
         self.id: str = new_session_id()
         self.scenario: Scenario = scenario
@@ -78,6 +83,13 @@ class Session:
         self.error_message: Optional[str] = None
         self.created_at = utcnow()
         self.completed_at: Optional[Any] = None  # set on terminal transition
+
+        # Pl2-01 persistence binding — if non-None, mutations to terminal
+        # transitions / stroke recording / translation recording also write
+        # to disk so the session survives a backend restart. Default None
+        # keeps the in-memory-only behavior for tests + cases where no
+        # store is configured.
+        self._store: Optional["SessionStore"] = store
 
         # Cancel flag — set by ``request_cancel()`` and observed by the
         # orchestrator loop at each NotebookLM-call await point. Atomic
@@ -157,6 +169,29 @@ class Session:
             q.put_nowait(event)
         return event
 
+    async def _persist(self) -> None:
+        """Pl2-01: write current state to the bound SessionStore.
+
+        Called from inside ``self._lock`` by all the mutating methods
+        (record_stroke, record_translation, complete, fail,
+        request_cancel) after their state changes have landed. No-op
+        if no store is bound (the in-memory-only case).
+
+        Persistence failures log but do NOT raise — a disk-write hiccup
+        should not kill an in-progress run. The next mutation's persist
+        will catch up if the underlying issue clears.
+
+        The blocking SQLite write happens on a worker thread via
+        ``asyncio.to_thread`` so the event loop stays responsive even
+        if the disk is slow.
+        """
+        if self._store is None:
+            return
+        try:
+            await asyncio.to_thread(self._store.save_session, self)
+        except Exception as exc:
+            logger.error("Session %s persist failed: %s", self.id, exc)
+
     async def emit(
         self,
         event_type: SessionEventType,
@@ -185,6 +220,7 @@ class Session:
                     f"recorded out of order (expected {expected})"
                 )
             self._strokes.append(stroke)
+            await self._persist()
 
     async def complete(self) -> FinalResolution:
         """Mark the session complete and return the FinalResolution.
@@ -219,6 +255,7 @@ class Session:
                 payload={"final_text_len": len(final_text)},
                 stroke_number=None,
             )
+            await self._persist()
             return self._final
 
     async def fail(self, message: str, exc_type: str = "Exception") -> None:
@@ -234,6 +271,7 @@ class Session:
                 payload={"message": message, "exc_type": exc_type},
                 stroke_number=None,
             )
+            await self._persist()
 
     async def request_cancel(self, message: str = "Cancelled by operator") -> bool:
         """Request cancellation of the session. Terminal.
@@ -267,6 +305,7 @@ class Session:
                 payload={"message": message},
                 stroke_number=None,
             )
+            await self._persist()
             logger.info("Session %s cancelled by operator: %s", self.id, message)
             return True
 
@@ -336,6 +375,7 @@ class Session:
         key = f"{stroke_number}:{register}"
         async with self._lock:
             self._translations[key] = translated_text
+            await self._persist()
 
     def get_translation(
         self,
@@ -355,6 +395,68 @@ class Session:
     def final(self) -> Optional[FinalResolution]:
         """The FinalResolution if the session has completed, else None."""
         return self._final
+
+    # -------------------------------------------- Pl2-01 rehydration factory
+
+    @classmethod
+    def from_persisted_state(
+        cls,
+        data: dict[str, Any],
+        store: Optional["SessionStore"] = None,
+    ) -> "Session":
+        """Rehydrate a Session from a ``SessionStore.load_all()`` row dict.
+
+        Bypasses ``__init__``'s ``SESSION_CREATED`` event emit — the
+        persisted events list already contains the original event from
+        when the session was first created. Calling ``__init__`` here
+        would append a duplicate.
+
+        The reconstituted session is bound to ``store`` so subsequent
+        mutations continue to persist. ``_lock`` and ``_subscribers``
+        are fresh (process-local; not persisted).
+        """
+        instance = cls.__new__(cls)
+        instance.id = data["id"]
+        instance.scenario = Scenario.model_validate_json(data["scenario_json"])
+        instance.pathway = Pathway(data["pathway"])
+        instance.iterative = bool(data["iterative"])
+        instance.max_strokes = int(data["max_strokes"])
+        instance.status = data["status"]
+        instance.error_message = data["error_message"]
+        instance.created_at = datetime.fromisoformat(data["created_at"])
+        instance.completed_at = (
+            datetime.fromisoformat(data["completed_at"])
+            if data["completed_at"]
+            else None
+        )
+        instance.cancel_requested = False  # ephemeral runtime flag
+        instance._events = [
+            SessionEvent.model_validate(e) for e in data.get("events", [])
+        ]
+        instance._strokes = [
+            StrokeResult.model_validate(s) for s in data.get("strokes", [])
+        ]
+        instance._translations = dict(data.get("translations", {}))
+        instance._final = None
+        if instance.status == "complete" and instance._strokes:
+            last_stroke = instance._strokes[-1]
+            final_text = data.get("final_text") or (
+                last_stroke.final_resolution or last_stroke.raw_response
+            )
+            instance._final = FinalResolution(
+                session_id=instance.id,
+                pathway=instance.pathway,
+                iterative=instance.iterative,
+                strokes=list(instance._strokes),
+                final_text=final_text,
+                started_at=instance.created_at,
+                completed_at=instance.completed_at or instance.created_at,
+                total_engine_calls=len(instance._strokes),
+            )
+        instance._lock = asyncio.Lock()
+        instance._subscribers = []
+        instance._store = store
+        return instance
 
     # --------------------------------------------------------------- internal
 
@@ -380,16 +482,88 @@ class Session:
 # ---------------------------------------------------------------------------
 
 class SessionRegistry:
-    """In-memory registry of active Sessions.
+    """Registry of Sessions, optionally backed by persistent storage.
 
-    Single-process, no persistence. Phase-3+ work will swap this for a
-    persistence-backed implementation; the interface is what callers
-    rely on.
+    Single-process registry of in-memory ``Session`` objects. When a
+    ``SessionStore`` is bound (via the constructor or :meth:`bind_store`),
+    every session created through :meth:`create` is also persisted to
+    disk, and prior sessions can be rehydrated via :meth:`rehydrate`.
+
+    With no store bound, the registry behaves as it always has — purely
+    in-memory, ephemeral across process restarts. Tests can construct a
+    fresh ``SessionRegistry()`` without a store.
     """
 
-    def __init__(self):
+    def __init__(self, store: Optional["SessionStore"] = None):
         self._sessions: dict[str, Session] = {}
         self._lock = asyncio.Lock()
+        self._store: Optional["SessionStore"] = store
+
+    @property
+    def store(self) -> Optional["SessionStore"]:
+        """The bound SessionStore, or None for in-memory-only mode.
+
+        Exposed so the API layer can query persisted-session lists/search
+        without re-implementing those at the registry level — the store
+        already owns that surface (``list_summaries``, ``search``,
+        ``count``).
+        """
+        return self._store
+
+    def bind_store(self, store: "SessionStore") -> None:
+        """Attach a SessionStore to this registry. Used by ``main.py``'s
+        startup hook so the module-global registry created at import time
+        can be paired with the store that's created when env vars are
+        available. Sessions created AFTER this call are persisted; those
+        already in the registry (only relevant in tests) are not
+        retroactively bound."""
+        self._store = store
+
+    async def rehydrate(self) -> int:
+        """Rehydrate prior sessions from the bound store into the
+        in-memory registry. Returns the count rehydrated.
+
+        Idempotent in the sense that a session ID already in the
+        in-memory registry is skipped — but normally this is called once
+        at startup before any session creation, so collisions don't
+        happen in practice.
+
+        Before loading, marks any session left in ``running`` status on
+        disk as ``error`` (the orchestrator that owned it died with the
+        process; the loop can't resume). Returns the total count
+        rehydrated into memory.
+        """
+        if self._store is None:
+            return 0
+        rescued = await asyncio.to_thread(
+            self._store.mark_orphan_running_as_error,
+            "Backend restarted during run; partial state preserved.",
+        )
+        if rescued:
+            logger.warning(
+                "SessionRegistry: rescued %d orphan running session(s) on startup",
+                len(rescued),
+            )
+        rows = await asyncio.to_thread(self._store.load_all)
+        added = 0
+        async with self._lock:
+            for row in rows:
+                sid = row["id"]
+                if sid in self._sessions:
+                    continue
+                try:
+                    self._sessions[sid] = Session.from_persisted_state(
+                        row, store=self._store
+                    )
+                    added += 1
+                except Exception as exc:
+                    logger.error(
+                        "SessionRegistry: skipping malformed persisted "
+                        "session %s: %s",
+                        sid, exc,
+                    )
+        logger.info("SessionRegistry: rehydrated %d session(s) from store", added)
+        return added
 
     async def create(
         self,
@@ -403,6 +577,10 @@ class SessionRegistry:
         ``max_strokes`` defaults to 1 (single-pass). For iterative runs,
         callers typically pass ``iterative=True, max_strokes=3``
         (Stroke 1 thesis + Stroke 2 audit + Stroke 3 synthesis).
+
+        If a store is bound, the new session is immediately persisted so
+        a crash before the first stroke still leaves a recoverable row
+        on disk.
         """
         if iterative and max_strokes < 2:
             raise ValueError("Iterative sessions need max_strokes >= 2")
@@ -415,13 +593,21 @@ class SessionRegistry:
                 pathway=pathway,
                 iterative=iterative,
                 max_strokes=max_strokes,
+                store=self._store,
             )
             self._sessions[session.id] = session
             logger.info(
                 "Session created: %s pathway=%s iterative=%s max_strokes=%d",
                 session.id, pathway.value, iterative, max_strokes,
             )
-            return session
+
+        # Persist the freshly-created session OUTSIDE the registry lock —
+        # no other coroutine has a reference to it yet, so there's no
+        # in-flight mutation to race with. Inside the registry lock would
+        # also be safe, but we'd be holding the registry lock during a
+        # disk write, which we'd like to avoid.
+        await session._persist()
+        return session
 
     def get(self, session_id: str) -> Optional[Session]:
         """Return the session with the given ID, or None."""
@@ -436,9 +622,23 @@ class SessionRegistry:
         return list(self._sessions.values())
 
     async def discard(self, session_id: str) -> bool:
-        """Remove a session from the registry. Returns True if removed."""
+        """Remove a session from the registry. Returns True if removed.
+
+        Also deletes the session from the bound store if present, so
+        discarding actually frees the persistent row, not just the
+        in-memory entry.
+        """
         async with self._lock:
-            return self._sessions.pop(session_id, None) is not None
+            removed = self._sessions.pop(session_id, None) is not None
+        if removed and self._store is not None:
+            try:
+                await asyncio.to_thread(self._store.delete, session_id)
+            except Exception as exc:
+                logger.error(
+                    "SessionRegistry: store delete failed for %s: %s",
+                    session_id, exc,
+                )
+        return removed
 
 
 # Module-global registry. Single instance per process — same pattern as
