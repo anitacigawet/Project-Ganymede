@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-06 (post-milestone 45 — Pl3 Operator Lens shipped: TranslationRegister enum + Session._translations + GeminiService.translate_with_register + Gemini-Flash-backed run_translation method + POST /sessions/{id}/translate endpoint + StrokeTranslator.tsx self-contained UI component mounted in StrokeCard. Three registers: plain_english, cube_of_space, executive_brief. Per operator-locked sequence: Pl2 (Z-SPAN as first consumer) is now the final remaining phase).
+Last updated: 2026-06-08 (post-milestone 46 — Pl2-01 persistent session state shipped: SessionStore SQLite-backed persistence + Session._store wiring + save-on-mutation + orphan-rescue + rehydrate-on-startup + GET /api/v2/sessions list/filter/search endpoint + GET /sessions/{id}/strokes endpoint. Round-trip verified end-to-end via TestClient lifecycle. Z-SPAN consumer-spec doc + first live Z-SPAN strategic-planning session remain as Pl2 final chunks).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -13,9 +13,56 @@ Last updated: 2026-06-06 (post-milestone 45 — Pl3 Operator Lens shipped: Trans
 
 ---
 
-## ACTIVE — Silo 2 Phase E1: Bicameral Convergence Level 2 build
+## ACTIVE — Silo 4 Phase Pl2: Z-SPAN as first module consumer
+
+Z-SPAN is the named first Pl2 consumer per milestone 43. Per the operator-locked sequence (P1-03b → P1-04 → Pl3 → Pl2 final), this is the last claude-autonomous phase before the project shifts to operator-driven validation events (E1-06 live run, 2026-06-30 LMArena resolution, M2 leaner-corpus test if approved).
+
+### ~~Pl2-01 · Persistent session state~~ ✅ SHIPPED 2026-06-08 (milestone 46)
+
+Shipped pieces:
+
+- **`ganymede-backend/app/services/session_store.py`** — `SessionStore` class wrapping a single-file SQLite DB. Stdlib `sqlite3` + sync-in-executor; no new third-party dep. Schema: `sessions / strokes / events / translations` tables, foreign-keyed with `ON DELETE CASCADE`. Public API: `save_session`, `load_all`, `mark_orphan_running_as_error`, `list_summaries`, `count`, `search`, `delete`. `default_db_path()` resolves to `ganymede-backend/data/sessions.db`; env override via `GANYMEDE_SESSION_DB`.
+- **`app/services/session.py` wiring** — `Session(store=...)` constructor kwarg + `_persist()` async helper called from inside the lock on every mutation (`record_stroke`, `record_translation`, `complete`, `fail`, `request_cancel`). `Session.from_persisted_state(data, store)` classmethod for rehydration (bypasses `__init__`'s SESSION_CREATED emit since the persisted events list already contains it). `SessionRegistry(store=...)` + `bind_store(store)` + `rehydrate()` + `store` accessor. `create()` passes the store + persists immediately; `discard()` deletes from store too.
+- **`app/main.py` startup wiring** — opens the store + binds it + rehydrates before NotebookLM init so prior sessions are visible even when auth is broken. Failure modes degrade rather than block startup. `GANYMEDE_DISABLE_SESSION_PERSISTENCE=1` opts out.
+- **`GET /api/v2/sessions`** in `app/v2_routes.py` — paginated list ordered newest-first. Filters: `status`, `pathway`, `q` (substring scenario_json + final_text), `limit` (1-200), `offset`. Returns `SessionSummary` rows with the full `Scenario` object + first-200-char `final_text_preview`.
+- **`GET /api/v2/sessions/{id}/strokes`** — full strokes list + Pl3 translations keyed by `{stroke_number}:{register}` in the same payload.
+- **`.gitignore`** updated to exclude `ganymede-backend/data/`.
+
+Verified end-to-end via FastAPI TestClient lifecycle: create session via registry → record stroke → complete → list shows total 1 → simulated process death (`_sessions.clear()` + drop `_store`) → fresh boot → `rehydrate()` reports 1 prior session → GET / strokes / state all surface the rehydrated session with original `final_resolution` intact. Orphan-rescue path verified separately: a session left in `running` is flipped to `error` with a synthetic ERROR event appended so the events endpoint stays consistent.
+
+### Pl2-02 · Z-SPAN consumer-spec walkthrough doc — `docs/integration/examples/zspan_consumer.md`
+
+The integration example doc Z-SPAN's session reads to know how to call Ganymede for strategic positioning, competitive-response planning, terminology validation. Should cover: v2 API surface (Dispatcher → /sessions → /iterate or /bicameral-loop → /complete), scenario shape for the Z-SPAN use case (open-source civic-data primitive vs. legacy GovTech), expected wall times (~3-5 min /iterate Level 1, ~10-30 min /bicameral-loop), persistent-session pattern (POST /sessions + capture session_id → later GET /sessions to resume browse), Operator Lens register selection (default `plain_english`; `executive_brief` for non-framework-native readers; `cube_of_space` for the geometric / aesthetic exchanges per milestone 43), courier-protocol usage (when to write `Z-SPAN_to_Ganymede__*.md` per the shipped spec at `docs/integration/operator_courier_protocol.md`).
+
+**Done when:**
+- Doc exists at `docs/integration/examples/zspan_consumer.md` with the sections above + working curl examples + a worked "strategic positioning question" walkthrough.
+- Cross-referenced from `docs/integration/operator_courier_protocol.md` § Related.
+- Cross-referenced from ROADMAP.md § Pl2.
+
+**Files touched:** `docs/integration/examples/zspan_consumer.md` (new), `docs/integration/operator_courier_protocol.md` (link), `ROADMAP.md` (deliverable check).
+
+**Estimated effort:** ~30-45 min. Autonomous — no NotebookLM calls, no operator gates.
+
+### Pl2-03 · First live Z-SPAN strategic-planning session (operator-driven)
+
+Run a real Z-SPAN positioning question end-to-end through the Dispatcher → iterative loop → operator-facing output. Write up the run record.
+
+**Done when:**
+- Z-SPAN session produces a real strategic-planning question.
+- Question runs end-to-end through Ganymede's v2 API.
+- Resolution returned to Z-SPAN.
+- Run record at `docs/experiments/runs/Z-SPAN_First_Strategic_Session.md` documenting scenario, strokes, observed wall time, Operator Lens register usage, and any operator observations.
+- Architecture_History milestone 47 capturing the first live consumer-driven run.
+
+**Operator-gated.** Requires Z-SPAN's session to drive the question and the operator to courier observations between sessions.
+
+---
+
+## DEFERRED — Silo 2 Phase E1: Bicameral Convergence Level 2 build
 
 **Priority elevated by milestone 42 (2026-06-05) — Anthropic's real-world pause call confirmed the Bridge's mechanism-category catch from Run 7 but exposed the architectural gap: Levels 2/3 don't exist, so the Engine itself never made the specific prediction.** The gap is engineering, not research (architectural spec locked in [`docs/concepts/Bicameral_Convergence.md`](docs/concepts/Bicameral_Convergence.md)). Build the loop, and the next prediction of this shape produces the specific synthesis, not just the mechanism-category gesture.
+
+**Status:** all 5 claude-shippable chunks (E1-01 through E1-05 + the E1-06 endpoint prep) landed 2026-06-06 (commits `392229c` through `1e0f00e`). Only E1-06 (first live run on a documented test scenario) remains and is operator-driven (requires live NotebookLM session + operator-approved scenario).
 
 ### ~~E1-01 · `POST /api/v2/sessions/{id}/cancel` endpoint + loop-checks-cancel-flag plumbing~~ ✅ SHIPPED 2026-06-06
 

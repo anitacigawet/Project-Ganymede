@@ -12,14 +12,14 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 
 ---
 
-## Status at a glance (2026-06-06)
+## Status at a glance (2026-06-08)
 
 | Silo | Last shipped | Active phase | Next phase |
 |---|---|---|---|
 | **1. Predictor** | LMArena Cleanroom partially validated 2026-06-05 (milestone 42) — Bridge's mechanism-category catch landed in reality as Anthropic's pause call, 10 days early | **P1: Bridge robustness** (2 of 3 exit criteria met) | P2: 2026-06-30 leaderboard-rank resolution (secondary, mechanism-category already validated) |
-| **2. Envisioner** | Bicameral Convergence Level 1 wired into /iterate (milestone 38) | **E1: Bicameral Level 2 build** (priority elevated by milestone 42 validation — architectural gap to specific predictions is now empirically named) | E2: Bicameral Level 3 |
-| **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
-| **4. Pluggable** | Z-SPAN pattern-recognition validation 2026-06-06 (milestone 43) — framework correctly identified Z-SPAN's structural position from a generic prompt | **Pl1: Operational hygiene** | **Pl2: Z-SPAN as first consumer** (changed from PrisonBreak per milestone 43) → **Pl3: Operator Lens (translation stroke for operator-facing output)** |
+| **2. Envisioner** | Bicameral Convergence Level 2 build E1-01 through E1-05 + E1-06 prep shipped 2026-06-06 (milestones 38, 42) | **E1 mostly built** — E1-06 first live run remains operator-driven | E2: Bicameral Level 3 |
+| **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1/Pl2 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
+| **4. Pluggable** | Pl3 Operator Lens shipped (milestone 45) + Pl2-01 persistent session state shipped 2026-06-08 (milestone 46) | **Pl2: Z-SPAN as first consumer** — Pl2-02 consumer-spec doc next; Pl2-03 first live session operator-driven | (no Pl-phase scheduled after Pl2) |
 
 ---
 
@@ -252,11 +252,16 @@ narrative). The framework is exercised on real decisions, not
 hypotheticals. PrisonBreak is preserved as the planned second consumer.
 
 **Deliverables:**
-- **Persistent session state** — current sessions are ephemeral; long-term
+- ~~**Persistent session state** — current sessions are ephemeral; long-term
   Z-SPAN strategic planning wants sessions that persist over weeks,
   build on prior strokes, and surface a history of strategic
   decisions. Backend persistence (Session + StrokeResult into SQLite or
-  similar) + API endpoints to resume / list / search prior sessions.
+  similar) + API endpoints to resume / list / search prior sessions.~~
+  ✅ **SHIPPED 2026-06-08 (milestone 46).** SessionStore SQLite-backed
+  persistence + Session._store wiring + save-on-mutation + orphan-rescue
+  on rehydrate + GET /api/v2/sessions list/filter/search endpoint +
+  GET /sessions/{id}/strokes endpoint. Round-trip verified end-to-end
+  via TestClient lifecycle.
 - **Z-SPAN-side integration spec** — `docs/integration/examples/zspan_consumer.md`
   describing how Z-SPAN calls Ganymede for strategic positioning,
   competitive-response planning, terminology validation, etc.

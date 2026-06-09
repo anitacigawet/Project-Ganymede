@@ -815,6 +815,91 @@ The shared discipline across all three: **NO new claims, NO softening of conclus
 
 ---
 
+## 46. Pl2-01 persistent session state shipped — SQLite-backed SessionStore + list/strokes API (2026-06-08)
+
+The Pl2 prerequisite milestone 43 surfaced ("current Ganymede sessions are ephemeral; long-term Z-SPAN strategic planning needs sessions that persist over weeks, build on prior strokes, and surface a history of strategic decisions") is now built. SessionRegistry survives backend restart; the new `GET /api/v2/sessions` + `GET /sessions/{id}/strokes` endpoints give Z-SPAN (and any future Pl2 consumer) the browse-history surface they need.
+
+### Design call: stdlib SQLite, sync-in-executor, save-on-every-mutation
+
+Three architectural options were considered:
+
+- **File-backed JSON** (one file per session). Simplest possible; cheap to inspect by hand. Loses on list/search (directory scan + parse per session) at any scale beyond a handful.
+- **Event-replay** (only the events list persisted; state reconstructed by replaying). Architecturally elegant; matches the existing event-driven session model. But ties the persistence schema to the in-memory event mutation order, which would couple future event-type changes to a forward-compat persistence migration.
+- **SQLite with explicit schema** (chosen). Stdlib (no new dep), supports list + search + pagination natively, atomic per-row writes, well-understood operationally. Single-file DB at `ganymede-backend/data/sessions.db` (env-override via `GANYMEDE_SESSION_DB`).
+
+Concurrency model: **sync API; async call sites bridge via `asyncio.to_thread`**. This matches `main.py`'s existing pattern for `auto_relogin` (`loop.run_in_executor(None, auth_check.auto_relogin)`) and avoids pulling in `aiosqlite` as a third-party dep. Each `save_session` call opens its own connection (via the `_connect` context manager), so SQLite's own file-level locking serializes writers without any application-level coordination.
+
+Save cadence: **on every mutation**. The Session calls `_persist()` from inside its lock after each state change (`record_stroke`, `record_translation`, `complete`, `fail`, `request_cancel`), plus once at registry-create. Backend crash mid-Bicameral-loop preserves the strokes that landed; the next startup rehydrates them and flips the orphan's status to `error` with a synthetic ERROR event appended so the events endpoint stays consistent.
+
+The simpler alternatives — "save only on terminal transition" or "save only on shutdown" — were rejected for the same reason: a backend crash during a 30-minute Bicameral run would lose all intermediate work. The incremental cost is ~3-5ms per stroke (tiny disk write), well below the per-stroke NotebookLM call cost (~30-60s).
+
+### Schema
+
+Four tables, foreign-keyed to the session row with `ON DELETE CASCADE`:
+
+- **`sessions`** — id (PK), scenario_json, pathway, iterative, max_strokes, status, error_message, created_at, completed_at, final_text. Indexed on status / created_at / pathway for the common list-filter shapes.
+- **`strokes`** — session_id + stroke_number (composite PK), stroke_json. The full StrokeResult is round-tripped via Pydantic v2's `model_dump_json` / `model_validate`. Lossless.
+- **`events`** — session_id + event_idx (composite PK), event_json. Same round-trip pattern. Event ordering preserved via `event_idx` set from `enumerate(session.events)` at save time.
+- **`translations`** — session_id + stroke_number + register (composite PK), translated_text. Pl3 Operator Lens output keyed by `f"{stroke_number}:{register}"` matching `Session._translations`'s in-memory schema.
+
+Child rows are delete-and-insert on each save rather than diff-and-update — small N (≤ ~10 strokes, ≤ ~50 events per session), zero divergence risk.
+
+### Orphan-rescue semantics
+
+When the backend crashes, sessions left in `running` status get marked terminal on the next boot:
+
+1. `SessionStore.mark_orphan_running_as_error(message)` runs BEFORE `load_all()`. It selects every row with `status='running'`, flips each to `status='error'` + `error_message = message` + `completed_at = now`, and appends a synthetic ERROR event with payload `{message, exc_type: "BackendRestartedDuringRun"}` so the events endpoint shows the operator what happened.
+2. `load_all()` then returns the rescued rows alongside everything else terminal.
+3. `Session.from_persisted_state(row, store=store)` constructs each session via `__new__` + manual attribute assignment, bypassing `__init__`'s `SESSION_CREATED` emit (the persisted events list already contains that event from the original creation).
+
+### API surface added
+
+Two new endpoints in `app/v2_routes.py`:
+
+- **`GET /api/v2/sessions`** with query params `status`, `pathway`, `q`, `limit` (1-200), `offset`. Returns `{ sessions: [SessionSummary], total, limit, offset }`. The store is the source of truth (pulling from `list_summaries` / `count` / `search`). `SessionSummary` carries the full `Scenario` object plus a 200-char `final_text_preview` so the list view can render whatever the consumer wants without per-row detail fetches.
+- **`GET /api/v2/sessions/{id}/strokes`** returns `{ session_id, strokes: [StrokeResult], translations: {...} }`. Pulls from the in-memory registry (which post-rehydrate has all persisted sessions). Operator Lens translations come along in the same payload so the frontend doesn't have to fire per-stroke translation fetches when rendering a prior session.
+
+The existing `GET /sessions/{id}` and `GET /sessions/{id}/events` endpoints transparently work for rehydrated sessions because the in-memory registry surface didn't change.
+
+### What this milestone closes
+
+- The "persistent session state" prerequisite in Pl2 — Z-SPAN can now start a strategic-planning session, come back to it next week, browse the prior strokes via the API, and (when iterate is wired to take a `parent_session_id`) build forward.
+- The "registry can't survive backend restart" operational ceiling. Backend operators can restart for any reason (cookie rotation, code deploy, OS update) without losing in-flight sessions.
+
+### What this milestone does NOT close
+
+- **Mid-loop resume.** Persistence preserves state across restart, but the orchestrator loop that was driving the session is dead. The session is marked `error` with a synthetic ERROR event. To actually pick up where the loop left off requires re-driving `/iterate` (or `/bicameral-loop`) — which is the operator's call to make, with awareness that the previous truth_packets / scenario context is what the prior strokes were grounded on.
+- **`parent_session_id` for context-building.** Z-SPAN's "build on prior strokes" semantic is Pl2-02 territory — a separate orchestrator-level change where `IterateRequest` can take a `parent_session_id` and the synthesis prompt inherits the prior session's resolutions. Out of scope for Pl2-01.
+- **Z-SPAN consumer spec doc.** The `docs/integration/examples/zspan_consumer.md` walkthrough doc is a separate small chunk (~30 min) tracked as the next Pl2 task. It documents how Z-SPAN actually wires Ganymede in, including the persistent-session-state pattern Pl2-01 enables.
+- **First live Z-SPAN strategic-planning session.** Operator-driven; requires Z-SPAN's own session to produce a real positioning question and call the v2 API.
+
+### Cross-cutting operational notes
+
+- **`.gitignore`** updated to exclude `ganymede-backend/data/` so the per-environment DB file never gets committed. Per-environment state, not source.
+- **Env var overrides**: `GANYMEDE_SESSION_DB` to relocate the DB; `GANYMEDE_DISABLE_SESSION_PERSISTENCE=1` to disable the store entirely (tests + ephemeral dev sessions).
+- **Backwards compatibility**: existing tests + the existing in-memory-only registry behavior preserved. `Session(store=None)` and `SessionRegistry(store=None)` work exactly as before — persistence is opt-in via `bind_store`.
+
+### Verified production-shape round-trip
+
+Driven via FastAPI's `TestClient` lifecycle (so the real `startup_event` fires):
+
+1. First boot → SessionStore opens at the env-overridden path → `rehydrate()` finds 0 sessions.
+2. Session created via `registry().create()` with a Z-SPAN-flavored scenario question → auto-persisted.
+3. Stroke recorded + session completed → both writes land synchronously.
+4. `GET /api/v2/sessions` returns `{ total: 1, sessions: [...] }` with matching session_id.
+5. Simulated process death: `registry()._sessions.clear() + _store = None`.
+6. Second boot → fresh TestClient triggers startup → `rehydrate()` reports `rehydrated 1 prior session(s)`.
+7. `GET /api/v2/sessions` returns `total: 1` again; `GET /sessions/{id}` returns `status: complete`; `GET /sessions/{id}/strokes` returns the original stroke with the original `final_resolution` intact.
+
+### Pending after this milestone
+
+- Pl2 next chunk: `docs/integration/examples/zspan_consumer.md` walkthrough (~30 min).
+- Pl2 final chunk: first live Z-SPAN strategic-planning session — operator-driven, requires Z-SPAN's session to drive a real positioning question via the v2 API.
+- E1-06 first live Bicameral Level 2 run still operator-driven.
+- 2026-06-30 LMArena leaderboard-rank resolution still on calendar.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -871,3 +956,4 @@ The shared discipline across all three: **NO new claims, NO softening of conclus
 | Z-SPAN pattern-recognition + Operator Lens primitive (43) | Transcripts at `C:\Users\james\Documents\NotebookLM Transcript.txt` + `C:\Users\james\Documents\Gemini Transcript.txt` (operator filesystem, not in repo); Onboarding handoff at `C:\Users\james\Desktop\Z-SPAN_Ganymede_Onboarding.md`; Pl3 Operator Lens spec in [`../../ROADMAP.md`](../../ROADMAP.md) § "Silo 4 — Pluggable" |
 | P1-04 Bridge notebook lifecycle (44) | `ganymede-backend/app/services/bridge_registry.py` + `GET /api/v2/bridge/notebooks` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/BridgeNotebookManager.tsx` + `/bridge-notebooks` route at `ganymede-ui/src/app/bridge-notebooks/page.tsx` |
 | Pl3 Operator Lens (45) | `TranslationRegister` enum in `ganymede-backend/app/contracts.py` + `Session._translations` in `ganymede-backend/app/services/session.py` + `GeminiService.translate_with_register` + `_TRANSLATION_PROMPTS` in `ganymede-backend/app/services/gemini_service.py` + `GanymedeOrchestrator.run_translation` in `ganymede-backend/app/services/orchestrator.py` + `POST /api/v2/sessions/{id}/translate` in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/StrokeTranslator.tsx` |
+| Pl2-01 SessionStore persistence (46) | `ganymede-backend/app/services/session_store.py` (`SessionStore` + `default_db_path`) + `ganymede-backend/app/services/session.py` (`Session._store` + `_persist` + `from_persisted_state` + `SessionRegistry.bind_store` + `rehydrate` + `store` accessor) + `ganymede-backend/app/main.py` startup wiring + `GET /api/v2/sessions` (list/filter/search) + `GET /api/v2/sessions/{id}/strokes` in `ganymede-backend/app/v2_routes.py` |

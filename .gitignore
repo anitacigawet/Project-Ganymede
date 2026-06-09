@@ -38,3 +38,6 @@ Thumbs.db
 *.log
 ganymede-backend/scratch/output/
 ganymede-backend/scratch/*.tmp
+
+# Pl2-01 session persistence — local SQLite DB; per-environment state, not source
+ganymede-backend/data/
