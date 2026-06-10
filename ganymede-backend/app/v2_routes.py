@@ -554,6 +554,355 @@ async def dispatch_intent(req: DispatchRequest) -> DispatchResponse:
 
 
 # ---------------------------------------------------------------------------
+# Managed run — the canonical entry point for session-as-consumer projects
+#
+# The granular API (/dispatch + /sessions + /iterate + /translate + /complete)
+# requires the consumer to learn pathway selection, Truth Packet shape,
+# iterative vs Bicameral Level 2 escalation, register choice — appropriate
+# for embedded-app consumers like PrisonBreak that need fine-grained
+# control over each step for the in-app UI.
+#
+# Session-as-consumer projects (Z-SPAN, future Claude sessions) don't need
+# that control surface. They want to send a natural-language strategic
+# question + their source-grounded context and get back analytical output.
+# This endpoint bundles dispatch → create → iterate (or bicameral_loop) →
+# translate → complete into one HTTP call so the consumer never has to
+# learn the framework's internal vocabulary.
+#
+# Architectural call (milestone 48): the dispatcher is the canonical
+# entry point for both human operators (via DispatcherPanel) and
+# session-as-consumer projects (via this endpoint). One natural-language
+# entry surface, two render-out surfaces (UI for humans, JSON for
+# sessions). Same closed-RAG-sphere principle as Pl3 Operator Lens —
+# the framework abstracts itself for the audience.
+# ---------------------------------------------------------------------------
+
+class ManagedRunRequest(BaseModel):
+    """Inputs for ``POST /api/v2/managed-run``.
+
+    The consumer brings two things: a natural-language strategic
+    question + source-grounded Truth Packets. Ganymede handles
+    everything else (pathway selection, multi-stroke orchestration,
+    translation, session completion).
+    """
+    model_config = ConfigDict(extra="forbid")
+    scenario_text: str = Field(min_length=1)
+    """The strategic question in plain language. Examples:
+    *"How should Z-SPAN respond to Granicus's defensive bundling move
+    when civic-tech RFPs start asking for open-data export?"*
+    *"Should Z-SPAN double down on 'Public Truth Ledger' terminology
+    or pivot to 'Citizen-First Infrastructure'?"*
+    The dispatcher classifies this into a pathway internally."""
+
+    truth_packets: list[TruthPacket] = Field(min_length=1)
+    """The consumer's source-grounded context. Operator-curated is fine;
+    no RAG infrastructure required. Each packet has a subject (short
+    label) + content (the body of the finding) + optional source_label
+    (audit trail). 3-5 packets is the typical Z-SPAN shape."""
+
+    register: str = Field(default="plain_english")
+    """Translation register for the audited final. One of:
+    ``plain_english`` (default — strip framework jargon),
+    ``executive_brief`` (3-5 paragraph decision-maker summary),
+    ``cube_of_space`` (geometric/spatial vocabulary).
+    See ``app.contracts.TranslationRegister`` for the full descriptions."""
+
+    depth: Literal["iterate", "bicameral_loop"] = "iterate"
+    """Loop depth. Default ``iterate`` (Bicameral Convergence Level 1 —
+    3 strokes with Bridge as Stroke 2b, ~10-15 min wall time).
+    ``bicameral_loop`` (Level 2) iterates Engine↔Bridge until
+    convergence or hard cap — longer wall time, higher decision-grade
+    output. Escalate when Level 1's Bridge surfaces unresolved
+    structural friction or when the question is high-enough-stakes
+    to justify the extra time."""
+
+    max_iterations: Optional[int] = Field(default=None, ge=1, le=10)
+    """Hard iteration cap for ``depth=bicameral_loop``. Default 5
+    (the loop's own default). Ignored when ``depth=iterate``."""
+
+    include_bridge: bool = True
+    """Whether to run the Connection Bridge alongside the Mirror
+    Auditor for ``depth=iterate``. Default True — Bicameral
+    Convergence Level 1 is the production audit shape. Ignored when
+    ``depth=bicameral_loop`` (which always uses Bridge)."""
+
+    pathway_override: Optional[Pathway] = None
+    """If the consumer already knows the pathway (skip the dispatcher's
+    Gemini Flash call), set this. Default None — let the dispatcher
+    classify. Useful for batch/testing scenarios where the pathway is
+    known and the Gemini call is unnecessary overhead."""
+
+
+class ManagedRunResponse(BaseModel):
+    """Response for ``POST /api/v2/managed-run``.
+
+    Carries everything the consumer needs: the session_id (for later
+    browsing via ``GET /sessions/{id}/strokes``), the chosen pathway
+    (transparency on the dispatcher's classification), the audited
+    final text (raw, framework-vocabulary), the translated text (in
+    the chosen register, audience-facing), and the full stroke history
+    (for when the consumer wants to understand the per-stage
+    reasoning behind the final output).
+    """
+    model_config = ConfigDict(extra="forbid")
+    session_id: str
+    pathway_chosen: Pathway
+    dispatch_confidence: float = Field(ge=0.0, le=1.0)
+    """The dispatcher's classification confidence in [0, 1]. 1.0 when
+    ``pathway_override`` was supplied. Low values (< 0.5) mean the
+    dispatcher wasn't sure — the consumer can check
+    ``clarifying_questions`` for follow-up prompts."""
+    dispatch_rationale: str
+    """One-sentence explanation of why the dispatcher chose this pathway.
+    Useful for the consumer to sanity-check the classification before
+    acting on the output."""
+    clarifying_questions: list[str]
+    """Up to 2 questions the dispatcher would have wanted answered for
+    a more confident classification. Empty when confidence was clean.
+    The consumer may re-run with ``scenario_text`` refined."""
+
+    depth: str
+    """Echo of the depth used (``iterate`` or ``bicameral_loop``)."""
+
+    register: str
+    """Echo of the register used."""
+
+    final_text: str
+    """The audited final, in framework vocabulary. For iterative runs
+    this is the Stroke 3 ``final_resolution`` (preferring
+    ``cleaned_response`` if P1-03b's CTA-strip ran). For Bicameral
+    Level 2 runs it's the final iteration's synthesis. This is the
+    technical artifact — file it in the consumer's audit trail for
+    traceability. The ``translated_text`` is what to read to a
+    human."""
+
+    translated_text: str
+    """The same audited final, re-expressed in the chosen ``register``.
+    Preserves the analytical claims 1:1 while swapping framework
+    jargon for legible vocabulary. This is the canonical
+    audience-facing artifact."""
+
+    strokes: list[StrokeResult]
+    """Full stroke history, in order. Useful when the consumer wants
+    to understand WHY the final output is what it is — Stroke 1
+    (thesis), Stroke 2 (Mirror Auditor critique), Stroke 2b (Connection
+    Bridge missed-connections audit if include_bridge=True), Stroke 3
+    (re-synthesis with both audits as friction). For Bicameral Level 2
+    runs this carries every iteration's Engine + Bridge pair."""
+
+    state: SessionStateResponse
+    """Final session state snapshot for cross-call consistency with the
+    rest of the v2 API."""
+
+
+@router.post(
+    "/managed-run",
+    response_model=ManagedRunResponse,
+    status_code=200,
+)
+async def managed_run(req: ManagedRunRequest) -> ManagedRunResponse:
+    """Single-call composition of dispatch → create → iterate (or bicameral_loop) → translate → complete.
+
+    The recommended entry point for session-as-consumer projects
+    (Z-SPAN, future Claude sessions). The consumer sends a
+    natural-language strategic question + source-grounded Truth
+    Packets + an optional register; Ganymede internally classifies
+    pathway, drives the multi-stroke loop, translates the audited
+    final into the chosen register, and completes the session.
+
+    The granular API (/dispatch + /sessions + /iterate + /translate +
+    /complete) remains the right surface for embedded-app consumers
+    (PrisonBreak) that need fine-grained control over each step for
+    the in-app UI. Both shapes are first-class.
+
+    Wall time:
+        - ``depth=iterate``: ~10-15 minutes (4 NotebookLM strokes +
+          Bridge provision + translation call).
+        - ``depth=bicameral_loop``: ~10-30 minutes depending on
+          iteration count (per-iteration Engine + Bridge pair until
+          convergence or hard cap).
+
+    WS subscribers can watch live progress on
+    ``/sessions/{session_id}/events/stream`` — the session is created
+    and persisted before the loop fires, so the WS subscription works
+    from the moment this endpoint accepts the request.
+
+    Errors:
+        422 — empty scenario_text, empty truth_packets, malformed
+              register, or other contract validation failures.
+        500 — dispatcher failure, orchestrator failure, translation
+              failure (session transitioned to error state internally).
+
+    Cancel semantics: if the operator hits ``POST /sessions/{id}/cancel``
+    mid-loop, this endpoint catches ``SessionCancelledError`` and
+    returns 200 with partial strokes (matching the ``/iterate`` /
+    ``/bicameral-loop`` pattern). ``translated_text`` is best-effort
+    on the last completed stroke.
+    """
+    # 1. Dispatcher: classify pathway + extract scenario fields
+    if req.pathway_override is not None:
+        # Consumer skipped dispatch. Build a minimal scenario from the
+        # text using ``question`` as the default field — the orchestrator's
+        # pathway-templates will fall back to other fields per the
+        # ``Pathway`` it was told to use.
+        pathway = req.pathway_override
+        scenario = Scenario(question=req.scenario_text)
+        dispatch_confidence = 1.0
+        dispatch_rationale = (
+            f"Consumer-supplied pathway_override={pathway.value}; "
+            f"dispatcher skipped."
+        )
+        clarifying_questions: list[str] = []
+    else:
+        svc = _get_gemini_dispatch_service()
+        try:
+            dispatch_result = await svc.dispatch_intent(req.scenario_text)
+        except Exception as exc:
+            logger.exception("managed_run: dispatcher failed")
+            raise HTTPException(status_code=500, detail=f"Dispatch failed: {exc}")
+
+        pathway = Pathway(dispatch_result["pathway"])
+        allowed_fields = set(Scenario.model_fields.keys())
+        filtered_scenario = {
+            k: v
+            for k, v in (dispatch_result.get("scenario") or {}).items()
+            if k in allowed_fields
+        }
+        try:
+            scenario = Scenario(**filtered_scenario)
+        except Exception as exc:
+            logger.warning(
+                "managed_run: scenario construction from dispatch failed "
+                "(%s); falling back to question-only",
+                exc,
+            )
+            scenario = Scenario(question=req.scenario_text)
+        dispatch_confidence = dispatch_result["confidence"]
+        dispatch_rationale = dispatch_result["rationale"]
+        clarifying_questions = list(dispatch_result["clarifying_questions"])
+
+    # 2. Create session — always iterative since managed-run is the
+    # heavy-shape path. max_strokes=3 fits Stroke 1 + Stroke 2 (audit) +
+    # Stroke 3 (re-synthesis); the Bridge as Stroke 2b runs inside that
+    # budget.
+    try:
+        session = await registry().create(
+            scenario=scenario,
+            pathway=pathway,
+            iterative=True,
+            max_strokes=3,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    orch = _get_orchestrator()
+
+    # 3. Drive the loop. Cancellation produces partial strokes; the
+    # endpoint still returns 200 with the partial result.
+    try:
+        if req.depth == "iterate":
+            strokes = await orch.run_iterative_engine(
+                session,
+                truth_packets=req.truth_packets,
+                include_bridge=req.include_bridge,
+            )
+        else:  # bicameral_loop
+            max_iter = (
+                req.max_iterations if req.max_iterations is not None else 5
+            )
+            strokes = await orch.run_bicameral_loop(
+                session,
+                truth_packets=req.truth_packets,
+                max_iterations=max_iter,
+            )
+    except SessionCancelledError as exc:
+        logger.info(
+            "managed_run: session %s cancelled at %s; returning partial",
+            session.id, exc.where,
+        )
+        partial = session.strokes
+        partial_translated = ""
+        if partial:
+            try:
+                partial_translated = await orch.run_translation(
+                    session, partial[-1].stroke_number, req.register,
+                )
+            except Exception as t_exc:
+                logger.warning(
+                    "managed_run: partial-translation failed for %s: %s",
+                    session.id, t_exc,
+                )
+        return ManagedRunResponse(
+            session_id=session.id,
+            pathway_chosen=pathway,
+            dispatch_confidence=dispatch_confidence,
+            dispatch_rationale=dispatch_rationale,
+            clarifying_questions=clarifying_questions,
+            depth=req.depth,
+            register=req.register,
+            final_text=(
+                partial[-1].cleaned_response or partial[-1].raw_response
+                if partial else ""
+            ),
+            translated_text=partial_translated,
+            strokes=partial,
+            state=_state(session),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except Exception as exc:
+        logger.exception("managed_run: loop failed for session %s", session.id)
+        raise HTTPException(status_code=500, detail=f"Loop failed: {exc}")
+
+    if not strokes:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Loop returned no strokes for session {session.id}",
+        )
+
+    # 4. Translate the final stroke into the chosen register.
+    final_stroke = strokes[-1]
+    try:
+        translated_text = await orch.run_translation(
+            session, final_stroke.stroke_number, req.register,
+        )
+    except Exception as exc:
+        logger.warning(
+            "managed_run: translation failed for session %s (%s) — "
+            "returning untranslated final as translated_text",
+            session.id, exc,
+        )
+        translated_text = (
+            final_stroke.cleaned_response or final_stroke.raw_response
+        )
+
+    # 5. Complete the session.
+    try:
+        final_resolution = await session.complete()
+    except Exception as exc:
+        logger.exception(
+            "managed_run: complete failed for session %s", session.id,
+        )
+        raise HTTPException(status_code=500, detail=f"Complete failed: {exc}")
+
+    return ManagedRunResponse(
+        session_id=session.id,
+        pathway_chosen=pathway,
+        dispatch_confidence=dispatch_confidence,
+        dispatch_rationale=dispatch_rationale,
+        clarifying_questions=clarifying_questions,
+        depth=req.depth,
+        register=req.register,
+        final_text=final_resolution.final_text,
+        translated_text=translated_text,
+        strokes=strokes,
+        state=_state(session),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Sessions
 # ---------------------------------------------------------------------------
 

@@ -15,7 +15,10 @@ If you're new to the project itself (rather than just the API), [`OVERVIEW.md`](
 ## TL;DR
 
 - Ganymede runs as an HTTP service (FastAPI). Default URL: `http://127.0.0.1:8000`.
-- The API is **session-based**: you create a session, drive one or more "strokes" against it, and finalize.
+- **Two consumer shapes, both first-class:**
+  - **Session-as-consumer** (Z-SPAN, future Claude sessions that consume Ganymede as a tool): use `POST /api/v2/managed-run` — one HTTP call per strategic question. Ganymede internally handles pathway classification, multi-stroke orchestration, translation, completion. Recommended starting point. See [milestone 48 architectural call](../history/Architecture_History.md) for the rationale.
+  - **Embedded-app** (PrisonBreak, future web-app integrations that render strokes in a UI): use the granular API (`/dispatch` → `/sessions` → `/iterate` → `/translate` → `/complete`). Fine-grained control over each step + WS streaming for in-app rendering.
+- The API is **session-based**: you create a session, drive one or more "strokes" against it, and finalize. `/managed-run` does this for you.
 - A *stroke* is one Engine invocation. Single-pass = one stroke; iterative = three strokes (synthesis → audit → re-synthesis); Bicameral Level 2 = N strokes until convergence.
 - Inputs: a *Scenario* (what to reason about) + *Truth Packets* (your already-harvested research findings, source-cited).
 - Outputs: structured *StrokeResults* with the canonical strategic shapes (Strategic Lasso, Incomprehensible Move, Final Resolution).
@@ -186,6 +189,67 @@ Liveness check + cooldown stats + active session count. Hit this before kicking 
   "active_sessions": 1
 }
 ```
+
+### `POST /api/v2/managed-run` — the recommended starter (milestone 48)
+
+Single-call composition of dispatch → session create → iterate (or bicameral_loop) → translate → complete. The recommended entry point for **session-as-consumer** projects (Z-SPAN, future Claude sessions consuming Ganymede as a tool). Ganymede internally handles pathway classification, multi-stroke orchestration, translation, completion.
+
+The granular API below (`/dispatch` + `/sessions` + `/iterate` + `/translate` + `/complete`) remains the right surface for **embedded-app consumers** (PrisonBreak) that need fine-grained control over each step for in-app UI rendering. Both shapes are first-class.
+
+Request:
+
+```json
+{
+  "scenario_text": "How should Z-SPAN position vs Granicus...",
+  "truth_packets": [
+    { "subject": "Granicus posture", "content": "...", "source_label": "..." },
+    { "subject": "Z-SPAN current posture", "content": "...", "source_label": "..." }
+  ],
+  "register": "plain_english",
+  "depth": "iterate",
+  "max_iterations": null,
+  "include_bridge": true,
+  "pathway_override": null
+}
+```
+
+| Field | Required | Default | Notes |
+| --- | --- | --- | --- |
+| `scenario_text` | yes | — | Natural-language strategic question. Dispatcher classifies into a pathway. |
+| `truth_packets` | yes | — | List of TruthPacket objects; min 1. Operator-curated or RAG-derived — both fine. |
+| `register` | no | `plain_english` | One of `plain_english` / `cube_of_space` / `executive_brief`. |
+| `depth` | no | `iterate` | `iterate` = Bicameral Level 1 (3 strokes + Bridge). `bicameral_loop` = Level 2 (N iterations until convergence or cap). |
+| `max_iterations` | no | 5 | Hard iteration cap for `depth=bicameral_loop`. Ignored when `depth=iterate`. 1-10 inclusive. |
+| `include_bridge` | no | `true` | Whether to run the Connection Bridge as Stroke 2b in `depth=iterate`. Ignored when `depth=bicameral_loop`. |
+| `pathway_override` | no | null | Skip the dispatcher and force a pathway. Useful for batch / testing. |
+
+Response:
+
+```json
+{
+  "session_id": "5263e33a-...",
+  "pathway_chosen": "genie",
+  "dispatch_confidence": 0.92,
+  "dispatch_rationale": "The text frames a current-state-to-wished-for-state path with a named opponent.",
+  "clarifying_questions": [],
+  "depth": "iterate",
+  "register": "plain_english",
+  "final_text": "<audited final in framework vocabulary>",
+  "translated_text": "<same final, re-expressed in chosen register>",
+  "strokes": [ /* full StrokeResult[] history */ ],
+  "state": { /* SessionStateResponse */ }
+}
+```
+
+Read `translated_text` as the canonical audience-facing artifact; `final_text` as the technical version preserving framework vocabulary. `strokes` carries the per-stage analytical history. `pathway_chosen` is the dispatcher's classification — sanity-check it; if `dispatch_confidence` is low, consider re-running with refined `scenario_text`.
+
+Wall time: ~10-15 min for `depth=iterate`; ~10-30 min for `depth=bicameral_loop`. The endpoint blocks for the full loop duration. WS subscribers can attach to `/sessions/{session_id}/events/stream` immediately after request acceptance to render live progress.
+
+Cancel semantics: `POST /api/v2/sessions/{id}/cancel` mid-loop causes `/managed-run` to return 200 with partial strokes (same pattern as `/iterate`). `translated_text` is best-effort on the last completed stroke.
+
+Errors:
+- `422` — empty `scenario_text`, empty `truth_packets`, malformed `register`, `max_iterations` out of range.
+- `500` — dispatcher failure, orchestrator failure, or translation failure (session transitioned to error state internally).
 
 ### `POST /api/v2/sessions`
 

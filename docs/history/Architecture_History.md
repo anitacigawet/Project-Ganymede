@@ -960,6 +960,84 @@ All remaining items are operator-gated or calendar-gated. **Every claude-autonom
 
 ---
 
+## 48. `/managed-run` endpoint — dispatcher as canonical entry point for session-as-consumer projects (2026-06-10)
+
+The consumer-spec walkthrough shipped in milestone 47 taught Z-SPAN's session to learn pathway taxonomy, Truth Packet shape, iterate-vs-Bicameral escalation rules, and Operator Lens register selection before making the first useful call. That's framework-internal vocabulary leaking onto the consumer's cognitive surface, and James caught it during the actual Z-SPAN handoff attempt: *"I feel like I'm trying to work with the handoff in the other chat, and it just made it too complicated. I think that we need to have an interface, not with the API. It would happen through that Gemini thing, like the user would."*
+
+He was right. The dispatcher (`POST /api/v2/dispatch`) already abstracts pathway choice for human operators via DispatcherPanel — natural-language in, classified pathway out. Programmatic consumers deserve the same abstraction. This milestone ships it.
+
+### The architectural call
+
+**The dispatcher is the canonical entry point for both human operators (via UI) and session-as-consumer projects (via HTTP).** One natural-language entry surface; two render-out surfaces (interactive form for humans, JSON payload for sessions). This is the fourth instance the project has independently arrived at the same architectural lens: *the framework abstracts itself for the audience*. Prior instances:
+
+1. **Milestone 43** — Cube-of-Space transcript exchange showed framework analytical output landing differently when expressed in a different vocabulary register.
+2. **Milestone 45 (Pl3)** — Operator Lens codification: translation stroke that re-expresses analytical output in a chosen register, preserving claims 1:1.
+3. **Milestones 46-47** — persistent session state + `consuming_the_v2_api.md` parity: the framework's persistence reality made visible to consumers regardless of when they joined the conversation.
+4. **This milestone** — same lens applied to *how consumers interact with the framework* (not just how its outputs are expressed). Consumers send natural-language intent; the framework internally handles its own complexity.
+
+### Shipped
+
+**`POST /api/v2/managed-run`** in `ganymede-backend/app/v2_routes.py` — single-call composition of dispatch → session create → iterate (or bicameral_loop) → translate → complete. Request: `scenario_text` (NL) + `truth_packets` (consumer's grounded context) + optional `register` / `depth` / `max_iterations` / `include_bridge` / `pathway_override`. Response: `session_id` + `pathway_chosen` + `dispatch_confidence` + `dispatch_rationale` + `clarifying_questions` + `final_text` + `translated_text` + `strokes` + `state`. Cancel-mid-loop returns 200 with partial strokes (same pattern as `/iterate`); translation failures degrade to untranslated final.
+
+The composition uses existing primitives — no new orchestrator logic. Pathway selection routes through `GeminiService.dispatch_intent`; session creation through `registry().create`; loop driving through `run_iterative_engine` or `run_bicameral_loop`; translation through `run_translation` (which routes through the canonical NotebookLM Engine per milestone 45's mid-flight correction — closed-RAG-sphere discipline preserved); completion through `session.complete`. The endpoint is composition, not new behavior.
+
+### Both consumer shapes stay first-class
+
+The granular API (`/dispatch` + `/sessions` + `/iterate` or `/bicameral-loop` + `/translate` + `/complete`) is preserved and remains the right surface for **embedded-app consumers** (PrisonBreak) that need fine-grained per-step control for their in-app UI. They typically:
+
+- Render stroke-by-stroke progress (need stroke-by-stroke event hooks).
+- Insert operator review between dispatch classification and the loop (need to display the dispatcher's choice for human confirmation before burning ~15 min of NotebookLM calls).
+- Run single synthesis strokes (`/synthesize`) for cheaper first-look passes (`/managed-run` is iterative-only).
+
+The granular API is the right shape for them. `/managed-run` is the right shape for **session-as-consumer** projects (Z-SPAN, future Claude sessions). Two documented patterns; both first-class.
+
+### Documentation parity
+
+- **`docs/integration/examples/zspan_consumer.md`** rewritten to lead with `/managed-run` as primary. Granular API preserved as "if you need fine-grained control" fall-back section. Walkthrough collapses from 5 curl steps to 1 + register selection.
+- **`docs/integration/consuming_the_v2_api.md`** TL;DR now opens with the two-consumer-shapes framing. New endpoint reference section for `/managed-run` placed right after `/health` (the canonical sanity-check) so the first endpoint reference a new consumer sees is the recommended starter.
+- **`C:\Users\james\Desktop\Z-SPAN_Handoff_v2.md`** — new self-contained onboarding doc James pastes into Z-SPAN's chat as the first message. Single paste-in; covers what Ganymede is (with the Theory-of-Mind framing from the 2026-06-10 Gemini brainstorm), the one HTTP call shape, register selection, persistence, courier protocol. Replaces the earlier handoff approach that was producing the cognitive-overload symptom James caught.
+
+### Cognitive-surface delta
+
+For Z-SPAN's first call, the cognitive model collapses from:
+
+> "Draft a question. Identify the pathway shape (cleanroom / genie / offensive / mirror_audit) by reading the pathway-selection table. Construct Truth Packets. Decide whether to iterate or bicameral-loop based on the friction-escalation rule. Pick a register based on the audience table. Make 5 HTTP calls in sequence: dispatch (optional), sessions, iterate-or-bicameral-loop, translate (per register), complete. Capture session_id along the way for later browsing."
+
+To:
+
+> "Draft a question with James. Draft 3-5 Truth Packets. Make 1 HTTP call. Capture the session_id from the response."
+
+That's the design surface delta. Internal complexity unchanged; consumer cognitive surface dropped from ~7 decision points to 1.
+
+### What this milestone closes
+
+- The over-complex-consumer-onboarding issue James surfaced during the actual Z-SPAN handoff attempt.
+- The asymmetry between human-operator entry (one NL textbox via DispatcherPanel) and programmatic-consumer entry (5+ endpoints to learn). Both shapes now have the same canonical entry point.
+
+### What this milestone does NOT close
+
+- **Pl2-03** — first live Z-SPAN strategic-planning session. Still operator-driven; requires Z-SPAN's session to produce a real positioning question + call `/managed-run` end-to-end + James to courier results. The handoff doc that supports this is the new `Z-SPAN_Handoff_v2.md`.
+- **Truth Packets stay manual.** The consumer still has to bring grounded context. Can't be automated away — that's the consumer's domain knowledge. But this is the *only* thing the consumer has to actively produce.
+
+### Pending after this milestone
+
+- Pl2-03 first live Z-SPAN strategic-planning session (operator-driven).
+- E1-06 first live Bicameral Level 2 run (operator-driven).
+- 2026-06-30 LMArena leaderboard-rank resolution (calendar-gated).
+- M2 leaner-corpus side-by-side test (operator-gated, major scope shift).
+- P1-01 upstream `notebooklm-py` PR submission (operator action).
+
+### Cross-cutting note
+
+This milestone is *also* a confirmation of the public-facing-framing direction logged in the project memory ([[project-public-release-deferred]]). The same architectural principle — *the framework abstracts itself for the audience* — applies to:
+- Stroke output → audience (Pl3 Operator Lens, registers).
+- Project description → public reader (Theory-of-Mind framing if Option B ships).
+- API surface → consumer (`/managed-run` for session-as-consumer; granular API for embedded-app).
+
+Three load-bearing instances on the same axis; treat the lens as confirmed project-wide architectural principle.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -1019,3 +1097,4 @@ All remaining items are operator-gated or calendar-gated. **Every claude-autonom
 | Pl2-01 SessionStore persistence (46) | `ganymede-backend/app/services/session_store.py` (`SessionStore` + `default_db_path`) + `ganymede-backend/app/services/session.py` (`Session._store` + `_persist` + `from_persisted_state` + `SessionRegistry.bind_store` + `rehydrate` + `store` accessor) + `ganymede-backend/app/main.py` startup wiring + `GET /api/v2/sessions` (list/filter/search) + `GET /api/v2/sessions/{id}/strokes` in `ganymede-backend/app/v2_routes.py` |
 | Pl2-02 Z-SPAN consumer-spec walkthrough (47) | [`../integration/examples/zspan_consumer.md`](../integration/examples/zspan_consumer.md) + cross-references in [`../integration/examples/README.md`](../integration/examples/README.md) + [`../integration/operator_courier_protocol.md`](../integration/operator_courier_protocol.md) + ROADMAP.md § Pl2 deliverables |
 | BridgeNotebookRegistry persistence (47) | `ganymede-backend/app/services/bridge_registry.py` (`BridgeNotebookRegistry.bind_persistence` + `load_from_disk` + `_persist_locked` atomic-write + `default_persistence_path`) + `ganymede-backend/app/main.py` startup wiring + `consuming_the_v2_api.md` § Session persistence (Pl2-01) for canonical surface description |
+| `/managed-run` endpoint + dispatcher-as-canonical-entry-point (48) | `POST /api/v2/managed-run` in `ganymede-backend/app/v2_routes.py` (`ManagedRunRequest` + `ManagedRunResponse` + `managed_run` composition handler) + `docs/integration/examples/zspan_consumer.md` rewrite (managed-run primary; granular API as fall-back) + `docs/integration/consuming_the_v2_api.md` two-consumer-shapes TL;DR + endpoint reference + `C:\Users\james\Desktop\Z-SPAN_Handoff_v2.md` operator paste-in onboarding |

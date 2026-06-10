@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-09 (post-milestone 47 — persistence-discipline closeout: Pl2-02 consumer-spec doc + canonical-API-doc updates + BridgeNotebookRegistry persistence parity. **Every claude-autonomous chunk on the project's current scope is done.** Remaining items are all operator-gated or calendar-gated: Pl2-03 first live Z-SPAN strategic-planning session, E1-06 first live Bicameral Level 2 run, 2026-06-30 LMArena leaderboard-rank resolution, M2 leaner-corpus side-by-side test, P1-01 upstream notebooklm-py PR submission).
+Last updated: 2026-06-10 (post-milestone 48 — `/managed-run` endpoint shipped + zspan_consumer.md / consuming_the_v2_api.md rewritten with managed-run as the recommended starter for session-as-consumer projects + new `Z-SPAN_Handoff_v2.md` paste-in for James to send Z-SPAN. Triggered by James catching the cognitive-overload symptom during the actual Z-SPAN handoff attempt: the granular API was too much for a session-as-consumer to absorb. Dispatcher is now the canonical entry point for both human operators and session-as-consumer projects. **Every claude-autonomous chunk on the current scope is done.** Remaining items are operator-gated or calendar-gated: Pl2-03 first live Z-SPAN strategic-planning session, E1-06 first live Bicameral Level 2 run, 2026-06-30 LMArena leaderboard-rank resolution, M2 leaner-corpus side-by-side test, P1-01 upstream notebooklm-py PR submission).
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -68,16 +68,16 @@ Verified across simulated restarts via TestClient lifecycle.
 
 ### Pl2-03 · First live Z-SPAN strategic-planning session (operator-driven)
 
-Run a real Z-SPAN positioning question end-to-end through the Dispatcher → iterative loop → operator-facing output. Write up the run record.
+Run a real Z-SPAN positioning question end-to-end through `POST /api/v2/managed-run`. Write up the run record.
 
 **Done when:**
-- Z-SPAN session produces a real strategic-planning question.
-- Question runs end-to-end through Ganymede's v2 API.
-- Resolution returned to Z-SPAN.
-- Run record at `docs/experiments/runs/Z-SPAN_First_Strategic_Session.md` documenting scenario, strokes, observed wall time, Operator Lens register usage, and any operator observations.
-- Architecture_History milestone 47 capturing the first live consumer-driven run.
+- Z-SPAN session produces a real strategic-planning question + 3-5 Truth Packets drafted with the operator.
+- One `POST /api/v2/managed-run` call drives dispatch → create → iterate → translate → complete in one shot.
+- Resolution returned to Z-SPAN; `session_id` captured into Z-SPAN's decision-log.
+- Run record at `docs/experiments/runs/Z-SPAN_First_Strategic_Session.md` documenting scenario, strokes, observed wall time, dispatcher confidence + rationale, register used, and any operator observations.
+- Architecture_History milestone 49 capturing the first live consumer-driven run (or rolled into milestone 48 if it happens in the same arc).
 
-**Operator-gated.** Requires Z-SPAN's session to drive the question and the operator to courier observations between sessions.
+**Operator-gated.** Requires Z-SPAN's session to drive the question. James pastes the new `C:\Users\james\Desktop\Z-SPAN_Handoff_v2.md` as Z-SPAN's first message; Z-SPAN reads it and starts drafting the first question with James.
 
 ---
 
