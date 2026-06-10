@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   HelpCircle,
+  Network,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,13 @@ interface DispatchResponse {
   pathway: Pathway;
   confidence: number;
   scenario: DispatchScenario;
+  /** True when the scenario references real-world entities (companies, people,
+   *  markets, current events) the Engine's 9D-theory grounding corpus would
+   *  not know about. Drives the routing decision: true → Universal Logic Loop
+   *  (Triage → Oracle swarm → harvest → Synthesis, 15-30 min); false →
+   *  Iterative Engine (3-stroke loop on framework-internal grounding, 5 min).
+   *  mirror_audit always false. */
+  needs_external_knowledge: boolean;
   rationale: string;
   clarifying_questions: string[];
 }
@@ -73,6 +81,42 @@ interface StrokeResult {
   audit_kind?: 'mirror_auditor' | 'bridge' | null;
   started_at: string;
   completed_at: string;
+}
+
+/** Per-Oracle progress emitted on the WebSocket during a Universal Logic Loop
+ *  run. Mirrors the shape RunnerPanel uses so OrchestratorMindMap renders the
+ *  same Oracle-spawn animation for both panels. */
+interface OracleProgress {
+  subject: string;
+  notebook_id?: string;
+  surgical_prompt?: string;
+  status: 'requested' | 'created' | 'researching' | 'harvested' | 'failed';
+  sources_imported?: number;
+  packet_chars?: number;
+  error?: string;
+}
+
+/** WebSocket event shape published by the backend on
+ *  /api/v2/sessions/{id}/events/stream. The dispatcher subscribes during a
+ *  run so the visualizer animates as the Universal Logic Loop progresses
+ *  (Triage blueprint → Oracle requests → Oracle created → harvested →
+ *  Synthesis), and so iterative runs reach the same render path. */
+interface SessionEvent {
+  type:
+    | 'session_created'
+    | 'stroke_started'
+    | 'synthesis_complete'
+    | 'stroke_completed'
+    | 'session_complete'
+    | 'session_cancelled'
+    | 'error'
+    | 'blueprint_ready'
+    | 'oracle_request'
+    | 'oracle_created'
+    | 'oracle_harvested';
+  stroke_number: number | null;
+  payload: Record<string, unknown>;
+  emitted_at: string;
 }
 
 const DEFAULT_BACKEND =
@@ -164,8 +208,41 @@ export function DispatcherPanel({
   const [finalText, setFinalText] = useState<string | null>(null);
   const [iterative, setIterative] = useState(true);
   const [includeBridge, setIncludeBridge] = useState(true);
+  // Universal Logic Loop wiring (structural fix 2026-06-10).
+  // The dispatcher's friendly entry needs to route real-world Cleanroom/Genie/
+  // Offensive questions to the harvest path (Triage → Oracle swarm → Synthesis)
+  // because the Engine's grounding corpus is 9D-theory-only. Without harvest,
+  // those questions hit the "no information" failure mode. The classifier
+  // returns needs_external_knowledge; this panel honours it unless the operator
+  // explicitly overrides via forceQuickPath.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [blueprint, setBlueprint] = useState<string | null>(null);
+  const [oracles, setOracles] = useState<Record<string, OracleProgress>>({});
+  const [forceQuickPath, setForceQuickPath] = useState(false);
+  /** WebSocket reference for the live event stream. The visualizer reads
+   *  blueprint + oracles + strokes incrementally as events arrive, which is
+   *  why this panel previously rendered a frozen Stage-1 placeholder: no
+   *  subscription, no incremental data. Mirrors RunnerPanel's wsRef pattern. */
+  const wsRef = useRef<WebSocket | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /** Closes any in-flight WebSocket so we don't leak subscribers across
+   *  runs or component-unmount. Called from reset() and the unmount cleanup
+   *  effect below. */
+  const closeWs = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+      try {
+        wsRef.current.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    wsRef.current = null;
+  }, []);
+
+  // Close the WS when the panel unmounts so we don't leak a subscriber.
+  useEffect(() => closeWs, [closeWs]);
 
   // Auto-grow the input textarea while in the input phase.
   useEffect(() => {
@@ -176,24 +253,32 @@ export function DispatcherPanel({
     }
   }, [text, phase]);
 
+  // Whether the resolved path for the current dispatch (after operator
+  // override) is the Universal Logic Loop. Computed here so the snapshot
+  // mirror, the review-phase UI, and handleConfirm all share one source of
+  // truth.
+  const useUniversalLoop =
+    !!dispatch && dispatch.needs_external_knowledge && !forceQuickPath;
+
   // Mirror dispatcher state up to the parent's runnerSnapshot so the
-  // mind-map view can render live progress while the dispatcher's
-  // iterate / synthesize call is in flight. Shape matches what
-  // RunnerPanel emits — page.tsx can wire both panels into the same
-  // setRunnerSnapshot. The visualizer's bicameral mode detection
-  // triggers on `oracles.length === 0 && running` so an iterate-flow
-  // run from the dispatcher lights up Engine ↔ PKI substrate ↔ Anti.
+  // mind-map view can render live progress while the run is in flight.
+  // Shape matches what RunnerPanel emits — page.tsx wires both panels into
+  // the same setRunnerSnapshot. The visualizer's bicameral mode detection
+  // triggers on `oracles.length === 0 && running` (Engine ↔ PKI ↔ Anti);
+  // when oracles.length > 0 it renders the Universal-Logic-Loop oracle
+  // spawn graph instead.
   useEffect(() => {
     if (!onSnapshotChange) return;
     const summary = text.trim() || Object.values(editedScenario)
       .filter((v): v is string => typeof v === 'string' && v.length > 0)
       .join(' · ');
+    const oraclesList = Object.values(oracles);
     const snapshot: RunnerSnapshot = {
       pathway: (dispatch?.pathway ?? 'cleanroom') as Pathway as RunnerSnapshot['pathway'],
-      runMode: (iterative ? 'full_loop' : 'synthesis') as RunnerSnapshot['runMode'],
+      runMode: (useUniversalLoop ? 'full_loop' : 'synthesis') as RunnerSnapshot['runMode'],
       scenarioSummary: summary,
-      blueprint: null,
-      oracles: [],
+      blueprint,
+      oracles: oraclesList as unknown as RunnerSnapshot['oracles'],
       strokes: strokes as unknown as RunnerSnapshot['strokes'],
       finalText,
       running: phase === 'running',
@@ -203,10 +288,13 @@ export function DispatcherPanel({
     onSnapshotChange(snapshot);
   }, [
     onSnapshotChange, phase, text, editedScenario, dispatch,
-    iterative, strokes, finalText,
+    useUniversalLoop, blueprint, oracles, strokes, finalText,
   ]);
 
   const reset = useCallback(() => {
+    // Close any in-flight WS before zeroing state so we don't leak
+    // subscribers across runs.
+    closeWs();
     setPhase('input');
     setText('');
     setDispatch(null);
@@ -214,6 +302,74 @@ export function DispatcherPanel({
     setErrorMessage(null);
     setStrokes([]);
     setFinalText(null);
+    setSessionId(null);
+    setBlueprint(null);
+    setOracles({});
+    setForceQuickPath(false);
+  }, [closeWs]);
+
+  /** Apply a WebSocket event to local state. Mirrors RunnerPanel.handleEvent
+   *  so OrchestratorMindMap receives the same incremental Blueprint /
+   *  Oracle / Stroke updates regardless of which panel drove the run.
+   *
+   *  Stroke contents come from the HTTP responses (`synthesis_complete`'s WS
+   *  payload is just `{stroke_number, response_chars}` metadata). Blueprint
+   *  and per-Oracle progress, on the other hand, ARE on the WS — they are the
+   *  only way the UI learns about them in real time during a Universal Logic
+   *  Loop run. */
+  const handleEvent = useCallback((event: SessionEvent) => {
+    const p = event.payload || {};
+    if (event.type === 'blueprint_ready' && typeof p.blueprint === 'string') {
+      setBlueprint(p.blueprint as string);
+    }
+    if (event.type === 'oracle_request' && typeof p.subject === 'string') {
+      const subject = p.subject as string;
+      setOracles((prev) => ({
+        ...prev,
+        [subject]: {
+          ...(prev[subject] ?? { subject, status: 'requested' as const }),
+          subject,
+          surgical_prompt:
+            (p.surgical_prompt as string) ?? prev[subject]?.surgical_prompt,
+          status: 'requested',
+        },
+      }));
+    }
+    if (event.type === 'oracle_created' && typeof p.subject === 'string') {
+      const subject = p.subject as string;
+      setOracles((prev) => ({
+        ...prev,
+        [subject]: {
+          ...(prev[subject] ?? { subject, status: 'created' as const }),
+          subject,
+          notebook_id:
+            (p.notebook_id as string) ?? prev[subject]?.notebook_id,
+          status: 'researching',
+        },
+      }));
+    }
+    if (event.type === 'oracle_harvested' && typeof p.subject === 'string') {
+      const subject = p.subject as string;
+      const status: OracleProgress['status'] =
+        (p.status as string) === 'ok' ? 'harvested' : 'failed';
+      setOracles((prev) => ({
+        ...prev,
+        [subject]: {
+          ...(prev[subject] ?? { subject, status }),
+          subject,
+          status,
+          sources_imported:
+            typeof p.sources_imported === 'number'
+              ? (p.sources_imported as number)
+              : prev[subject]?.sources_imported,
+          packet_chars:
+            typeof p.packet_chars === 'number'
+              ? (p.packet_chars as number)
+              : prev[subject]?.packet_chars,
+          error: typeof p.error === 'string' ? (p.error as string) : undefined,
+        },
+      }));
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -260,78 +416,181 @@ export function DispatcherPanel({
       return;
     }
 
-    // Local run: create a session, drive /iterate (or /synthesize), display the result.
+    // Local run. Branch on the dispatcher's harvest signal (post operator
+    // override): real-world Cleanroom/Genie/Offensive routes to the Universal
+    // Logic Loop so the Engine has external Truth Packets to reason against;
+    // everything else routes to the existing Iterative Engine path. Both
+    // paths open a WebSocket BEFORE kickoff so the visualizer sees Blueprint
+    // / Oracle / Stroke events as they fire (the panel previously had no WS
+    // subscription, which is why the visualizer rendered a frozen Stage-1
+    // placeholder for the full run wall-time).
     setPhase('running');
     setStrokes([]);
     setFinalText(null);
+    setSessionId(null);
+    setBlueprint(null);
+    setOracles({});
 
     try {
-      // 1. Create session.
+      // 1. Create session. Iterative path supports the iterative + bridge
+      // toggles; Universal Logic Loop ignores them (it manages its own
+      // synthesis stroke at the end of the swarm).
+      const createBody = useUniversalLoop
+        ? {
+            scenario: { dream_state: true, ...scenario },
+            pathway: dispatch.pathway,
+            iterative: false,
+            max_strokes: 1,
+          }
+        : {
+            scenario: { dream_state: true, ...scenario },
+            pathway: dispatch.pathway,
+            iterative,
+            max_strokes: iterative ? 3 : 1,
+          };
       const createRes = await fetch(`${backendUrl}/api/v2/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          scenario: { dream_state: true, ...scenario },
-          pathway: dispatch.pathway,
-          iterative,
-          max_strokes: iterative ? 3 : 1,
-        }),
+        body: JSON.stringify(createBody),
       });
       if (!createRes.ok) {
         const body = await createRes.text();
         throw new Error(`Create session failed: HTTP ${createRes.status}: ${body}`);
       }
-      const { session_id: sessionId } = await createRes.json();
-
-      // 2. Build a single Truth Packet from the operator's text + extracted scenario.
-      const truthPacket = {
-        subject: 'Scenario',
-        content: text.trim(),
-        source_label: 'Dispatcher (operator-supplied)',
+      const { session_id: newSessionId } = await createRes.json() as {
+        session_id: string;
       };
+      setSessionId(newSessionId);
 
-      // 3. Drive iterate or synthesize. For iterate, pass the Bridge toggle
-      // through — backend default is ON but we send it explicitly so the
-      // operator's UI choice is what controls behavior.
-      const endpoint = iterative
-        ? `/api/v2/sessions/${sessionId}/iterate`
-        : `/api/v2/sessions/${sessionId}/synthesize`;
-      const driveBody = iterative
-        ? { truth_packets: [truthPacket], include_bridge: includeBridge }
-        : { truth_packets: [truthPacket] };
-      const driveRes = await fetch(`${backendUrl}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(driveBody),
+      // 2. Open WebSocket BEFORE kickoff so we don't miss early Blueprint /
+      // Oracle events. RunnerPanel uses the same wait-for-open pattern; on
+      // disconnect the backend replays history, so even a slow open is safe
+      // up to its 5s timeout.
+      const wsUrl = `${backendUrl.replace(/^http/, 'ws')}/api/v2/sessions/${newSessionId}/events/stream`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('WS open timeout')), 5000);
+        ws.onopen = () => { clearTimeout(t); resolve(); };
+        ws.onerror = () => { clearTimeout(t); reject(new Error('WS error')); };
       });
-      if (!driveRes.ok) {
-        const body = await driveRes.text();
-        throw new Error(`Run failed: HTTP ${driveRes.status}: ${body}`);
+
+      if (useUniversalLoop) {
+        // ----- Universal Logic Loop path -----
+        // Backend runs run_universal_loop as a background task (Triage →
+        // PKI Oracle swarm → Synthesis); we wait on session_complete via WS
+        // before fetching /complete for the canonical strokes.
+        const terminalReached = new Promise<void>((resolve, reject) => {
+          ws.onmessage = (msg) => {
+            try {
+              const ev = JSON.parse(msg.data) as SessionEvent;
+              handleEvent(ev);
+              if (ev.type === 'session_complete') resolve();
+              if (ev.type === 'session_cancelled') resolve();
+              if (ev.type === 'error') reject(new Error(
+                typeof ev.payload?.message === 'string'
+                  ? (ev.payload.message as string)
+                  : 'session errored',
+              ));
+            } catch {
+              /* ignore malformed event */
+            }
+          };
+        });
+
+        const kickoffRes = await fetch(
+          `${backendUrl}/api/v2/sessions/${newSessionId}/run-full-loop`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ max_subjects: 3, research_mode: 'deep' }),
+          },
+        );
+        if (!kickoffRes.ok) {
+          const body = await kickoffRes.text();
+          throw new Error(`Full-loop kickoff failed: HTTP ${kickoffRes.status}: ${body}`);
+        }
+
+        await terminalReached;
+
+        const completeRes = await fetch(
+          `${backendUrl}/api/v2/sessions/${newSessionId}/complete`,
+          { method: 'POST' },
+        );
+        if (completeRes.ok) {
+          const completeData = await completeRes.json() as {
+            final_resolution?: { final_text?: string; strokes?: StrokeResult[] };
+          };
+          setStrokes(completeData?.final_resolution?.strokes ?? []);
+          setFinalText(completeData?.final_resolution?.final_text ?? null);
+        }
+      } else {
+        // ----- Iterative Engine path (existing flow) -----
+        // The /iterate (or /synthesize) endpoint is blocking; the WS still
+        // fires Blueprint-less events the visualizer can react to (the
+        // bicameral mode renders Engine ↔ PKI ↔ Anti without oracles).
+        ws.onmessage = (msg) => {
+          try {
+            const ev = JSON.parse(msg.data) as SessionEvent;
+            handleEvent(ev);
+          } catch {
+            /* ignore */
+          }
+        };
+
+        const truthPacket = {
+          subject: 'Scenario',
+          content: text.trim(),
+          source_label: 'Dispatcher (operator-supplied)',
+        };
+        const endpoint = iterative
+          ? `/api/v2/sessions/${newSessionId}/iterate`
+          : `/api/v2/sessions/${newSessionId}/synthesize`;
+        const driveBody = iterative
+          ? { truth_packets: [truthPacket], include_bridge: includeBridge }
+          : { truth_packets: [truthPacket] };
+        const driveRes = await fetch(`${backendUrl}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(driveBody),
+        });
+        if (!driveRes.ok) {
+          const body = await driveRes.text();
+          throw new Error(`Run failed: HTTP ${driveRes.status}: ${body}`);
+        }
+        const driveData = await driveRes.json() as
+          | { stroke: StrokeResult; state: unknown }
+          | { strokes: StrokeResult[]; state: unknown };
+        const runStrokes: StrokeResult[] = 'strokes' in driveData
+          ? (driveData.strokes ?? [])
+          : 'stroke' in driveData && driveData.stroke
+            ? [driveData.stroke]
+            : [];
+        setStrokes(runStrokes);
+
+        const completeRes = await fetch(
+          `${backendUrl}/api/v2/sessions/${newSessionId}/complete`,
+          { method: 'POST' },
+        );
+        if (completeRes.ok) {
+          const completeData = await completeRes.json() as {
+            final_resolution?: { final_text?: string };
+          };
+          setFinalText(completeData?.final_resolution?.final_text ?? null);
+        }
       }
-      const driveData = await driveRes.json();
 
-      const runStrokes: StrokeResult[] = iterative
-        ? (driveData.strokes ?? [])
-        : driveData.stroke
-          ? [driveData.stroke]
-          : [];
-      setStrokes(runStrokes);
-
-      // 4. Complete to seal the final resolution.
-      const completeRes = await fetch(`${backendUrl}/api/v2/sessions/${sessionId}/complete`, {
-        method: 'POST',
-      });
-      if (completeRes.ok) {
-        const completeData = await completeRes.json();
-        setFinalText(completeData?.final_resolution?.final_text ?? null);
-      }
-
+      closeWs();
       setPhase('done');
     } catch (exc) {
+      closeWs();
       setErrorMessage(exc instanceof Error ? exc.message : String(exc));
       setPhase('error');
     }
-  }, [dispatch, editedScenario, text, iterative, includeBridge, onConfirm, backendUrl]);
+  }, [
+    dispatch, editedScenario, text, iterative, includeBridge, onConfirm,
+    backendUrl, useUniversalLoop, handleEvent, closeWs,
+  ]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -433,6 +692,62 @@ export function DispatcherPanel({
             <p className="mt-1 text-xs opacity-80">{dispatch.rationale}</p>
           </div>
 
+          {/* Path-choice indicator. Surfaces which orchestration route this
+              run will take so the operator isn't surprised by a 15-30 min
+              harvest when they expected a 5 min concept analysis. Override
+              available below when the harvest path was flagged but the
+              operator has their own grounding context. */}
+          <div
+            className={`rounded-lg border px-4 py-3 ${
+              useUniversalLoop
+                ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-200'
+                : 'border-slate-700 bg-slate-900/40 text-slate-200'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide">
+              {useUniversalLoop ? <Network size={14} /> : <Zap size={14} />}
+              {useUniversalLoop
+                ? 'Knowledge harvest path'
+                : 'Quick concept-analysis path'}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed opacity-90">
+              {useUniversalLoop ? (
+                <>
+                  The scenario references real-world entities the
+                  9D-theory grounding corpus doesn&apos;t know. Running
+                  Triage → PKI Oracle swarm → Deep Research per subject →
+                  Synthesis. Wall time ~15-30 min, ~3 NotebookLM notebooks
+                  spawned.
+                </>
+              ) : dispatch.needs_external_knowledge ? (
+                <>
+                  Harvest was flagged but you&apos;ve chosen to override.
+                  Running the 3-stroke Iterative Engine directly on
+                  framework-internal grounding. The Engine may refuse with
+                  &quot;no information&quot; if it has no Truth Packets to
+                  reason against. Wall time ~5-10 min.
+                </>
+              ) : (
+                <>
+                  The scenario engages framework primitives abstractly,
+                  no external harvest needed. Running the 3-stroke
+                  Iterative Engine. Wall time ~5-10 min.
+                </>
+              )}
+            </p>
+            {dispatch.needs_external_knowledge && (
+              <label className="mt-2.5 flex items-center gap-2 text-[11px] cursor-pointer opacity-90">
+                <input
+                  type="checkbox"
+                  checked={forceQuickPath}
+                  onChange={(e) => setForceQuickPath(e.target.checked)}
+                  className="accent-indigo-500"
+                />
+                Override: skip harvest, run quick path anyway
+              </label>
+            )}
+          </div>
+
           {/* Clarifying questions (if any) */}
           {dispatch.clarifying_questions.length > 0 && (
             <div className="rounded-lg border border-amber-700/60 bg-amber-950/30 px-4 py-3 text-amber-200">
@@ -511,22 +826,45 @@ export function DispatcherPanel({
         <div className="flex flex-col items-center gap-3 py-12 text-slate-400">
           <Loader2 size={32} className="animate-spin text-indigo-400" />
           <p className="text-sm">
-            Engine running.{' '}
-            {iterative
-              ? includeBridge
-                ? 'Bicameral 4-stroke loop'
-                : '3-stroke loop'
-              : 'Single-pass synthesis'}
-            {' '}— several minutes.
+            {useUniversalLoop ? (
+              <>Universal Logic Loop running — harvest then synthesis.</>
+            ) : (
+              <>
+                Engine running.{' '}
+                {iterative
+                  ? includeBridge
+                    ? 'Bicameral 4-stroke loop'
+                    : '3-stroke loop'
+                  : 'Single-pass synthesis'}
+                {' '}— several minutes.
+              </>
+            )}
           </p>
           <p className="text-[10px] text-slate-600 max-w-md text-center leading-relaxed">
-            Each stroke includes an 8-second cooldown floor plus the Engine&apos;s response time.{' '}
-            {iterative && includeBridge
-              ? 'Bicameral runs also provision a fresh Connection Bridge notebook (~3 min, 14 NotebookLM calls) before Stroke 2b fires.'
-              : iterative
-                ? 'The iterative loop fires three strokes back-to-back.'
-                : 'Single-pass mode fires once.'}
+            {useUniversalLoop ? (
+              <>
+                Triage stroke identifies subjects → PKI Oracles spawn and
+                run NotebookLM Deep Research per subject → harvested Truth
+                Packets feed the final synthesis. Watch the mind-map for
+                live progress; this typically takes 15-30 minutes depending
+                on how many subjects the triage picks.
+              </>
+            ) : (
+              <>
+                Each stroke includes an 8-second cooldown floor plus the Engine&apos;s response time.{' '}
+                {iterative && includeBridge
+                  ? 'Bicameral runs also provision a fresh Connection Bridge notebook (~3 min, 14 NotebookLM calls) before Stroke 2b fires.'
+                  : iterative
+                    ? 'The iterative loop fires three strokes back-to-back.'
+                    : 'Single-pass mode fires once.'}
+              </>
+            )}
           </p>
+          {sessionId && (
+            <p className="text-[9px] font-mono text-slate-700">
+              session {sessionId}
+            </p>
+          )}
         </div>
       )}
 

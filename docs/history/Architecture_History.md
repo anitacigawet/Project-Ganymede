@@ -1038,6 +1038,86 @@ Three load-bearing instances on the same axis; treat the lens as confirmed proje
 
 ---
 
+## 49. Dispatcher routes Cleanroom on real-world entities to Universal Logic Loop — closing the friendly-entry-point promise (2026-06-10)
+
+Surfaced during the post-milestone-48 visualizer-choreography test session. James drove a Ryanair Cleanroom question through the Dispatcher; the Engine refused with "no information about Elon Musk or Ryanair." The two prior Ryanair runs on the same exact question (sessions `813dbe4c`, `26068f93` earlier the same day) had produced 9D-mapping content — non-deterministic substrate pattern-matching. The refusal is the more disciplined behavior (closed-RAG-sphere principle holds locally), but the inconsistency exposed a load-bearing architectural mismatch in the front door.
+
+James's diagnosis (verbatim, paraphrased): *"why does the dispatcher path not automatically have the full universal logic loop harvest path as the default? It's not asking the user to give it the truth packets for you to then say, 'Oh, well, it's just going to refuse it because it doesn't know it.'"*
+
+He was right. The Dispatcher sits at the front door of the project, marketed as the friendly natural-language entry point — but it routed exclusively to the Iterative Engine path, which requires the consumer to supply grounded Truth Packets externally. The dispatcher UI has nowhere to inject those packets (`handleConfirm` auto-generates ONE packet whose content is the question text itself). For any Cleanroom question about real-world entities — i.e., the example placeholder shown to users — the path is structurally guaranteed to fail or to produce unreliable pattern-matching.
+
+### Why the original routing happened
+
+The Universal Logic Loop predates the Dispatcher by far — it's the harvest-then-synthesize flow from milestones 4-14 (Hualapai, GPS, 60s-Amnesia). The Iterative Engine quick loop came in milestone 23 (Musk-Altman). The Dispatcher landed last (milestone 35) and was wired to the Iterative Engine path for **speed** — "one text box → 5-10 min answer" UX, vs Universal Logic Loop's 15-60 min. Nobody re-evaluated whether that was the right routing target once the Dispatcher became the canonical entry point.
+
+The cost calculus inverts when the speed produces "no information" output: a 5 min refusal is worse than a 20 min answer.
+
+### The architectural call
+
+**Extend the dispatcher's intent classification to include a `needs_external_knowledge` field, and branch on it in the UI.** Real-world Cleanroom / Genie / Offensive questions route to Universal Logic Loop; framework-internal-concept questions and `mirror_audit` (which supplies its own grounding via `prior_resolution`) route to Iterative Engine. The operator can override with a "Force quick path" toggle on the review screen.
+
+This honours the same architectural lens as milestone 48 (the framework abstracts itself for the audience): the consumer no longer has to know that "Cleanroom" means two structurally different orchestration paths depending on whether the question is about real-world entities — the dispatcher decides.
+
+### Shipped
+
+- **`ganymede-backend/app/services/gemini_service.py`** — extended `DISPATCHER_PROMPT` with a "KNOWLEDGE HARVEST SIGNAL" section that teaches Gemini Flash the 9D foundations corpus is theory-only (no company/product/market/person/event data); set `needs_external_knowledge: true` when the scenario references real-world named entities or specific markets/prices/events; always `false` for `mirror_audit`; default to `true` for ambiguous cleanroom/genie/offensive (harvest unnecessarily is cheaper than refusing). `dispatch_intent` extracts the new field with a defensive fallback (`mirror_audit → false`, else `true`). The Gemini-failure fallback path returns `true` so the safer path is the default.
+- **`ganymede-backend/app/v2_routes.py`** — `DispatchResponse` Pydantic model adds `needs_external_knowledge: bool`; the `/dispatch` route returns it. `/managed-run` reads the same `dispatch_result` dict but **deliberately does not branch** on the new field — Z-SPAN-shape consumers supply their own Truth Packets, so the harvest path doesn't apply to that surface; only the Dispatcher UI flow needed the structural fix.
+- **`ganymede-ui/src/components/DispatcherPanel.tsx`** — five interlocking additions:
+  - `DispatchResponse` TS interface extended with `needs_external_knowledge: boolean`.
+  - New `SessionEvent` and `OracleProgress` types (copied from RunnerPanel) plus a WebSocket subscription mirroring `RunnerPanel.runFullLoop` / `runSynthesisOnly` — opens WS BEFORE kickoff so Blueprint / Oracle / Stroke events drive incremental snapshot updates. **This also closes the milestone-48-session visualizer freeze** (the mindmap was rendering a frozen Stage-1 placeholder for entire ~5-15 min runs because nothing was subscribed to the event stream).
+  - New state for `sessionId` / `blueprint` / `oracles` / `forceQuickPath` plus a `wsRef` + `closeWs` cleanup. The snapshot mirror now publishes blueprint + oracles so OrchestratorMindMap can render the Universal-Logic-Loop spawn graph.
+  - `handleConfirm` branches on `useUniversalLoop = needs_external_knowledge && !forceQuickPath`: true → `POST /run-full-loop` + await `session_complete` via WS + `/complete`; false → existing `/iterate` (or `/synthesize`) path, also with WS sub for animation parity.
+  - Review-phase UI adds a path-choice card (Network icon for harvest path, Zap icon for quick path) with wall-time hint (~15-30 min vs ~5-10 min) and the operator-override checkbox. Running-phase indicator distinguishes Universal Logic Loop messaging ("Triage stroke identifies subjects → PKI Oracles spawn → harvested Truth Packets feed the final synthesis") from the iterative-loop messaging.
+
+### Cognitive-surface delta
+
+For a real-world Cleanroom question, the operator's cognitive model collapses from:
+
+> "Type a question. Dispatcher classifies cleanroom at 100% confidence. Click Run with this. Wait ~5 min. Engine refuses with 'no information about X or Y.' Realize the friendly entry doesn't actually engage real-world questions. Switch to Runner panel. Pick Full Universal Logic Loop. Re-type the question into the Cleanroom question field. Click Run. Wait 15-30 min."
+
+To:
+
+> "Type a question. Dispatcher classifies cleanroom + flags harvest needed. Review screen shows harvest path with wall-time hint. Click Run with this. Wait 15-30 min."
+
+Same wall time on the path that produces an actual answer; the operator no longer has to know which UI surface to use for which question shape. The Dispatcher is now an honest friendly front door.
+
+### What this milestone closes
+
+- **The architectural-mismatch James caught** during the visualizer-choreography test: the friendly entry routed to a path that fails on the friendly questions.
+- **The visualizer-stuck-on-stage-1 bug** surfaced during the same session: the mindmap was rendering placeholder state for entire runs because DispatcherPanel had no WebSocket subscription. The WS sub added in this milestone unblocks incremental animation for both paths.
+- **The example-placeholder dishonesty**: the dispatcher's placeholder text shows "Will Anthropic still hold the #1 spot on LMArena at end of June 2026?" — exactly the kind of question the prior routing failed on. Now the example shows a path the system can actually deliver.
+
+### What this milestone does NOT close
+
+- **The dispatcher iterative / bridge toggles still render in the input phase** even when the run will route to Universal Logic Loop (where they're ignored). Cosmetic — the route ignores them silently. Polish chunk.
+- **`/managed-run` is unchanged**. Z-SPAN-shape consumers bring their own Truth Packets; auto-routing them to harvest would surprise existing consumers with a 6× wall-time bump. If a session-as-consumer ever needs the harvest pattern, that's a future `depth=universal_loop` parameter addition.
+- **The iterative-path strokes still arrive all-at-once** (the `/iterate` endpoint is blocking; `synthesis_complete` WS payloads are `{stroke_number, response_chars}` metadata only). The visualizer's iterative-mode choreography (Engine ↔ PKI ↔ Anti) renders at the end rather than progressively. Truly incremental iterative-stroke animation would require either polling the strokes endpoint mid-run OR enriching the WS payloads with stroke content. Out of scope here.
+- **Pl2-03 first live Z-SPAN session** is still operator-driven (now even more clearly: Z-SPAN goes through `/managed-run`, not the Dispatcher UI, so the routing fix doesn't affect Z-SPAN's flow directly).
+- **The Engine refuses non-deterministically** on real-world Cleanroom questions when given no external Truth Packets — that's the substrate behavior the harvest path now sidesteps, but the underlying non-determinism remains visible in the Iterative path (operator-override case).
+
+### Pending after this milestone
+
+- Pl2-03 first live Z-SPAN strategic-planning session (operator-driven).
+- E1-06 first live Bicameral Level 2 run (operator-driven).
+- 2026-06-30 LMArena leaderboard-rank resolution (calendar-gated).
+- M2 leaner-corpus side-by-side test (operator-gated, major scope shift).
+- P1-01 upstream `notebooklm-py` PR submission (operator action).
+- Smoke-test the structural fix end-to-end via Chrome MCP once backend is restarted (the prior session's backend died after the Ryanair run completed).
+
+### Cross-cutting note
+
+This is the **fifth instance** the project has independently arrived at the same architectural lens (the framework abstracts itself for the audience):
+
+1. Milestone 43 — Cube-of-Space transcript exchange (vocabulary register).
+2. Milestone 45 — Pl3 Operator Lens (translation stroke).
+3. Milestones 46-47 — persistent session state + consumer-doc parity.
+4. Milestone 48 — `/managed-run` as canonical entry point for session-as-consumer.
+5. **This milestone** — Dispatcher routes the operator's intent to the right orchestration path, not just the right pathway.
+
+The principle now applies to *every* surface where the framework meets a consumer: output vocabulary (Pl3), persistence visibility (46-47), API surface (48), and now orchestration routing (49). Treat as architecturally settled.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -1098,3 +1178,4 @@ Three load-bearing instances on the same axis; treat the lens as confirmed proje
 | Pl2-02 Z-SPAN consumer-spec walkthrough (47) | [`../integration/examples/zspan_consumer.md`](../integration/examples/zspan_consumer.md) + cross-references in [`../integration/examples/README.md`](../integration/examples/README.md) + [`../integration/operator_courier_protocol.md`](../integration/operator_courier_protocol.md) + ROADMAP.md § Pl2 deliverables |
 | BridgeNotebookRegistry persistence (47) | `ganymede-backend/app/services/bridge_registry.py` (`BridgeNotebookRegistry.bind_persistence` + `load_from_disk` + `_persist_locked` atomic-write + `default_persistence_path`) + `ganymede-backend/app/main.py` startup wiring + `consuming_the_v2_api.md` § Session persistence (Pl2-01) for canonical surface description |
 | `/managed-run` endpoint + dispatcher-as-canonical-entry-point (48) | `POST /api/v2/managed-run` in `ganymede-backend/app/v2_routes.py` (`ManagedRunRequest` + `ManagedRunResponse` + `managed_run` composition handler) + `docs/integration/examples/zspan_consumer.md` rewrite (managed-run primary; granular API as fall-back) + `docs/integration/consuming_the_v2_api.md` two-consumer-shapes TL;DR + endpoint reference + `C:\Users\james\Desktop\Z-SPAN_Handoff_v2.md` operator paste-in onboarding |
+| Dispatcher harvest-routing + WS subscription (49) | `DISPATCHER_PROMPT` "KNOWLEDGE HARVEST SIGNAL" section + `needs_external_knowledge` extraction in `ganymede-backend/app/services/gemini_service.py` + `DispatchResponse.needs_external_knowledge` field in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/DispatcherPanel.tsx` (WebSocket subscription mirroring RunnerPanel; `handleConfirm` branching on `useUniversalLoop`; path-choice review-UI card with operator-override toggle; running-phase per-path messaging) |

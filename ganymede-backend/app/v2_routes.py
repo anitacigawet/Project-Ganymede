@@ -494,6 +494,15 @@ class DispatchResponse(BaseModel):
     """Populated with the pathway-specific fields the classifier extracted.
     The operator reviews this before kicking off the 3-stroke loop."""
 
+    needs_external_knowledge: bool
+    """True when the scenario references real-world entities (named companies,
+    people, markets, current events) that the Engine's grounding corpus -- 9D
+    theoretical material -- would not know about. Drives the dispatcher UI's
+    routing decision: True -> Universal Logic Loop (Triage -> Oracle swarm ->
+    harvest -> Synthesis); False -> Iterative Engine (3-stroke loop on
+    operator-supplied or framework-internal grounding only). mirror_audit is
+    always False because the supplied prior_resolution IS the grounding."""
+
     rationale: str
     """One-sentence explanation of why this pathway was chosen — surfaced to
     the operator so they can sanity-check the classification."""
@@ -548,6 +557,7 @@ async def dispatch_intent(req: DispatchRequest) -> DispatchResponse:
         pathway=Pathway(result["pathway"]),
         confidence=result["confidence"],
         scenario=scenario,
+        needs_external_knowledge=result["needs_external_knowledge"],
         rationale=result["rationale"],
         clarifying_questions=result["clarifying_questions"],
     )

@@ -109,6 +109,35 @@ Pathway selection guidance:
  - Adversarial / target-shaped framings ("How do I beat / dismantle / outmaneuver X?") -> offensive.
  - Critique / fault-finding requests ("audit this", "find the flaws in this analysis", "what's wrong with X reasoning") -> mirror_audit.
 
+KNOWLEDGE HARVEST SIGNAL
+
+After choosing the pathway, ALSO classify whether the scenario references
+entities or events the Engine's grounding corpus does not know. The corpus
+contains 9D theoretical material only -- abstract dimensional-physics
+frameworks, strategic primitives (DAI, SDS, ROEM, Strategic Lasso), and
+methodology documents. It does NOT contain company / product / market data,
+person-specific data, current events, prices, valuations, or real-world
+organizational dynamics.
+
+Set "needs_external_knowledge": true when the scenario references:
+ - Named real-world companies, products, or organizations (Anthropic, Granicus,
+   Ryanair, OpenAI, Stripe, etc.).
+ - Named real-world people (Powell, Musk, Altman, etc.).
+ - Specific markets, prices, valuations, leaderboards, or current events.
+ - Any concrete real-world situation where the analysis depends on facts the
+   9D theoretical corpus would not know.
+
+Set "needs_external_knowledge": false when:
+ - pathway is mirror_audit (the prior_resolution IS the grounding; always false).
+ - The scenario is purely abstract / framework-internal (e.g. "How does a small
+   challenger take share from an entrenched incumbent" with no named entity --
+   the framework engages abstractly).
+
+If a cleanroom / genie / offensive question is ambiguous between concrete and
+abstract, default to true. Harvest adds wall-time (~15-30 min vs ~5 min) but
+prevents the Engine from refusing with "no information" when it actually needs
+real-world facts.
+
 Output ONLY a JSON object (no prose, no code fences) with exactly this shape:
 
 {
@@ -121,6 +150,7 @@ Output ONLY a JSON object (no prose, no code fences) with exactly this shape:
     //   offensive:    { "target": "...", "objective_state": "..." }
     //   mirror_audit: { "prior_resolution": "..." }
   },
+  "needs_external_knowledge": true | false,
   "rationale": "One-sentence explanation of why this pathway fits.",
   "clarifying_questions": []  // up to 2 questions if anything is ambiguous; empty array otherwise
 }
@@ -272,10 +302,22 @@ class GeminiService:
                 clarifying = []
             clarifying = [str(q).strip() for q in clarifying if str(q).strip()][:2]
 
+            # needs_external_knowledge — defensive fallback when Gemini omits.
+            # mirror_audit is always False (the supplied prior_resolution is
+            # itself the grounding). For everything else, default True so we
+            # err on the side of harvesting rather than producing "no info"
+            # refusals — the cheap-but-wrong failure mode is worse than the
+            # slow-but-right one.
+            needs_external = parsed.get("needs_external_knowledge")
+            if needs_external is None:
+                needs_external = pathway != "mirror_audit"
+            needs_external = bool(needs_external)
+
             return {
                 "pathway": pathway,
                 "confidence": confidence,
                 "scenario": scenario,
+                "needs_external_knowledge": needs_external,
                 "rationale": rationale,
                 "clarifying_questions": clarifying,
             }
@@ -286,6 +328,10 @@ class GeminiService:
                 "pathway": "cleanroom",
                 "confidence": 0.0,
                 "scenario": {"question": user_text.strip()},
+                # Conservative fallback: we don't know what the user meant, so
+                # treat as needing harvest. The operator can override after
+                # answering the clarifying question.
+                "needs_external_knowledge": True,
                 "rationale": (
                     "Fell back to cleanroom because the dispatcher could not parse "
                     f"the intent ({type(exc).__name__}: {exc})."
