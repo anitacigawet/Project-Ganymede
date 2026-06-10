@@ -36,6 +36,29 @@ LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend.log
 
 
 def main() -> int:
+    # Windows consoles default to cp1252, which can't encode em-dashes,
+    # smart quotes, ellipsis characters, or other non-ASCII glyphs that
+    # show up routinely in our log lines (e.g. ``app/main.py``'s
+    # "First-pass NotebookLM init failed: %s — attempting auto-relogin"
+    # carries an em-dash). The subprocess pipe is already opened with
+    # ``encoding="utf-8", errors="replace"`` so ``line`` itself is a
+    # well-formed str, but writing that str to a cp1252-backed
+    # ``sys.stdout`` raises UnicodeEncodeError mid-iteration and kills
+    # the tee — the uvicorn child keeps running but the operator's cmd
+    # window dies, making it look like the backend crashed when it
+    # didn't (observed 2026-06-10).
+    #
+    # Reconfigure both streams to replace unrenderable chars instead of
+    # raising. ``backend.log`` is already utf-8 so it doesn't need this
+    # treatment; only the console tee does.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, OSError):
+            # Stream isn't a TextIOWrapper (redirected to a non-text
+            # sink, or older Python) — best effort, degrade quietly.
+            pass
+
     if len(sys.argv) < 2:
         print(
             "usage: python log_runner.py <uvicorn-args...>\n"
