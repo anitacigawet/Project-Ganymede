@@ -1,80 +1,130 @@
 'use client';
 
 /**
- * OrchestratorMindMap — live mind-map of the universal-logic-loop pipeline.
+ * OrchestratorMindMap — landscape mind-map of the bicameral pipeline.
  *
- * Companion to LithographyView.  Both consume the same RunnerSnapshot; the
- * Lithography view is the metaphorical optics-box rendering (artistic),
- * this is the literal data-structure rendering (debuggable).  Lithography
- * is what you watch for the feel of a run; this is what you watch when you
- * need to know which oracle is on which subject and what came back.
+ * Layout (per operator 2026-06-10 brain-metaphor diagram):
  *
- *   scenario root   →  oracle cards (fanned, one per subject)  →  synthesis
+ *       ╭──────╮            (4) top arc — Anti → Engine            ╭──────╮
+ *       │      │ ◄ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  │      │
+ *       │ 9d   │                                                    │ Anti │
+ *       │ Eng- │ ◄─── (1) bilateral ──► PKI substrate ◄── (3) ──► │ Con- │
+ *       │ ine  │            ▲                                       │trast │
+ *       │      │            │  (2) Engine sends synthesis to Anti  │      │
+ *       ╰──────╯            ╰────────────────────────────────────►  ╰──────╯
+ *
+ * Four animated stages, driven by stroke landings:
+ *   1. 9d ↔ PKIs:    Engine consults the substrate (Truth Packets or
+ *                    Oracle harvest). Bilateral arrows light up during
+ *                    Stroke 1 / 3 (synthesis strokes).
+ *   2. 9d → Anti:    Engine sends its synthesis state to Anti when a
+ *                    Mirror Auditor / Connection Bridge stroke begins.
+ *   3. Anti ↔ PKIs:  Anti consults the same substrate to find missed
+ *                    connections or audit faults. Bilateral arrows light
+ *                    up during Stroke 2 / 2b (audit strokes).
+ *   4. Anti → 9d:    Top arc — Anti's findings feed back to Engine for
+ *                    the re-synthesis stroke (Stroke 3).
  *
  * Adapts to the run mode:
- *   • triage     → scenario + blueprint card (single right node)
- *   • full_loop  → full fan-out (scenario → N oracles → synthesis)
- *   • synthesis  → scenario → synthesis (no oracle column)
- *   • idle       → empty-state placeholder
+ *   • triage           → Engine + blueprint card (no PKIs / Anti)
+ *   • synthesis_direct → Engine → synth (no PKIs / Anti)
+ *   • full (legacy)    → Engine → PKI Oracle column → synth
+ *                        (the original Oracle-harvest flow)
+ *   • bicameral (new)  → Engine ↔ PKI substrate ↔ Anti + top arc
+ *                        (the Truth-Packet iterate / managed-run flow)
+ *   • idle             → empty-state placeholder
  *
- * Pure SVG, no library.  Edges are cubic béziers with status-driven colour
+ * Pure SVG, no library. Edges are cubic béziers with status-driven colour
  * and a marching-ant animation while their target is in-flight.
  */
 
 import React, { useMemo } from 'react';
 import type { RunnerSnapshot, OracleProgress } from './RunnerPanel';
 
+// Minimal stroke shape — keep loose to avoid coupling to RunnerPanel's
+// internal type (we only read `audit_kind`).
+interface StrokeLike { audit_kind?: 'mirror_auditor' | 'bridge' | null }
+
 export interface OrchestratorMindMapProps {
   snapshot: RunnerSnapshot;
   onSwitchToRunner?: () => void;
 }
 
-// ── viewBox geometry (vertical / portrait) ──────────────────────────────────
-// Scenario stacks at the top, oracles cascade down the middle, synthesis
-// lands at the bottom.  Oracles alternate slightly left / right of centre so
-// the edges fan visibly instead of all collapsing onto the same central
-// trunk.  Layout matches the natural top-to-bottom reading order.
-const VBW = 700;
-const VBH = 1100;
+// ── viewBox geometry (horizontal / landscape) ──────────────────────────────
+// Engine sits at the left, the PKI substrate column runs vertically in the
+// middle, Anti/Contrast (or legacy synth) sits at the right. The big top
+// arc runs from Anti back to Engine for Stroke 3 re-synthesis feedback.
+const VBW = 1320;
+const VBH = 720;
 
-const SCENARIO = { x: 190, y: 40,  w: 320, h: 130 };
-const SYNTH    = { x: 190, y: 930, w: 320, h: 130 };
+const ENGINE = { x: 50,   y: 240, w: 270, h: 240 } as const;
+const ANTI   = { x: 1000, y: 240, w: 270, h: 240 } as const;
+const SYNTH  = { x: 1000, y: 240, w: 270, h: 240 } as const;   // same slot as Anti; legacy mode
+const BLUEPRINT = { x: 480, y: 240, w: 360, h: 240 } as const;
 
-const ORACLE_W = 320;
-const ORACLE_H = 84;
-const ORACLE_X_CENTER = (VBW - ORACLE_W) / 2;   // 190
-const ORACLE_X_OFFSET = 56;                      // alternation half-amplitude
-const ORACLE_Y_MIN = 220;
-const ORACLE_Y_MAX = 832;                        // slot top — slot bottom = 916
+// PKI substrate column (middle)
+const PKI_W = 240;
+const PKI_H = 68;
+const PKI_X = (VBW - PKI_W) / 2;          // 540
+const PKI_Y_MIN = 60;
+const PKI_Y_MAX = 600;
 
-// Single-blueprint card used in triage mode (no oracle column, no synth).
-const BLUEPRINT = { x: 160, y: 380, w: 380, h: 200 };
+// ── helpers ────────────────────────────────────────────────────────────────
+function pkiSlot(i: number, n: number): { x: number; y: number; w: number; h: number } {
+  if (n <= 1) {
+    return {
+      x: PKI_X,
+      y: (PKI_Y_MIN + PKI_Y_MAX) / 2,
+      w: PKI_W,
+      h: PKI_H,
+    };
+  }
+  const yRange = PKI_Y_MAX - PKI_Y_MIN;
+  const y = PKI_Y_MIN + (yRange * i) / (n - 1);
+  return { x: PKI_X, y, w: PKI_W, h: PKI_H };
+}
 
-// ── helpers ─────────────────────────────────────────────────────────────────
 function center(rect: { x: number; y: number; w: number; h: number }) {
   return { cx: rect.x + rect.w / 2, cy: rect.y + rect.h / 2 };
 }
+function leftEdge(rect: { x: number; y: number; w: number; h: number }) {
+  return { x: rect.x, y: rect.y + rect.h / 2 };
+}
+function rightEdge(rect: { x: number; y: number; w: number; h: number }) {
+  return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
+}
+function topMid(rect: { x: number; y: number; w: number; h: number }) {
+  return { x: rect.x + rect.w / 2, y: rect.y };
+}
 
-function oracleSlot(i: number, n: number): { x: number; y: number; w: number; h: number } {
-  if (n <= 1) {
-    return {
-      x: ORACLE_X_CENTER,
-      y: (ORACLE_Y_MIN + ORACLE_Y_MAX) / 2,
-      w: ORACLE_W,
-      h: ORACLE_H,
-    };
-  }
-  const yRange = ORACLE_Y_MAX - ORACLE_Y_MIN;
-  const y = ORACLE_Y_MIN + (yRange * i) / (n - 1);
-  // Alternate left/right of the central trunk so edges to/from each oracle
-  // have visibly distinct paths instead of stacking on the same vertical line.
-  const xOffset = i % 2 === 0 ? -ORACLE_X_OFFSET : ORACLE_X_OFFSET;
-  return {
-    x: ORACLE_X_CENTER + xOffset,
-    y,
-    w: ORACLE_W,
-    h: ORACLE_H,
-  };
+// Horizontal-bias bezier: control points share Y with their endpoints so
+// when endpoints differ in y the curve eases into an S-shape, and when
+// endpoints share y it degenerates to a straight horizontal line. Used for
+// Engine ↔ PKI and PKI ↔ Anti edges in the landscape layout.
+function horizPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  const dx = to.x - from.x;
+  const cp1x = from.x + dx * 0.45;
+  const cp2x = to.x - dx * 0.45;
+  return `M${from.x},${from.y} C${cp1x},${from.y} ${cp2x},${to.y} ${to.x},${to.y}`;
+}
+
+// Big top arc for Anti→Engine feedback. Lift control points well above the
+// node tops so the arc bows up dramatically rather than passing through
+// the substrate column.
+function arcPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  const arcHeight = 220;
+  const cp1y = from.y - arcHeight;
+  const cp2y = to.y - arcHeight;
+  return `M${from.x},${from.y} C${from.x},${cp1y} ${to.x},${cp2y} ${to.x},${to.y}`;
+}
+
+// Vertical-bias bezier for legacy modes (scenario top → synth bottom).
+// Kept for the synthesis_direct fallback.
+function vertPath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  const dy = to.y - from.y;
+  const cp1y = from.y + dy * 0.45;
+  const cp2y = to.y - dy * 0.45;
+  return `M${from.x},${from.y} C${from.x},${cp1y} ${to.x},${cp2y} ${to.x},${to.y}`;
 }
 
 function oracleStatusColor(o: OracleProgress | undefined): {
@@ -95,18 +145,6 @@ function oracleStatusColor(o: OracleProgress | undefined): {
   }
 }
 
-function edgePath(from: { x: number; y: number }, to: { x: number; y: number }): string {
-  // Vertical-orientation bezier — control points share x with their respective
-  // endpoint, so when endpoints differ in x the curve eases smoothly into an
-  // S-shape, and when endpoints share x it degenerates to a straight vertical
-  // line.  Used for both scenario→oracle (down-fan) and oracle→synth (down-
-  // converge) edges in the portrait layout.
-  const dy = to.y - from.y;
-  const cp1y = from.y + dy * 0.45;
-  const cp2y = to.y - dy * 0.45;
-  return `M${from.x},${from.y} C${from.x},${cp1y} ${to.x},${cp2y} ${to.x},${to.y}`;
-}
-
 function truncate(s: string, n: number): string {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
@@ -117,40 +155,105 @@ export function OrchestratorMindMap({
 }: OrchestratorMindMapProps) {
   const oracles = snapshot.oracles || [];
   const oracleN = oracles.length;
-  const strokes = snapshot.strokes || [];
+  const strokes: StrokeLike[] = snapshot.strokes || [];
   const hasSynthesis = strokes.length > 0;
   const hasBlueprint = !!snapshot.blueprint;
   const isTriageOnly = snapshot.runMode === 'triage';
   const isSynthesisOnly = snapshot.runMode === 'synthesis';
 
-  // Oracle slots resolved once per render so edge geometry shares them.
-  const slots = useMemo(
-    () => oracles.map((_, i) => oracleSlot(i, oracleN)),
-    [oracles, oracleN],
-  );
+  // Bicameral detection: truth-packet driven iterate/managed-run flows
+  // have no Oracle column but do produce audit strokes (audit_kind set on
+  // Stroke 2 / 2b). Show the Anti node + bilateral edges when this is the
+  // shape we're in, OR when a running session hasn't yet produced any
+  // strokes and there's no Oracle work (default-to-bicameral for the new
+  // flows).
+  const isIterativeFlow = oracleN === 0 && (hasSynthesis || snapshot.running);
 
-  // Scene composition mode.  Decides which nodes/edges appear.
-  type Mode = 'idle' | 'triage' | 'synthesis_direct' | 'full';
+  type Mode = 'idle' | 'triage' | 'synthesis_direct' | 'bicameral' | 'full';
   const mode: Mode = useMemo(() => {
     if (isTriageOnly && hasBlueprint) return 'triage';
     if (oracleN > 0) return 'full';
+    if (isIterativeFlow) return 'bicameral';
     if (isSynthesisOnly || hasSynthesis) return 'synthesis_direct';
-    if (snapshot.running) return 'full'; // pre-blueprint, show pipe scaffold
+    if (snapshot.running) return 'bicameral';
     return 'idle';
-  }, [isTriageOnly, isSynthesisOnly, hasBlueprint, hasSynthesis, oracleN, snapshot.running]);
+  }, [
+    isTriageOnly, isSynthesisOnly, hasBlueprint, hasSynthesis,
+    oracleN, snapshot.running, isIterativeFlow,
+  ]);
+
+  // PKI / substrate column slot count. Legacy full mode uses one slot per
+  // Oracle; bicameral mode shows 4 placeholder substrate slots regardless
+  // of how many Truth Packets the consumer actually shipped (the snapshot
+  // doesn't carry packet count today; 4 is a reasonable default that
+  // matches James's diagram).
+  const pkiN = mode === 'full' ? oracleN : 4;
+  const slots = useMemo(() => {
+    if (mode === 'full') {
+      return oracles.map((_, i) => pkiSlot(i, oracleN));
+    }
+    return Array.from({ length: pkiN }).map((_, i) => pkiSlot(i, pkiN));
+  }, [mode, oracles, oracleN, pkiN]);
+
+  // ── Stage detection for bicameral mode ───────────────────────────────────
+  // The pipeline is Stroke 1 (synthesis) → Stroke 2 (audit / Mirror) →
+  // Stroke 2b (audit / Bridge) → Stroke 3 (re-synthesis). We classify each
+  // edge as idle / in-flight / complete / failed by counting how many of
+  // each kind have landed.
+  const synthesisStrokeCount = strokes.filter(s => !s.audit_kind).length;
+  const auditStrokeCount = strokes.filter(s => !!s.audit_kind).length;
+
+  const stage1Active   = snapshot.running && synthesisStrokeCount === 0;
+  const stage1Complete = synthesisStrokeCount >= 1;
+  const stage2Active   = snapshot.running && synthesisStrokeCount >= 1 && auditStrokeCount === 0;
+  const stage2Complete = auditStrokeCount >= 1;
+  const stage3Active   = snapshot.running && synthesisStrokeCount >= 1 && auditStrokeCount >= 1 && synthesisStrokeCount < 2;
+  const stage3Complete = auditStrokeCount >= 1 && synthesisStrokeCount >= 2;
+  const stage4Active   = snapshot.running && synthesisStrokeCount >= 1 && auditStrokeCount >= 1 && synthesisStrokeCount < 2;
+  const stage4Complete = synthesisStrokeCount >= 2;
+
+  const stateFor = (active: boolean, complete: boolean): EdgeState => {
+    if (snapshot.hasError) return 'failed';
+    if (active) return 'active-inflight';
+    if (complete) return 'active-complete';
+    return 'idle';
+  };
+
+  const stage1Edge = stateFor(stage1Active, stage1Complete);
+  const stage2Edge = stateFor(stage2Active, stage2Complete);
+  const stage3Edge = stateFor(stage3Active, stage3Complete);
+  const stage4Edge = stateFor(stage4Active, stage4Complete);
 
   const stageText = useMemo(() => {
     if (snapshot.hasError) return 'Errored';
-    if (hasSynthesis) return 'Synthesised';
     if (mode === 'triage') return 'Triage Complete';
-    if (oracleN > 0) {
-      const done = oracles.filter(o => o.status === 'harvested' || o.status === 'failed').length;
-      return `Harvesting ${done}/${oracleN}`;
+    if (mode === 'full') {
+      if (hasSynthesis) return 'Synthesised';
+      if (oracleN > 0) {
+        const done = oracles.filter(o => o.status === 'harvested' || o.status === 'failed').length;
+        return `Harvesting ${done}/${oracleN}`;
+      }
+      if (snapshot.running) return 'Triage Firing';
     }
-    if (snapshot.running) return 'Triage Firing';
+    if (mode === 'bicameral') {
+      if (stage4Complete) return 'Re-synthesised';
+      if (stage4Active)   return 'Re-synthesising';
+      if (stage3Active || (stage3Complete && !stage4Complete)) return 'Anti consulting substrate';
+      if (stage2Active)   return 'Engine → Anti handoff';
+      if (stage1Active)   return 'Engine synthesising';
+      if (snapshot.running) return 'Initialising';
+    }
+    if (mode === 'synthesis_direct') {
+      return hasSynthesis ? 'Synthesised' : 'Synthesising';
+    }
     if (snapshot.scenarioSummary?.trim()) return 'Awaiting Run';
     return 'Empty';
-  }, [snapshot.hasError, snapshot.running, snapshot.scenarioSummary, hasSynthesis, mode, oracles, oracleN]);
+  }, [
+    snapshot.hasError, snapshot.running, snapshot.scenarioSummary,
+    hasSynthesis, mode, oracles, oracleN,
+    stage1Active, stage2Active, stage3Active, stage3Complete,
+    stage4Active, stage4Complete,
+  ]);
 
   return (
     <div className="omm-root">
@@ -195,66 +298,146 @@ export function OrchestratorMindMap({
             <Defs/>
             <Backdrop/>
 
-            {/* Edges first so nodes draw on top of any path under them.
-                In the portrait layout, edges run TOP→BOTTOM: scenario bottom-
-                centre to oracle top-centre, then oracle bottom-centre to
-                synth top-centre. */}
+            {/* === Bicameral mode (truth-packet iterate / managed-run) === */}
+            {mode === 'bicameral' && (
+              <>
+                {/* (1) Bilateral Engine ↔ PKI edges */}
+                {slots.map((slot, i) => {
+                  const engineR = rightEdge(ENGINE);
+                  const pkiL = leftEdge(slot);
+                  const off = 14;
+                  return (
+                    <React.Fragment key={`e2pki-${i}`}>
+                      <Edge
+                        from={engineR}
+                        to={pkiL}
+                        state={stage1Edge}
+                        pathFn={horizPath}
+                      />
+                      <Edge
+                        from={{ x: pkiL.x, y: pkiL.y + off }}
+                        to={{ x: engineR.x, y: engineR.y + off }}
+                        state={stage1Edge}
+                        pathFn={horizPath}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* (3) Bilateral PKI ↔ Anti edges */}
+                {slots.map((slot, i) => {
+                  const pkiR = rightEdge(slot);
+                  const antiL = leftEdge(ANTI);
+                  const off = 14;
+                  return (
+                    <React.Fragment key={`pki2a-${i}`}>
+                      <Edge
+                        from={pkiR}
+                        to={antiL}
+                        state={stage3Edge}
+                        pathFn={horizPath}
+                      />
+                      <Edge
+                        from={{ x: antiL.x, y: antiL.y + off }}
+                        to={{ x: pkiR.x, y: pkiR.y + off }}
+                        state={stage3Edge}
+                        pathFn={horizPath}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+
+                {/* (2) Engine → Anti direct handoff (drawn beneath the substrate
+                    column at a low y so it doesn't interfere with the PKI edges) */}
+                <Edge
+                  from={{ x: rightEdge(ENGINE).x, y: ENGINE.y + ENGINE.h - 24 }}
+                  to={{ x: leftEdge(ANTI).x, y: ANTI.y + ANTI.h - 24 }}
+                  state={stage2Edge}
+                  pathFn={horizPath}
+                />
+
+                {/* (4) Top arc — Anti → Engine for Stroke 3 feedback */}
+                <ArcEdge
+                  from={topMid(ANTI)}
+                  to={topMid(ENGINE)}
+                  state={stage4Edge}
+                />
+              </>
+            )}
+
+            {/* === Full mode (legacy Oracle harvest flow) ===
+                Engine on left, Oracle column in middle, Synth on right. */}
             {mode === 'full' && (
               <>
                 {slots.map((slot, i) => {
-                  const from = { x: center(SCENARIO).cx, y: SCENARIO.y + SCENARIO.h };
-                  const to = { x: slot.x + slot.w / 2, y: slot.y };
+                  const engineR = rightEdge(ENGINE);
+                  const pkiL = leftEdge(slot);
                   return (
                     <Edge
                       key={`s2o-${i}`}
-                      from={from}
-                      to={to}
+                      from={engineR}
+                      to={pkiL}
                       state={edgeStateForOracleArrival(oracles[i])}
+                      pathFn={horizPath}
                     />
                   );
                 })}
                 {slots.map((slot, i) => {
-                  const from = { x: slot.x + slot.w / 2, y: slot.y + slot.h };
-                  const to = { x: center(SYNTH).cx, y: SYNTH.y };
+                  const pkiR = rightEdge(slot);
+                  const synthL = leftEdge(SYNTH);
                   return (
                     <Edge
                       key={`o2syn-${i}`}
-                      from={from}
-                      to={to}
+                      from={pkiR}
+                      to={synthL}
                       state={edgeStateForSynthArrival(oracles[i], hasSynthesis)}
+                      pathFn={horizPath}
                     />
                   );
                 })}
               </>
             )}
+
+            {/* === Triage mode === */}
             {mode === 'triage' && (
               <Edge
-                from={{ x: center(SCENARIO).cx, y: SCENARIO.y + SCENARIO.h }}
-                to={{ x: center(BLUEPRINT).cx, y: BLUEPRINT.y }}
+                from={rightEdge(ENGINE)}
+                to={leftEdge(BLUEPRINT)}
                 state="active-complete"
-              />
-            )}
-            {mode === 'synthesis_direct' && (
-              <Edge
-                from={{ x: center(SCENARIO).cx, y: SCENARIO.y + SCENARIO.h }}
-                to={{ x: center(SYNTH).cx, y: SYNTH.y }}
-                state={hasSynthesis ? 'active-complete' : 'active-inflight'}
+                pathFn={horizPath}
               />
             )}
 
-            {/* Nodes */}
-            <ScenarioNode snapshot={snapshot} />
+            {/* === Synthesis-direct mode === */}
+            {mode === 'synthesis_direct' && (
+              <Edge
+                from={rightEdge(ENGINE)}
+                to={leftEdge(SYNTH)}
+                state={hasSynthesis ? 'active-complete' : 'active-inflight'}
+                pathFn={horizPath}
+              />
+            )}
+
+            {/* === Nodes === */}
+            <EngineNode snapshot={snapshot} />
 
             {mode === 'full' && oracles.map((o, i) => (
               <OracleNode key={o.subject} oracle={o} slot={slots[i]} />
             ))}
             {mode === 'full' && oracleN === 0 && snapshot.running && (
-              // Pre-blueprint scaffold: a single faded "awaiting" oracle slot.
-              <OracleNode oracle={undefined} slot={oracleSlot(0, 1)} />
+              <OracleNode oracle={undefined} slot={pkiSlot(0, 1)} />
             )}
+
+            {mode === 'bicameral' && slots.map((slot, i) => (
+              <PkiPlaceholderNode key={`pki-ph-${i}`} slot={slot} index={i} />
+            ))}
 
             {mode === 'triage' && (
               <BlueprintNode blueprint={snapshot.blueprint ?? ''} />
+            )}
+
+            {mode === 'bicameral' && (
+              <AntiNode strokes={strokes} />
             )}
 
             {(mode === 'full' || mode === 'synthesis_direct') && (
@@ -273,7 +456,7 @@ export function OrchestratorMindMap({
   );
 }
 
-// ── edge state derivation ───────────────────────────────────────────────────
+// ── edge state derivation (legacy full mode) ───────────────────────────────
 type EdgeState = 'idle' | 'active-inflight' | 'active-complete' | 'failed';
 
 function edgeStateForOracleArrival(o: OracleProgress | undefined): EdgeState {
@@ -285,12 +468,12 @@ function edgeStateForOracleArrival(o: OracleProgress | undefined): EdgeState {
 
 function edgeStateForSynthArrival(o: OracleProgress | undefined, hasSynth: boolean): EdgeState {
   if (!o) return 'idle';
-  if (o.status === 'failed') return 'idle'; // failed oracles don't feed synth
+  if (o.status === 'failed') return 'idle';
   if (o.status !== 'harvested') return 'idle';
   return hasSynth ? 'active-complete' : 'active-inflight';
 }
 
-// ── sub-components ──────────────────────────────────────────────────────────
+// ── sub-components ─────────────────────────────────────────────────────────
 function Defs() {
   return (
     <defs>
@@ -306,6 +489,10 @@ function Defs() {
         <stop offset="0%"   stopColor="rgba(167,139,250,0.32)"/>
         <stop offset="100%" stopColor="rgba(167,139,250,0)"/>
       </radialGradient>
+      <radialGradient id="omm-anti-glow" cx="50%" cy="50%" r="60%">
+        <stop offset="0%"   stopColor="rgba(251,191,36,0.30)"/>
+        <stop offset="100%" stopColor="rgba(251,191,36,0)"/>
+      </radialGradient>
     </defs>
   );
 }
@@ -314,10 +501,9 @@ function Backdrop() {
   return (
     <>
       <rect x={0} y={0} width={VBW} height={VBH} fill="url(#omm-bg)"/>
-      {/* faint grid */}
       <g opacity={0.07} stroke="rgba(148,163,184,0.6)" strokeWidth="0.4">
-        {Array.from({ length: 10 }).map((_, i) => (
-          <line key={`v-${i}`} x1={(i + 1) * (VBW / 11)} y1={0} x2={(i + 1) * (VBW / 11)} y2={VBH}/>
+        {Array.from({ length: 12 }).map((_, i) => (
+          <line key={`v-${i}`} x1={(i + 1) * (VBW / 13)} y1={0} x2={(i + 1) * (VBW / 13)} y2={VBH}/>
         ))}
         {Array.from({ length: 7 }).map((_, i) => (
           <line key={`h-${i}`} x1={0} y1={(i + 1) * (VBH / 8)} x2={VBW} y2={(i + 1) * (VBH / 8)}/>
@@ -327,20 +513,45 @@ function Backdrop() {
   );
 }
 
-function ScenarioNode({ snapshot }: { snapshot: RunnerSnapshot }) {
-  const { x, y, w, h } = SCENARIO;
+function EngineNode({ snapshot }: { snapshot: RunnerSnapshot }) {
+  const { x, y, w, h } = ENGINE;
   const summary = snapshot.scenarioSummary?.trim() || 'No scenario supplied';
   return (
     <g className="omm-node omm-scenario">
-      <circle cx={x + w / 2} cy={y + h / 2} r={130} fill="url(#omm-scenario-glow)"/>
-      <rect x={x} y={y} width={w} height={h} rx={10} ry={10}
+      <circle cx={x + w / 2} cy={y + h / 2} r={150} fill="url(#omm-scenario-glow)"/>
+      <rect x={x} y={y} width={w} height={h} rx={12} ry={12}
         fill="rgba(15,23,42,0.85)"
         stroke="rgba(129,140,248,0.8)" strokeWidth="1.4"/>
-      <foreignObject x={x + 12} y={y + 10} width={w - 24} height={h - 20}>
+      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
         <div className="omm-fo">
-          <div className="omm-kicker indigo">01 · SCENARIO</div>
+          <div className="omm-kicker indigo">9D · ENGINE</div>
           <div className="omm-node-title">{snapshot.pathway.replace('_', ' ')}</div>
-          <div className="omm-node-body">{truncate(summary, 220)}</div>
+          <div className="omm-node-body">{truncate(summary, 360)}</div>
+        </div>
+      </foreignObject>
+    </g>
+  );
+}
+
+function PkiPlaceholderNode({
+  slot, index,
+}: {
+  slot: { x: number; y: number; w: number; h: number };
+  index: number;
+}) {
+  const { x, y, w, h } = slot;
+  return (
+    <g className="omm-node omm-pki-placeholder">
+      <rect x={x} y={y} width={w} height={h} rx={9} ry={9}
+        fill="rgba(15,23,42,0.85)"
+        stroke="rgba(148,163,184,0.55)" strokeWidth="1.2"/>
+      <foreignObject x={x + 10} y={y + 8} width={w - 20} height={h - 16}>
+        <div className="omm-fo">
+          <div className="omm-pki-row">
+            <span className="omm-kicker violet">SUBSTRATE</span>
+            <span className="omm-pki-index">#{index + 1}</span>
+          </div>
+          <div className="omm-pki-subject">Truth Packet</div>
         </div>
       </foreignObject>
     </g>
@@ -361,7 +572,7 @@ function OracleNode({ oracle, slot }: {
       <rect x={x} y={y} width={w} height={h} rx={9} ry={9}
         fill="rgba(15,23,42,0.85)"
         stroke={c.border} strokeWidth="1.3"/>
-      <foreignObject x={x + 10} y={y + 8} width={w - 20} height={h - 14}>
+      <foreignObject x={x + 10} y={y + 6} width={w - 20} height={h - 12}>
         <div className="omm-fo">
           <div className="omm-oracle-row">
             <span className="omm-kicker violet">PKI ORACLE</span>
@@ -370,20 +581,11 @@ function OracleNode({ oracle, slot }: {
             </span>
           </div>
           <div className="omm-oracle-subject">
-            {oracle?.subject ? truncate(oracle.subject, 60) : 'awaiting subject'}
-          </div>
-          <div className="omm-oracle-meta">
-            {oracle?.notebook_id && <span>nb {oracle.notebook_id.slice(0, 8)}…</span>}
-            {oracle?.sources_imported !== undefined && <span>{oracle.sources_imported} src</span>}
-            {oracle?.packet_chars !== undefined && <span>{oracle.packet_chars.toLocaleString()} chars</span>}
+            {oracle?.subject ? truncate(oracle.subject, 50) : 'awaiting subject'}
           </div>
           {oracle?.error && (
-            // Show truncated error inline; full text in title for hover.
-            // Previously only a tiny "err" tag was rendered, which made
-            // diagnosing a FAILED oracle require flipping back to the Runner
-            // view to read the OracleCard.
             <div className="omm-oracle-err-row" title={oracle.error}>
-              {truncate(oracle.error, 90)}
+              {truncate(oracle.error, 70)}
             </div>
           )}
         </div>
@@ -396,14 +598,52 @@ function BlueprintNode({ blueprint }: { blueprint: string }) {
   const { x, y, w, h } = BLUEPRINT;
   return (
     <g className="omm-node omm-blueprint">
-      <rect x={x} y={y} width={w} height={h} rx={9} ry={9}
+      <rect x={x} y={y} width={w} height={h} rx={10} ry={10}
         fill="rgba(15,23,42,0.85)"
         stroke="rgba(99,102,241,0.75)" strokeWidth="1.3"/>
-      <foreignObject x={x + 12} y={y + 10} width={w - 24} height={h - 20}>
+      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
         <div className="omm-fo">
           <div className="omm-kicker indigo">BLUEPRINT</div>
           <div className="omm-node-title">Architectural Plan</div>
-          <div className="omm-node-body">{truncate(blueprint, 360)}</div>
+          <div className="omm-node-body">{truncate(blueprint, 420)}</div>
+        </div>
+      </foreignObject>
+    </g>
+  );
+}
+
+function AntiNode({ strokes }: { strokes: StrokeLike[] }) {
+  const { x, y, w, h } = ANTI;
+  const auditorPresent = strokes.some(s => s.audit_kind === 'mirror_auditor');
+  const bridgePresent  = strokes.some(s => s.audit_kind === 'bridge');
+  const isActive = auditorPresent || bridgePresent;
+  const border = isActive ? 'rgba(251,191,36,0.85)' : 'rgba(100,116,139,0.55)';
+  const auditCount = strokes.filter(s => !!s.audit_kind).length;
+  return (
+    <g className={`omm-node omm-anti ${isActive ? 'omm-anti-on' : ''}`}>
+      <circle cx={x + w / 2} cy={y + h / 2} r={150} fill="url(#omm-anti-glow)"/>
+      <rect x={x} y={y} width={w} height={h} rx={12} ry={12}
+        fill="rgba(15,23,42,0.85)"
+        stroke={border} strokeWidth="1.4"/>
+      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
+        <div className="omm-fo">
+          <div className="omm-kicker amber">ANTI · CONTRAST</div>
+          <div className="omm-node-title">
+            {auditCount === 0 ? 'Awaiting' : `${auditCount} audit${auditCount === 1 ? '' : 's'}`}
+          </div>
+          <div className="omm-anti-list">
+            <div className={`omm-anti-row ${auditorPresent ? 'on' : ''}`}>
+              <span className="omm-anti-marker">{auditorPresent ? '●' : '○'}</span>
+              Mirror Auditor
+            </div>
+            <div className={`omm-anti-row ${bridgePresent ? 'on' : ''}`}>
+              <span className="omm-anti-marker">{bridgePresent ? '●' : '○'}</span>
+              Connection Bridge
+            </div>
+          </div>
+          {!isActive && (
+            <div className="omm-node-body">Will engage during audit strokes.</div>
+          )}
         </div>
       </foreignObject>
     </g>
@@ -419,11 +659,11 @@ function SynthesisNode({
   const border = hasSynthesis ? 'rgba(167,139,250,0.85)' : 'rgba(100,116,139,0.55)';
   return (
     <g className={`omm-node omm-synthesis ${hasSynthesis ? 'omm-synthesis-on' : ''}`}>
-      <circle cx={x + w / 2} cy={y + h / 2} r={130} fill="url(#omm-synth-glow)"/>
-      <rect x={x} y={y} width={w} height={h} rx={10} ry={10}
+      <circle cx={x + w / 2} cy={y + h / 2} r={150} fill="url(#omm-synth-glow)"/>
+      <rect x={x} y={y} width={w} height={h} rx={12} ry={12}
         fill="rgba(15,23,42,0.85)"
         stroke={border} strokeWidth="1.4"/>
-      <foreignObject x={x + 12} y={y + 10} width={w - 24} height={h - 20}>
+      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
         <div className="omm-fo">
           <div className="omm-kicker violet">SYNTHESIS</div>
           <div className="omm-node-title">
@@ -431,10 +671,10 @@ function SynthesisNode({
           </div>
           <div className="omm-node-body">
             {finalText
-              ? `${finalText.length.toLocaleString()} chars · ${truncate(finalText, 160)}`
+              ? `${finalText.length.toLocaleString()} chars · ${truncate(finalText, 220)}`
               : hasSynthesis
                 ? 'stroke recorded · no final text yet'
-                : 'will fire once oracles harvest'}
+                : 'will fire once substrate is consulted'}
           </div>
         </div>
       </foreignObject>
@@ -443,18 +683,31 @@ function SynthesisNode({
 }
 
 function Edge({
+  from, to, state, pathFn,
+}: {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  state: EdgeState;
+  pathFn?: (a: { x: number; y: number }, b: { x: number; y: number }) => string;
+}) {
+  const d = (pathFn ?? vertPath)(from, to);
+  if (state === 'idle')          return <path d={d} className="omm-edge omm-edge-idle"    fill="none"/>;
+  if (state === 'failed')        return <path d={d} className="omm-edge omm-edge-failed"  fill="none"/>;
+  if (state === 'active-complete') return <path d={d} className="omm-edge omm-edge-complete" fill="none"/>;
+  return <path d={d} className="omm-edge omm-edge-inflight" fill="none"/>;
+}
+
+function ArcEdge({
   from, to, state,
-}: { from: { x: number; y: number }; to: { x: number; y: number }; state: EdgeState }) {
-  const d = edgePath(from, to);
-  if (state === 'idle') {
-    return <path d={d} className="omm-edge omm-edge-idle" fill="none"/>;
-  }
-  if (state === 'failed') {
-    return <path d={d} className="omm-edge omm-edge-failed" fill="none"/>;
-  }
-  if (state === 'active-complete') {
-    return <path d={d} className="omm-edge omm-edge-complete" fill="none"/>;
-  }
+}: {
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  state: EdgeState;
+}) {
+  const d = arcPath(from, to);
+  if (state === 'idle')          return <path d={d} className="omm-edge omm-edge-idle"    fill="none"/>;
+  if (state === 'failed')        return <path d={d} className="omm-edge omm-edge-failed"  fill="none"/>;
+  if (state === 'active-complete') return <path d={d} className="omm-edge omm-edge-complete" fill="none"/>;
   return <path d={d} className="omm-edge omm-edge-inflight" fill="none"/>;
 }
 
@@ -473,13 +726,13 @@ function EmptyState() {
       </div>
       <div className="omm-empty-title">No run in flight</div>
       <div className="omm-empty-sub">
-        Click <span className="text-emerald">Run</span> in the runner to populate this canvas.
+        Click <span className="text-emerald">Run</span> in the dispatcher to populate this canvas.
       </div>
     </div>
   );
 }
 
-// ── styled-jsx — visual language and animations ────────────────────────────
+// ── styled-jsx ────────────────────────────────────────────────────────────
 function Styles() {
   return (
     <style jsx>{`
@@ -543,7 +796,6 @@ function Styles() {
       }
       .omm-svg { width: 100%; height: 100%; display: block; }
 
-      /* foreignObject text wrappers */
       :global(.omm-fo) {
         height: 100%;
         display: flex; flex-direction: column;
@@ -560,6 +812,7 @@ function Styles() {
       }
       :global(.omm-kicker.indigo) { color: rgb(129,140,248); }
       :global(.omm-kicker.violet) { color: rgb(167,139,250); }
+      :global(.omm-kicker.amber)  { color: rgb(251,191,36); }
       :global(.omm-node-title) {
         font-size: 12px; font-weight: 600;
         color: rgb(241,245,249);
@@ -571,6 +824,17 @@ function Styles() {
         line-height: 1.4;
         flex: 1;
         overflow: hidden;
+      }
+      :global(.omm-pki-row) {
+        display: flex; align-items: center; justify-content: space-between;
+      }
+      :global(.omm-pki-index) {
+        font-size: 9px; color: rgb(100,116,139);
+        font-family: var(--font-mono, ui-monospace, monospace);
+      }
+      :global(.omm-pki-subject) {
+        font-size: 11px; color: rgb(203,213,225);
+        font-weight: 500;
       }
       :global(.omm-oracle-row) {
         display: flex; align-items: center; justify-content: space-between;
@@ -596,13 +860,6 @@ function Styles() {
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
       }
-      :global(.omm-oracle-meta) {
-        display: flex; gap: 10px;
-        font-size: 9.5px;
-        color: rgb(100,116,139);
-        font-family: var(--font-mono, ui-monospace, monospace);
-      }
-      :global(.omm-oracle-err) { color: rgb(244,114,128); }
       :global(.omm-oracle-err-row) {
         font-size: 9.5px;
         color: rgb(244,114,128);
@@ -614,9 +871,24 @@ function Styles() {
         -webkit-box-orient: vertical;
         margin-top: 2px;
       }
+      :global(.omm-anti-list) {
+        display: flex; flex-direction: column; gap: 4px;
+        margin-top: 4px;
+      }
+      :global(.omm-anti-row) {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 11px; color: rgb(148,163,184);
+      }
+      :global(.omm-anti-row.on) {
+        color: rgb(251,191,36);
+        font-weight: 600;
+      }
+      :global(.omm-anti-marker) {
+        display: inline-block; width: 10px;
+        font-size: 11px;
+      }
       :global(.text-emerald) { color: rgb(52,211,153); }
 
-      /* Edge styles */
       :global(.omm-edge) { stroke-width: 1.6; fill: none; }
       :global(.omm-edge-idle) {
         stroke: rgba(100,116,139,0.30);
@@ -637,11 +909,11 @@ function Styles() {
         stroke-dasharray: 3 4;
       }
 
-      /* Node animations — researching oracle gets a soft pulse on its glow. */
       :global(.omm-status-researching) circle {
         animation: omm-pulse 2.4s ease-in-out infinite;
       }
-      :global(.omm-synthesis-on) circle {
+      :global(.omm-synthesis-on) circle,
+      :global(.omm-anti-on) circle {
         animation: omm-pulse 3.2s ease-in-out infinite;
       }
 
@@ -654,7 +926,6 @@ function Styles() {
         50%     { opacity: 0.85; }
       }
 
-      /* Empty state */
       .omm-empty {
         position: absolute; inset: 0;
         display: flex; flex-direction: column;
