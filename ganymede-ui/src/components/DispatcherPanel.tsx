@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { RunnerSnapshot } from './RunnerPanel';
 import {
   Send,
   Loader2,
@@ -138,6 +139,13 @@ interface DispatcherPanelProps {
    *  firing the iterate flow internally. Useful for routing the result into
    *  the existing RunnerPanel's state. */
   onConfirm?: (pathway: Pathway, scenario: DispatchScenario) => void;
+  /** Mirrors the dispatcher's internal state up to the parent so the
+   *  page's mind-map view can render live progress driven by the same
+   *  events. Snapshot shape matches what RunnerPanel.onRunnerStateChange
+   *  emits, so the parent can wire both into a single setRunnerSnapshot
+   *  call. Called on every state mutation that affects what the
+   *  visualizer would render (phase, dispatch result, strokes, final). */
+  onSnapshotChange?: (snapshot: RunnerSnapshot) => void;
 }
 
 type PanelPhase = 'input' | 'dispatching' | 'review' | 'running' | 'done' | 'error';
@@ -145,6 +153,7 @@ type PanelPhase = 'input' | 'dispatching' | 'review' | 'running' | 'done' | 'err
 export function DispatcherPanel({
   backendUrl = DEFAULT_BACKEND,
   onConfirm,
+  onSnapshotChange,
 }: DispatcherPanelProps) {
   const [phase, setPhase] = useState<PanelPhase>('input');
   const [text, setText] = useState('');
@@ -166,6 +175,36 @@ export function DispatcherPanel({
       ta.style.height = `${Math.min(ta.scrollHeight, 360)}px`;
     }
   }, [text, phase]);
+
+  // Mirror dispatcher state up to the parent's runnerSnapshot so the
+  // mind-map view can render live progress while the dispatcher's
+  // iterate / synthesize call is in flight. Shape matches what
+  // RunnerPanel emits — page.tsx can wire both panels into the same
+  // setRunnerSnapshot. The visualizer's bicameral mode detection
+  // triggers on `oracles.length === 0 && running` so an iterate-flow
+  // run from the dispatcher lights up Engine ↔ PKI substrate ↔ Anti.
+  useEffect(() => {
+    if (!onSnapshotChange) return;
+    const summary = text.trim() || Object.values(editedScenario)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .join(' · ');
+    const snapshot: RunnerSnapshot = {
+      pathway: (dispatch?.pathway ?? 'cleanroom') as Pathway as RunnerSnapshot['pathway'],
+      runMode: (iterative ? 'full_loop' : 'synthesis') as RunnerSnapshot['runMode'],
+      scenarioSummary: summary,
+      blueprint: null,
+      oracles: [],
+      strokes: strokes as unknown as RunnerSnapshot['strokes'],
+      finalText,
+      running: phase === 'running',
+      hasError: phase === 'error',
+      recentEvents: [],
+    };
+    onSnapshotChange(snapshot);
+  }, [
+    onSnapshotChange, phase, text, editedScenario, dispatch,
+    iterative, strokes, finalText,
+  ]);
 
   const reset = useCallback(() => {
     setPhase('input');

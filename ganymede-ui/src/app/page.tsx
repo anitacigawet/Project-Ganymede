@@ -44,12 +44,17 @@ export default function Home() {
   // has its own internal run state).
   const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>('dispatcher');
   const prevSnapshotRef = useRef<RunnerSnapshot | null>(null);
+  // Remember where we flipped from so we can flip back. Updated only on
+  // the run-started transition, so the run-ended transition routes back
+  // to the correct origin panel (dispatcher → mindmap → dispatcher,
+  // runner → mindmap → runner).
+  const returnPanelRef = useRef<'dispatcher' | 'runner'>('runner');
 
   // Auto-switch to optics view the moment a run starts (or a run has
   // emitted blueprint/oracle data we want to see live).
   // Also drives the left-panel auto-switch using edge detection on the
   // previous snapshot — running false→true flips to mindmap, finalText
-  // null→string flips back to runner.
+  // null→string flips back to the origin panel.
   useEffect(() => {
     if (!runnerSnapshot) return;
     const prev = prevSnapshotRef.current;
@@ -65,18 +70,21 @@ export default function Home() {
 
     const runStarted = !prev?.running && runnerSnapshot.running;
     const runEnded = !!prev?.running && !runnerSnapshot.running;
-    // Only auto-flip when the operator is in the Runner-driven path. Don't
-    // pull them out of Dispatcher mid-run — Dispatcher renders its own
-    // results inside its own component.
-    if (runStarted && leftPanelMode === 'runner') {
+    // Auto-flip to mindmap from both Runner AND Dispatcher modes so the
+    // brain-metaphor visualizer (Engine ↔ PKI substrate ↔ Anti) lights
+    // up the moment a run starts, regardless of which entry surface
+    // launched it. The dispatcher's own internal results render inline
+    // when we flip back at run-end.
+    if (runStarted && (leftPanelMode === 'runner' || leftPanelMode === 'dispatcher')) {
+      returnPanelRef.current = leftPanelMode;
       setLeftPanelMode('mindmap');
     }
     if (runEnded && leftPanelMode === 'mindmap') {
       // Covers normal completion (final text lands), errors, and the
-      // synthesis-only case where strokes land without a separate finalText
-      // step.  Whatever happened, processing is over and the runner panel
-      // is where the user needs to be to read it.
-      setLeftPanelMode('runner');
+      // synthesis-only case where strokes land without a separate
+      // finalText step. Whatever happened, processing is over and the
+      // origin panel is where the user needs to be to read the result.
+      setLeftPanelMode(returnPanelRef.current);
     }
   }, [runnerSnapshot, leftPanelMode]);
 
@@ -148,7 +156,7 @@ export default function Home() {
           style={{ display: leftPanelMode === 'dispatcher' ? 'block' : 'none' }}
           className="h-full"
         >
-          <DispatcherPanel />
+          <DispatcherPanel onSnapshotChange={setRunnerSnapshot} />
         </div>
         <div
           style={{ display: leftPanelMode === 'runner' ? 'block' : 'none' }}
