@@ -182,12 +182,13 @@ export function OrchestratorMindMap({
     oracleN, snapshot.running, isIterativeFlow,
   ]);
 
-  // PKI / substrate column slot count. Legacy full mode uses one slot per
-  // Oracle; bicameral mode shows 4 placeholder substrate slots regardless
-  // of how many Truth Packets the consumer actually shipped (the snapshot
-  // doesn't carry packet count today; 4 is a reasonable default that
-  // matches James's diagram).
-  const pkiN = mode === 'full' ? oracleN : 4;
+  // PKI / substrate column slot count. Legacy full mode uses one slot
+  // per Oracle. Bicameral mode (iterate / managed-run with pre-harvested
+  // Truth Packets) shows ONE substrate node — the dispatcher panel
+  // ships a single packet, and the visualizer should reflect reality
+  // rather than render decorative placeholders. If the snapshot later
+  // carries an actual packet count we can lift this.
+  const pkiN = mode === 'full' ? oracleN : 1;
   const slots = useMemo(() => {
     if (mode === 'full') {
       return oracles.map((_, i) => pkiSlot(i, oracleN));
@@ -223,6 +224,23 @@ export function OrchestratorMindMap({
   const stage2Edge = stateFor(stage2Active, stage2Complete);
   const stage3Edge = stateFor(stage3Active, stage3Complete);
   const stage4Edge = stateFor(stage4Active, stage4Complete);
+
+  // ── Progressive reveal — the "brain growing neurons" choreography ─────
+  // Render each node only when its corresponding stroke is in flight or
+  // has landed. Before Stroke 1 fires, only the Engine bubble is on
+  // screen. The substrate node fades in when Stroke 1 starts; the Anti
+  // node fades in when an audit stroke starts; the top arc only renders
+  // once Stroke 3 fires or has fired. Edges suppressed entirely between
+  // nodes that aren't both visible.
+  const showSubstrate =
+    mode === 'bicameral' &&
+    (snapshot.running || synthesisStrokeCount >= 1 || auditStrokeCount >= 1);
+  const showAnti =
+    mode === 'bicameral' &&
+    (auditStrokeCount >= 1 || stage2Active || stage3Active);
+  const showTopArc =
+    mode === 'bicameral' &&
+    (stage4Active || stage4Complete);
 
   const stageText = useMemo(() => {
     if (snapshot.hasError) return 'Errored';
@@ -298,11 +316,13 @@ export function OrchestratorMindMap({
             <Defs/>
             <Backdrop/>
 
-            {/* === Bicameral mode (truth-packet iterate / managed-run) === */}
+            {/* === Bicameral mode (truth-packet iterate / managed-run) ===
+                Edges and nodes appear progressively as the actual strokes
+                land — brain-building-neurons choreography. No skeleton. */}
             {mode === 'bicameral' && (
               <>
-                {/* (1) Bilateral Engine ↔ PKI edges */}
-                {slots.map((slot, i) => {
+                {/* (1) Bilateral Engine ↔ PKI edges — only when substrate visible */}
+                {showSubstrate && slots.map((slot, i) => {
                   const engineR = rightEdge(ENGINE);
                   const pkiL = leftEdge(slot);
                   const off = 14;
@@ -324,8 +344,8 @@ export function OrchestratorMindMap({
                   );
                 })}
 
-                {/* (3) Bilateral PKI ↔ Anti edges */}
-                {slots.map((slot, i) => {
+                {/* (3) Bilateral PKI ↔ Anti edges — only when Anti visible */}
+                {showSubstrate && showAnti && slots.map((slot, i) => {
                   const pkiR = rightEdge(slot);
                   const antiL = leftEdge(ANTI);
                   const off = 14;
@@ -347,21 +367,24 @@ export function OrchestratorMindMap({
                   );
                 })}
 
-                {/* (2) Engine → Anti direct handoff (drawn beneath the substrate
-                    column at a low y so it doesn't interfere with the PKI edges) */}
-                <Edge
-                  from={{ x: rightEdge(ENGINE).x, y: ENGINE.y + ENGINE.h - 24 }}
-                  to={{ x: leftEdge(ANTI).x, y: ANTI.y + ANTI.h - 24 }}
-                  state={stage2Edge}
-                  pathFn={horizPath}
-                />
+                {/* (2) Engine → Anti direct handoff — only when Anti visible */}
+                {showAnti && (
+                  <Edge
+                    from={{ x: rightEdge(ENGINE).x, y: ENGINE.y + ENGINE.h - 24 }}
+                    to={{ x: leftEdge(ANTI).x, y: ANTI.y + ANTI.h - 24 }}
+                    state={stage2Edge}
+                    pathFn={horizPath}
+                  />
+                )}
 
-                {/* (4) Top arc — Anti → Engine for Stroke 3 feedback */}
-                <ArcEdge
-                  from={topMid(ANTI)}
-                  to={topMid(ENGINE)}
-                  state={stage4Edge}
-                />
+                {/* (4) Top arc — Anti → Engine, only when Stroke 3 fires */}
+                {showTopArc && (
+                  <ArcEdge
+                    from={topMid(ANTI)}
+                    to={topMid(ENGINE)}
+                    state={stage4Edge}
+                  />
+                )}
               </>
             )}
 
@@ -428,7 +451,7 @@ export function OrchestratorMindMap({
               <OracleNode oracle={undefined} slot={pkiSlot(0, 1)} />
             )}
 
-            {mode === 'bicameral' && slots.map((slot, i) => (
+            {mode === 'bicameral' && showSubstrate && slots.map((slot, i) => (
               <PkiPlaceholderNode key={`pki-ph-${i}`} slot={slot} index={i} />
             ))}
 
@@ -436,7 +459,7 @@ export function OrchestratorMindMap({
               <BlueprintNode blueprint={snapshot.blueprint ?? ''} />
             )}
 
-            {mode === 'bicameral' && (
+            {mode === 'bicameral' && showAnti && (
               <AntiNode strokes={strokes} />
             )}
 
@@ -516,17 +539,28 @@ function Backdrop() {
 function EngineNode({ snapshot }: { snapshot: RunnerSnapshot }) {
   const { x, y, w, h } = ENGINE;
   const summary = snapshot.scenarioSummary?.trim() || 'No scenario supplied';
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  // True bubble: an ellipse covering the same footprint as the rect.
+  // foreignObject still positions text inside the inscribed rect; the
+  // ellipse just provides the bubble outline + glow halo.
+  const rx = w / 2;
+  const ry = h / 2;
+  // Inscribed rect for text content — set inside the ellipse's inscribed
+  // box (a smaller axis-aligned rect that fits inside the ellipse).
+  const insetX = w * 0.16;
+  const insetY = h * 0.16;
   return (
     <g className="omm-node omm-scenario">
-      <circle cx={x + w / 2} cy={y + h / 2} r={150} fill="url(#omm-scenario-glow)"/>
-      <rect x={x} y={y} width={w} height={h} rx={12} ry={12}
-        fill="rgba(15,23,42,0.85)"
-        stroke="rgba(129,140,248,0.8)" strokeWidth="1.4"/>
-      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
+      <circle cx={cx} cy={cy} r={Math.max(rx, ry) + 40} fill="url(#omm-scenario-glow)"/>
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
+        fill="rgba(15,23,42,0.88)"
+        stroke="rgba(129,140,248,0.85)" strokeWidth="1.6"/>
+      <foreignObject x={x + insetX} y={y + insetY} width={w - 2 * insetX} height={h - 2 * insetY}>
         <div className="omm-fo">
           <div className="omm-kicker indigo">9D · ENGINE</div>
           <div className="omm-node-title">{snapshot.pathway.replace('_', ' ')}</div>
-          <div className="omm-node-body">{truncate(summary, 360)}</div>
+          <div className="omm-node-body">{truncate(summary, 240)}</div>
         </div>
       </foreignObject>
     </g>
@@ -541,11 +575,11 @@ function PkiPlaceholderNode({
 }) {
   const { x, y, w, h } = slot;
   return (
-    <g className="omm-node omm-pki-placeholder">
-      <rect x={x} y={y} width={w} height={h} rx={9} ry={9}
-        fill="rgba(15,23,42,0.85)"
-        stroke="rgba(148,163,184,0.55)" strokeWidth="1.2"/>
-      <foreignObject x={x + 10} y={y + 8} width={w - 20} height={h - 16}>
+    <g className="omm-node omm-pki-placeholder omm-node-appearing">
+      <rect x={x} y={y} width={w} height={h} rx={h / 2} ry={h / 2}
+        fill="rgba(15,23,42,0.9)"
+        stroke="rgba(167,139,250,0.65)" strokeWidth="1.3"/>
+      <foreignObject x={x + 14} y={y + 8} width={w - 28} height={h - 16}>
         <div className="omm-fo">
           <div className="omm-pki-row">
             <span className="omm-kicker violet">SUBSTRATE</span>
@@ -617,19 +651,25 @@ function AntiNode({ strokes }: { strokes: StrokeLike[] }) {
   const auditorPresent = strokes.some(s => s.audit_kind === 'mirror_auditor');
   const bridgePresent  = strokes.some(s => s.audit_kind === 'bridge');
   const isActive = auditorPresent || bridgePresent;
-  const border = isActive ? 'rgba(251,191,36,0.85)' : 'rgba(100,116,139,0.55)';
+  const border = isActive ? 'rgba(251,191,36,0.9)' : 'rgba(167,139,250,0.7)';
   const auditCount = strokes.filter(s => !!s.audit_kind).length;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const rx = w / 2;
+  const ry = h / 2;
+  const insetX = w * 0.16;
+  const insetY = h * 0.16;
   return (
-    <g className={`omm-node omm-anti ${isActive ? 'omm-anti-on' : ''}`}>
-      <circle cx={x + w / 2} cy={y + h / 2} r={150} fill="url(#omm-anti-glow)"/>
-      <rect x={x} y={y} width={w} height={h} rx={12} ry={12}
-        fill="rgba(15,23,42,0.85)"
-        stroke={border} strokeWidth="1.4"/>
-      <foreignObject x={x + 14} y={y + 12} width={w - 28} height={h - 24}>
+    <g className={`omm-node omm-anti omm-node-appearing ${isActive ? 'omm-anti-on' : ''}`}>
+      <circle cx={cx} cy={cy} r={Math.max(rx, ry) + 40} fill="url(#omm-anti-glow)"/>
+      <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
+        fill="rgba(15,23,42,0.88)"
+        stroke={border} strokeWidth="1.6"/>
+      <foreignObject x={x + insetX} y={y + insetY} width={w - 2 * insetX} height={h - 2 * insetY}>
         <div className="omm-fo">
           <div className="omm-kicker amber">ANTI · CONTRAST</div>
           <div className="omm-node-title">
-            {auditCount === 0 ? 'Awaiting' : `${auditCount} audit${auditCount === 1 ? '' : 's'}`}
+            {auditCount === 0 ? 'Engaging' : `${auditCount} audit${auditCount === 1 ? '' : 's'}`}
           </div>
           <div className="omm-anti-list">
             <div className={`omm-anti-row ${auditorPresent ? 'on' : ''}`}>
@@ -641,9 +681,6 @@ function AntiNode({ strokes }: { strokes: StrokeLike[] }) {
               Connection Bridge
             </div>
           </div>
-          {!isActive && (
-            <div className="omm-node-body">Will engage during audit strokes.</div>
-          )}
         </div>
       </foreignObject>
     </g>
@@ -733,9 +770,15 @@ function EmptyState() {
 }
 
 // ── styled-jsx ────────────────────────────────────────────────────────────
+// NOTE: must be `<style jsx global>` not `<style jsx>` — styled-jsx
+// scopes locally to the component the <style> tag is rendered in, and
+// this Styles helper has no children of its own. Without `global`, only
+// rules wrapped in :global(...) would apply, leaving layout rules like
+// .omm-header / .omm-title without their flex + spacing. All class
+// names are prefixed `omm-` so global scope is collision-safe.
 function Styles() {
   return (
-    <style jsx>{`
+    <style jsx global>{`
       .omm-root {
         width: 100%; height: 100%;
         display: flex; flex-direction: column;
@@ -917,6 +960,15 @@ function Styles() {
         animation: omm-pulse 3.2s ease-in-out infinite;
       }
 
+      /* Brain-growing-neurons: nodes fade + grow in when first rendered.
+         transform-box + transform-origin make scale() work correctly on
+         SVG <g> in modern browsers. */
+      :global(.omm-node-appearing) {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: omm-node-appear 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+
       @keyframes omm-march {
         from { stroke-dashoffset: 0; }
         to   { stroke-dashoffset: -22; }
@@ -924,6 +976,11 @@ function Styles() {
       @keyframes omm-pulse {
         0%,100% { opacity: 0.45; transform-origin: center; }
         50%     { opacity: 0.85; }
+      }
+      @keyframes omm-node-appear {
+        0%   { opacity: 0; transform: scale(0.55); }
+        60%  { opacity: 1; transform: scale(1.06); }
+        100% { opacity: 1; transform: scale(1); }
       }
 
       .omm-empty {
