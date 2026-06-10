@@ -32,6 +32,7 @@ import logging
 import os
 
 from notebooklm import NotebookLMClient, ChatGoal, ChatResponseLength
+from notebooklm.exceptions import RPCError
 
 from .cooldown import _GATE
 from .research import _ResearchMixin
@@ -348,14 +349,42 @@ class NotebookLMService(_StudioMixin, _ResearchMixin):
                         query[:_LOG_FULL_PROMPT_MAX_CHARS],
                         len(query) - _LOG_FULL_PROMPT_MAX_CHARS,
                     )
-            result = await self.client.chat.ask(notebook_id, query)
+            # The SDK fires several pre-flight RPCs inside ``chat.ask`` —
+            # most notably ``get_source_ids`` (rpcid ``rLM1Ne``) which
+            # NotebookLM occasionally returns a null result body for even
+            # though the HTTP status was 200. The SDK raises ``RPCError``
+            # in that case. Treat it as a retriable transient on the same
+            # backoff schedule as silent-rejection, since the failure mode
+            # is the same shape (NotebookLM gave us nothing) and a re-try
+            # on the same RPC usually succeeds.
+            try:
+                result = await self.client.chat.ask(notebook_id, query)
+            except RPCError as rpc_exc:
+                logger.warning(
+                    "query_notebook: notebook %s RPC transient on attempt "
+                    "%d/%d (%s)",
+                    notebook_id, attempt, _QUERY_MAX_ATTEMPTS, rpc_exc,
+                )
+                if attempt < _QUERY_MAX_ATTEMPTS:
+                    backoff = _QUERY_BACKOFF_BASE * attempt
+                    logger.info(
+                        "query_notebook: notebook %s retrying in %.0fs "
+                        "after RPC transient",
+                        notebook_id, backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    continue
+                # Final attempt — re-raise so the caller sees the failure
+                # (silent-rejection is benign enough to swallow as "" but
+                # RPCError is severe enough to surface).
+                raise
             answer = result.answer or ""
 
             if answer.strip():
                 if attempt > 1:
                     logger.info(
                         "query_notebook: notebook %s succeeded on attempt %d "
-                        "after silent rejection(s)",
+                        "after silent rejection(s) or RPC transient(s)",
                         notebook_id, attempt,
                     )
                 return answer
