@@ -233,6 +233,54 @@ def render_packets_block(packets: dict[str, str]) -> str:
     return "\n".join(parts).strip()
 
 
+# Synthesis input-cap budget (milestone 50 fix). NotebookLM silently rejects
+# queries above ~5,100-6,000 chars (the same envelope milestone 37 found for
+# Stroke 3 in the iterative loop). With 3-4 Oracles producing 3k-6k chars
+# each, the combined packets routinely blow past the cap and the Engine
+# returns empty. Budget is the TOTAL chars allowed for packets_block; each
+# packet is proportionally truncated when the combined size exceeds it.
+_SYNTHESIS_PACKETS_BUDGET = int(
+    os.environ.get("GANYMEDE_SYNTHESIS_PACKETS_BUDGET", "4500")
+)
+
+
+def truncate_packets_for_synthesis(
+    truth_packets: dict[str, str],
+    budget: int = _SYNTHESIS_PACKETS_BUDGET,
+) -> dict[str, str]:
+    """Cap the combined size of Truth Packets so the rendered synthesis
+    prompt stays under NotebookLM's silent-rejection threshold.
+
+    Each packet that exceeds its proportional share is head-truncated with
+    an explicit ``[TRUNCATED]`` marker so the Engine knows the upstream
+    content was cut. Packets under the share pass through unchanged.
+
+    A minimum floor of 200 chars per packet is enforced so a single huge
+    packet can't starve the others to nothing.
+    """
+    if not truth_packets:
+        return truth_packets
+    total = sum(len(p) for p in truth_packets.values())
+    if total <= budget:
+        return truth_packets
+
+    n = len(truth_packets)
+    # Reserve ~50 chars per packet for the header + spacing.
+    available = max(budget - n * 50, 200 * n)
+    out: dict[str, str] = {}
+    for subject, packet in truth_packets.items():
+        share = max(200, int(len(packet) / total * available))
+        if len(packet) <= share:
+            out[subject] = packet
+        else:
+            marker = (
+                f"\n\n[TRUNCATED: original {len(packet)} chars → "
+                f"{share} chars to fit synthesis budget {budget}]"
+            )
+            out[subject] = packet[: share - len(marker)].rstrip() + marker
+    return out
+
+
 # ---------------------------------------------------------------------------
 # The orchestrator
 # ---------------------------------------------------------------------------
@@ -400,15 +448,33 @@ class GanymedeOrchestrator:
         closed engine fed authenticated facts; we do not pre-frame it. See
         ``docs/protocols/Universal_Logic_Loop_Protocol.md`` for the
         rationale.
+
+        Input-cap discipline (milestone 50): packets are proportionally
+        truncated when the combined size exceeds the synthesis budget. Same
+        silent-rejection failure mode milestone 37 hit on Stroke 3 of the
+        iterative loop, but here it bites multi-Oracle runs whose packets
+        together exceed ~6k chars. Each packet retains a TRUNCATED marker
+        so the Engine knows upstream content was cut.
         """
-        packets_block = render_packets_block(truth_packets)
+        original_total = sum(len(p) for p in truth_packets.values())
+        truncated = truncate_packets_for_synthesis(truth_packets)
+        truncated_total = sum(len(p) for p in truncated.values())
+        if truncated_total < original_total:
+            logger.info(
+                "Phase 3 synthesize: truncated %d packet(s) from %d to %d chars "
+                "(budget %d) to stay under NotebookLM input cap.",
+                len(truth_packets), original_total, truncated_total,
+                _SYNTHESIS_PACKETS_BUDGET,
+            )
+        packets_block = render_packets_block(truncated)
         rendered = (framing or SYNTHESIS_TEMPLATE).format(
             scenario=scenario, packets_block=packets_block
         )
         logger.info(
-            "Phase 3 synthesize: %d packet(s) on '%s'",
+            "Phase 3 synthesize: %d packet(s) on '%s' (rendered prompt %d chars)",
             len(truth_packets),
             scenario[:60],
+            len(rendered),
         )
         return await self.svc.query_chess_engine(rendered)
 
