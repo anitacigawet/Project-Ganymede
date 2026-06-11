@@ -1118,6 +1118,89 @@ The principle now applies to *every* surface where the framework meets a consume
 
 ---
 
+## 50. PKI Oracle harvest path unblocked end-to-end — IMPORT_RESEARCH timeout + synthesis input-cap + dispatcher multi-provider routing (2026-06-11)
+
+The milestone 49 visualizer test surfaced three independent failures that all silently undermined the project's core mechanic: closed-knowledge PKI Oracle harvest grounding the 9D synthesis. The wiring was correct, the routing was correct, the visualizer animated correctly — but the *value* never landed because the harvest substrate was broken upstream of every analytical surface. James's verbatim framing: *"The entire project revolves around pki's and closed knowledge, and you're considering it a success. I'm so confused."* Fair. The earlier session reports treated routing success as project success; they aren't the same.
+
+This milestone fixes the three failures so a real-world Cleanroom question drives PKI Oracles → real Deep Research → real Truth Packets → grounded 9D synthesis end-to-end. Validated live on the same LMArena scenario that has been running all session.
+
+### Failure 1: IMPORT_RESEARCH RPC timeout (3-for-3 Oracle failures)
+
+**Root cause**: `notebooklm-py` SDK's default httpx timeout is 30s. The IMPORT_RESEARCH RPC (post-Deep-Research source ingestion) routinely takes 90-180s on a 30-source report. Every Oracle in the milestone 49 validation run failed at this exact step with `httpx.ReadTimeout` raised from inside the SDK, surfaced as `notebooklm.exceptions.RPCTimeoutError: Request timed out calling IMPORT_RESEARCH`. Deep Research itself completed; only the ingestion timed out.
+
+**Fix in `ganymede-backend/app/services/notebooklm/client.py`**:
+
+- `NotebookLMClient.from_storage(timeout=...)` is now passed an env-configurable timeout (`GANYMEDE_NOTEBOOKLM_HTTP_TIMEOUT`, default **300s** vs SDK default 30s). This single change accounts for the bulk of the fix.
+
+**Fix in `ganymede-backend/app/services/notebooklm/research.py`**:
+
+- `import_research_sources` now wraps `client.research.import_sources` in a retry loop. Catches `RPCTimeoutError` specifically; 3 attempts with exponential backoff (30s → 60s → 120s). The actual NotebookLM server work usually completed even when the SDK gave up, so re-issuing the call with a fresh httpx connection often lands cleanly. Env overrides: `GANYMEDE_NOTEBOOKLM_IMPORT_RETRIES`, `GANYMEDE_NOTEBOOKLM_IMPORT_BACKOFF_BASE`.
+
+### Failure 2: Synthesis input-cap silent rejection (project-value failure)
+
+**Root cause**: even with IMPORT_RESEARCH fixed and all 3 Oracles harvesting cleanly, the milestone-50 validation run's final synthesis returned empty `raw_response` after 3 retries because the rendered prompt was **15,322 chars** — way past NotebookLM's ~5,100-6,000 char input cap (the same envelope milestone 37 caught for Stroke 3 in the iterative loop). Three Truth Packets at 5,178 + 3,260 + 6,157 chars stacked into `packets_block` blew past the cap. Milestone 37 fixed this only in `run_iterative_engine` via `_extract_for_resynthesis` + `_truncate_audit_for_injection`; the base `synthesize()` method that `run_universal_loop`'s Phase 3 calls never got the same treatment.
+
+**Fix in `ganymede-backend/app/services/orchestrator.py`**:
+
+- New module-level helper `truncate_packets_for_synthesis(truth_packets, budget)` proportionally shrinks each packet when the combined size exceeds `GANYMEDE_SYNTHESIS_PACKETS_BUDGET` (default 4500 chars). Each truncated packet gets an explicit `[TRUNCATED: original X chars → Y chars to fit synthesis budget]` marker so the Engine knows upstream content was cut. Minimum-200-char floor per packet so a single huge packet can't starve the others.
+- `synthesize()` calls the helper before rendering `packets_block` and logs the rendered prompt size. Every caller of the base synthesis (Universal Logic Loop, `/managed-run`, any future consumer) gets the fix without per-caller changes.
+
+### Failure 3: Gemini 503 strands the dispatcher
+
+**Root cause**: the dispatcher classification call was Gemini-only. During the milestone 49 validation session Gemini Flash returned `503 UNAVAILABLE` twice in a row at the worst moment, forcing the defensive cleanroom fallback (confidence 0, generic clarifying question). James's verbatim framing: *"I will not rely on an API that limits me like that."*
+
+**Fix in `ganymede-backend/app/services/gemini_service.py`**:
+
+- New env-controlled `LLM_PROVIDER` (default `deepseek`) selects the primary dispatcher LLM with cross-provider fallback. If primary returns 503/network/parse error, the other provider is tried before the cleanroom fallback fires.
+- DeepSeek path: OpenAI-compatible HTTP to `https://api.deepseek.com/v1/chat/completions` with `response_format: json_object`. Pattern mirrored from DRAINO Clean-Room (`server/_core/llm.ts:openAICompatibleInvoke`).
+- Gemini path: the existing `genai.Client().models.generate_content` call, refactored into `_dispatch_via_gemini`. Client is now lazily initialized so a deepseek-only deployment doesn't fail at startup when `GOOGLE_API_KEY` is unset.
+- Placeholder-key guard: the .env's `DEEPSEEK_API_KEY=PASTE_YOUR_DEEPSEEK_KEY_HERE` is treated as unset so an unfilled .env doesn't burn a 401 round-trip on every classify call.
+- New `DEEPSEEK_API_KEY` slot added to `.env` (gitignored). Operator pastes the actual key when ready. Closed-RAG-sphere principle preserved: both providers are scoped to dispatcher intent classification only; analytical content stays in NotebookLM.
+
+### What this milestone proves end-to-end
+
+Validated live on `de892dc9-14a2-4764-9792-115c9720e68b` (LMArena Cleanroom):
+
+- Triage: 36s, 3 subjects (`Upcoming Frontier Model Releases`, `LMArena Benchmark Methodology Updates`, `Competitor Compute Resource Allocation`)
+- 3 PKI Oracles: 39+30+ sources Deep Research each, ALL imported cleanly (no `RPCTimeoutError`), Truth Packets harvested at 5,233 + 3,690 + 2,371 chars (**11,294 chars total**)
+- Synthesis: prompt truncated to fit budget, fired once (no retries), 44s wall, 4,234 chars output
+- **Total wall time: 30:49**
+
+The Engine's output cites specific facts from the harvested Truth Packets — *"Mythos-class Claude 5"*, *"GPT-5's 201,088-token o200k_harmony tokenizer"*, *"Anthropic's $965 billion valuation and 5 gigawatts of secured compute"*, *"Arena.ai's transition to the Bradley-Terry maximum-likelihood statistical model"* — none of which are in the 9D foundations corpus. The Engine also prefixes an explicit epistemic-discipline notice acknowledging the external-truth-packet provenance, exactly as the closed-RAG-sphere principle would predict.
+
+Final prediction: *"Anthropic will not hold the #1 spot on LMArena at the end of June 2026."* — falsifiable, grounded in real data, citation-anchored.
+
+This is the first run this session where the project's **core value mechanism** (closed-knowledge PKI Oracle harvest → grounded 9D synthesis) demonstrably works end-to-end. The milestone 49 validation that came before — routing fix + visualizer animation — was real but incomplete: it validated the *plumbing*, not the *output*. Milestone 50 validates the output.
+
+### What this milestone closes
+
+- **The IMPORT_RESEARCH 3-for-3 failure mode** from the milestone 49 session. PKI Oracle harvest now works reliably.
+- **The synthesis input-cap silent rejection** for multi-Oracle runs. The Universal Logic Loop's Phase 3 now respects the same cap discipline as the Iterative Engine's Stroke 3.
+- **The dispatcher single-provider fragility**. Gemini 503's no longer force the defensive fallback path.
+- **The "wiring works ≠ project works" framing error** that crept into the milestone 49 closeout. Both reports + future Architecture_History entries should treat *grounded analytical output* as the success bar, not *routing success* or *visualizer animation*.
+
+### What this milestone does NOT close
+
+- **DeepSeek API key paste**. The .env slot is in; operator action remains. Once pasted, the dispatcher uses DeepSeek as primary with Gemini fallback.
+- **React `Maximum update depth` error in `DispatcherPanel`** (filed as a follow-up task). The snapshot mirror useEffect recreates the oracles array via `Object.values(oracles)` on every render, which makes the published snapshot object identity unstable. UI is recoverable (full E2E run completed cleanly), but the console floods with React warnings. Fix: memoize the snapshot via `useMemo`.
+- **The Stroke-1-only output**. The milestone-50 run is single-stroke synthesis (Universal Logic Loop ends at Phase 3). The iterative Mirror Auditor + Bridge Stroke-2/2b/3 chain doesn't fire on this path. Adding bicameral-style audit on top of the Universal Logic Loop synthesis is a future architectural call, not a milestone-50 fix.
+- **Run record**. A `docs/experiments/runs/07_LMArena_Universal_Loop_Validation.md` (or similar) capturing the actual session as a reproducible experiment hasn't been written. Future operator chunk.
+
+### Pending after this milestone
+
+- React update-depth fix in DispatcherPanel.
+- DeepSeek API key paste (operator action).
+- Pl2-03 first live Z-SPAN strategic-planning session (operator-driven).
+- E1-06 first live Bicameral Level 2 run (operator-driven).
+- 2026-06-30 LMArena leaderboard-rank resolution (calendar-gated; the milestone 50 run produced a fresh prediction worth tracking alongside the milestone 37 / Run 6 prediction).
+- P1-01 upstream `notebooklm-py` PR submission — now arguably more compelling because we have a concrete real-world `RPCTimeoutError` repro that the upstream can adopt as a regression test.
+
+### Cross-cutting note — what this taught about reporting
+
+Treating routing success as project success is the silent-failure mode of milestone reports. The structural fix milestone 49 shipped routed correctly; the visualizer animated correctly; cancel worked correctly; but the analytical output was corpus-pattern-matched fabulation because the Truth Packet pipeline was broken. Future milestone closeouts should explicitly distinguish *did the plumbing work* from *did the output work* and not bundle them.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -1179,3 +1262,7 @@ The principle now applies to *every* surface where the framework meets a consume
 | BridgeNotebookRegistry persistence (47) | `ganymede-backend/app/services/bridge_registry.py` (`BridgeNotebookRegistry.bind_persistence` + `load_from_disk` + `_persist_locked` atomic-write + `default_persistence_path`) + `ganymede-backend/app/main.py` startup wiring + `consuming_the_v2_api.md` § Session persistence (Pl2-01) for canonical surface description |
 | `/managed-run` endpoint + dispatcher-as-canonical-entry-point (48) | `POST /api/v2/managed-run` in `ganymede-backend/app/v2_routes.py` (`ManagedRunRequest` + `ManagedRunResponse` + `managed_run` composition handler) + `docs/integration/examples/zspan_consumer.md` rewrite (managed-run primary; granular API as fall-back) + `docs/integration/consuming_the_v2_api.md` two-consumer-shapes TL;DR + endpoint reference + `C:\Users\james\Desktop\Z-SPAN_Handoff_v2.md` operator paste-in onboarding |
 | Dispatcher harvest-routing + WS subscription (49) | `DISPATCHER_PROMPT` "KNOWLEDGE HARVEST SIGNAL" section + `needs_external_knowledge` extraction in `ganymede-backend/app/services/gemini_service.py` + `DispatchResponse.needs_external_knowledge` field in `ganymede-backend/app/v2_routes.py` + `ganymede-ui/src/components/DispatcherPanel.tsx` (WebSocket subscription mirroring RunnerPanel; `handleConfirm` branching on `useUniversalLoop`; path-choice review-UI card with operator-override toggle; running-phase per-path messaging) |
+| IMPORT_RESEARCH timeout fix (50) | `ganymede-backend/app/services/notebooklm/client.py` (`NotebookLMClient.from_storage(timeout=300)` + env `GANYMEDE_NOTEBOOKLM_HTTP_TIMEOUT`) + `ganymede-backend/app/services/notebooklm/research.py` (`import_research_sources` retry-on-`RPCTimeoutError` with exponential backoff + envs `GANYMEDE_NOTEBOOKLM_IMPORT_RETRIES` / `GANYMEDE_NOTEBOOKLM_IMPORT_BACKOFF_BASE`) |
+| Synthesis input-cap truncation (50) | `truncate_packets_for_synthesis()` + `_SYNTHESIS_PACKETS_BUDGET` in `ganymede-backend/app/services/orchestrator.py` + `synthesize()` wired to call the helper before rendering `packets_block` (env `GANYMEDE_SYNTHESIS_PACKETS_BUDGET` default 4500) |
+| Multi-provider dispatcher routing (50) | `_LLM_PROVIDER` / `_DEEPSEEK_API_KEY` / `_dispatch_via_deepseek` / `_dispatch_via_gemini` + cross-provider fallback in `GeminiService.dispatch_intent` in `ganymede-backend/app/services/gemini_service.py` + `.env` slots for `LLM_PROVIDER` / `DEEPSEEK_API_KEY` |
+| Milestone 50 end-to-end validation run | session `de892dc9-14a2-4764-9792-115c9720e68b` in SessionStore — first run this session where 3 Oracle harvests + grounded synthesis all succeeded in a single flow |
