@@ -28,6 +28,8 @@ import logging
 import os
 import time
 
+from notebooklm.exceptions import RPCTimeoutError
+
 from .cooldown import _GATE
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,15 @@ _RESEARCH_POLL_INTERVAL_SEC = float(
 )
 _RESEARCH_TIMEOUT_SEC = float(
     os.environ.get("GANYMEDE_NOTEBOOKLM_RESEARCH_TIMEOUT", "1800")
+)
+# IMPORT_RESEARCH retry layer. Even with the bumped httpx timeout in
+# client.initialize() (300s), large source reports can still trip the
+# limit, and transient network slowness should not kill a 25-min run.
+# Retries with exponential backoff give the server a chance to settle
+# between attempts. Tracked + fixed 2026-06-10 milestone 50.
+_IMPORT_RETRIES = int(os.environ.get("GANYMEDE_NOTEBOOKLM_IMPORT_RETRIES", "3"))
+_IMPORT_BACKOFF_BASE = float(
+    os.environ.get("GANYMEDE_NOTEBOOKLM_IMPORT_BACKOFF_BASE", "30")
 )
 
 
@@ -128,16 +139,39 @@ class _ResearchMixin:
         if not self.client:
             raise Exception("NotebookLMClient is not initialized.")
 
-        await _GATE.acquire()
-        logger.info(
-            "Importing %d research sources into notebook %s (task %s)",
-            len(sources), notebook_id, task_id,
-        )
-        return await self.client.research.import_sources(
-            notebook_id=notebook_id,
-            task_id=task_id,
-            sources=sources,
-        )
+        last_exc: Exception | None = None
+        for attempt in range(1, _IMPORT_RETRIES + 1):
+            await _GATE.acquire()
+            logger.info(
+                "Importing %d research sources into notebook %s (task %s) — attempt %d/%d",
+                len(sources), notebook_id, task_id, attempt, _IMPORT_RETRIES,
+            )
+            try:
+                return await self.client.research.import_sources(
+                    notebook_id=notebook_id,
+                    task_id=task_id,
+                    sources=sources,
+                )
+            except RPCTimeoutError as exc:
+                last_exc = exc
+                if attempt >= _IMPORT_RETRIES:
+                    logger.error(
+                        "IMPORT_RESEARCH timed out on notebook %s after %d attempts; giving up.",
+                        notebook_id, attempt,
+                    )
+                    raise
+                backoff = _IMPORT_BACKOFF_BASE * (2 ** (attempt - 1))
+                logger.warning(
+                    "IMPORT_RESEARCH timed out on notebook %s (attempt %d/%d): %s. "
+                    "Retrying in %.0fs — the prior import may have partially landed; "
+                    "this attempt re-issues the request with a fresh httpx connection.",
+                    notebook_id, attempt, _IMPORT_RETRIES, exc, backoff,
+                )
+                await asyncio.sleep(backoff)
+        # Unreachable: we either return or raise inside the loop, but keep
+        # this for the type checker.
+        assert last_exc is not None
+        raise last_exc
 
     # ----------------------------------------------------------- convenience
 

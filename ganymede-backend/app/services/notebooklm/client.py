@@ -214,11 +214,24 @@ class NotebookLMService(_StudioMixin, _ResearchMixin):
 
         Assumes the user has already run ``notebooklm login`` to generate
         session cookies under ``~/.notebooklm/storage_state.json``.
+
+        HTTP timeout note: the SDK default is 30s, which is too short for
+        IMPORT_RESEARCH RPC after a multi-source Deep Research completes
+        (the ingestion of harvested sources back into the notebook can take
+        90-180s on a 30-source report). Override via
+        ``GANYMEDE_NOTEBOOKLM_HTTP_TIMEOUT`` (seconds). Default bumped to
+        300s (5 min) so post-Deep-Research imports don't fire `httpx.
+        ReadTimeout` mid-ingest. Tracked + fixed 2026-06-10 milestone 50
+        after observing 3/3 Oracle failures with this exact failure mode.
         """
+        timeout = float(os.environ.get("GANYMEDE_NOTEBOOKLM_HTTP_TIMEOUT", "300"))
         try:
-            self._client_instance = await NotebookLMClient.from_storage()
+            self._client_instance = await NotebookLMClient.from_storage(timeout=timeout)
             self.client = await self._client_instance.__aenter__()
-            logger.info("Successfully loaded NotebookLM credentials from storage.")
+            logger.info(
+                "Successfully loaded NotebookLM credentials from storage (timeout=%.0fs).",
+                timeout,
+            )
         except Exception as e:
             logger.error(
                 "Error loading NotebookLM credentials. "

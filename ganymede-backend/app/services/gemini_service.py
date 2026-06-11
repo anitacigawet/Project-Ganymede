@@ -1,12 +1,91 @@
+import logging
 import os
+import httpx
 from google import genai
 from google.genai import types
 import json
+
+logger = logging.getLogger(__name__)
 
 # The four pathways the dispatcher classifies intent into. Kept here as a
 # string list (rather than importing the Pathway enum from app.contracts) so
 # this service stays a thin LLM wrapper with no orchestrator dependencies.
 DISPATCHER_PATHWAYS = ("cleanroom", "genie", "offensive", "mirror_audit")
+
+# ---------------------------------------------------------------------------
+# Multi-provider dispatcher LLM routing.
+#
+# The dispatcher used to be Gemini-only. James got rate-limited at the wrong
+# moment one too many times (the milestone 50 test session saw two consecutive
+# 503 UNAVAILABLE responses mid-validation) so the provider is now selectable
+# via env var, with cross-provider fallback if the primary returns an error.
+#
+# DeepSeek is the new default because James has a paid key with predictable
+# rate limits. Gemini stays as the fallback so a stale DeepSeek key doesn't
+# break the friendly front door. Either provider can also be removed by
+# unsetting its key — the remaining one becomes the only path.
+#
+# Both providers ONLY power dispatcher intent classification. Analytical
+# content stays in the closed RAG sphere (NotebookLM Engine / Auditor /
+# Bridge / translation) per the milestone 45 closed-RAG-sphere principle.
+# ---------------------------------------------------------------------------
+
+_LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "deepseek").lower().strip()
+"""Primary dispatcher LLM. ``deepseek`` (default) or ``gemini``. If the
+primary fails, the other is tried before falling back to the cleanroom
+default response."""
+
+_DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+_DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat").strip()
+_DEEPSEEK_BASE_URL = os.environ.get(
+    "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
+).strip().rstrip("/")
+_GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
+
+
+async def _dispatch_via_deepseek(prompt: str) -> str:
+    """Call DeepSeek's OpenAI-compatible Chat Completions API.
+
+    Returns the raw assistant text. Raises on any network/API error so
+    the caller can fall back to the other provider.
+
+    Pattern mirrored from DRAINO Clean-Room (``server/_core/llm.ts``
+    ``openAICompatibleInvoke``) — DeepSeek and OpenAI speak the same
+    dialect at ``/v1/chat/completions``.
+    """
+    if not _DEEPSEEK_API_KEY:
+        raise RuntimeError("DEEPSEEK_API_KEY is not set")
+    url = f"{_DEEPSEEK_BASE_URL}/chat/completions"
+    payload = {
+        "model": _DEEPSEEK_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.0,
+    }
+    headers = {
+        "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=60.0) as http:
+        resp = await http.post(url, json=payload, headers=headers)
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"DeepSeek HTTP {resp.status_code}: {resp.text[:400]}"
+        )
+    data = resp.json()
+    return data["choices"][0]["message"]["content"]
+
+
+def _dispatch_via_gemini(prompt: str, client: genai.Client) -> str:
+    """Call Gemini Flash with the dispatcher prompt. Returns raw assistant
+    text. Raises on any error so the caller can fall back."""
+    if not _GOOGLE_API_KEY:
+        raise RuntimeError("GOOGLE_API_KEY is not set")
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+    )
+    return (response.text or "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -162,8 +241,16 @@ User's text:
 
 class GeminiService:
     def __init__(self):
-        # The client automatically picks up GOOGLE_API_KEY from environment variables
-        self.client = genai.Client()
+        # Lazy Gemini-client init: a deployment that only sets DEEPSEEK_API_KEY
+        # should not fail at startup just because google-genai cannot find a
+        # Google key. The client is only constructed when a Gemini fallback is
+        # actually needed. ``_dispatch_via_gemini`` checks _GOOGLE_API_KEY
+        # before calling, so this attribute is only touched on the Gemini
+        # path.
+        if _GOOGLE_API_KEY:
+            self.client = genai.Client()
+        else:
+            self.client = None
 
     # NOTE: ``translate_with_register`` was removed 2026-06-06 (milestone 45
     # corrected) — translation now routes through the canonical NotebookLM
@@ -258,24 +345,64 @@ class GeminiService:
               "pathway":              "cleanroom" | "genie" | "offensive" | "mirror_audit",
               "confidence":           float in [0, 1],
               "scenario":             { pathway-specific fields },
+              "needs_external_knowledge": bool,
               "rationale":            str,
               "clarifying_questions": list[str],
             }
 
-        On any LLM / parsing failure this returns a best-effort fallback
-        (``cleanroom`` with the user's text as ``question``, low confidence,
-        and an explanatory clarifying question) rather than raising. The
-        caller is expected to surface the result to the operator for review
-        before the heavy 3-stroke loop fires.
+        Provider routing (milestone 50): the primary provider is selected
+        via ``LLM_PROVIDER`` env var (``deepseek`` default, ``gemini``
+        alternative). If the primary fails — 503 UNAVAILABLE, missing key,
+        any network/parsing error — the other provider is tried. Only if
+        BOTH fail does the best-effort cleanroom fallback fire.
+
+        Closed-RAG-sphere principle preserved: both providers are scoped to
+        dispatcher intent classification only. Analytical content stays in
+        the NotebookLM closed sphere (Engine / Auditor / Bridge /
+        translation per milestone 45).
         """
         prompt = DISPATCHER_PROMPT.replace("{user_text}", user_text.strip())
 
+        # Decide order: primary first, then fall back. Skip providers whose
+        # API key is missing so a half-configured deployment routes cleanly
+        # to whatever has credentials.
+        ordering = [_LLM_PROVIDER]
+        other = "gemini" if _LLM_PROVIDER == "deepseek" else "deepseek"
+        ordering.append(other)
+        ordering = [
+            p for p in ordering
+            if (p == "deepseek" and _DEEPSEEK_API_KEY) or (p == "gemini" and _GOOGLE_API_KEY)
+        ]
+
+        last_exc: Exception | None = None
+        text = ""
+        provider_used = "none"
+        for provider in ordering:
+            try:
+                if provider == "deepseek":
+                    text = await _dispatch_via_deepseek(prompt)
+                else:
+                    text = _dispatch_via_gemini(prompt, self.client)
+                provider_used = provider
+                break
+            except Exception as exc:
+                last_exc = exc
+                logger.warning(
+                    "Dispatcher provider '%s' failed: %s. %s",
+                    provider, exc,
+                    f"Falling back to '{ordering[-1]}'." if provider != ordering[-1] else
+                    "No more providers to try; using defensive fallback.",
+                )
+
+        if not text:
+            # Both providers failed (or none configured). Return defensive
+            # fallback below in the except block by raising the last exc.
+            if last_exc is not None:
+                raise last_exc
+            raise RuntimeError("No dispatcher LLM provider configured")
+
         try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
-            text = (response.text or "").strip()
+            text = text.strip()
             # Strip optional code fences.
             if text.startswith("```json"):
                 text = text[7:].rstrip("` \n")
@@ -283,6 +410,9 @@ class GeminiService:
                 text = text[3:].rstrip("` \n")
 
             parsed = json.loads(text)
+            logger.info(
+                "Dispatcher classified intent via '%s' provider.", provider_used,
+            )
 
             # Defensive: coerce + clamp the fields we publish over HTTP.
             pathway = parsed.get("pathway")
