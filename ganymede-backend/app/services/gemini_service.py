@@ -36,6 +36,11 @@ primary fails, the other is tried before falling back to the cleanroom
 default response."""
 
 _DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+# Treat the .env placeholder as unset so a half-configured deployment routes
+# cleanly to Gemini instead of burning a 401 round-trip to DeepSeek every
+# dispatch call.
+if _DEEPSEEK_API_KEY.startswith("PASTE_") or _DEEPSEEK_API_KEY in {"YOUR_KEY", "REPLACE_ME"}:
+    _DEEPSEEK_API_KEY = ""
 _DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat").strip()
 _DEEPSEEK_BASE_URL = os.environ.get(
     "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
