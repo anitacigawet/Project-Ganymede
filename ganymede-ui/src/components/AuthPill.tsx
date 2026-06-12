@@ -300,13 +300,15 @@ export function AuthPill() {
     : '—';
 
   return (
-    // Pinned bottom-left. Sits in the bottom-left chrome stack alongside the
-    // Ask/Runner/Map tab strip (above us, see page.tsx). The Next.js dev-mode
-    // "N" badge is hidden via next.config.ts devIndicators:false so we get
-    // the corner to ourselves.
-    // The dropdown opens UPWARD (absolute bottom-full) because the pill is
-    // near the bottom edge — a default downward-opening dropdown would clip.
-    <div className="fixed bottom-4 left-4 z-50 select-none font-mono text-xs">
+    // Pinned bottom-left, stacked ABOVE the Next.js error overlay's "2
+    // Issues" badge which sits at fixed bottom-4 left-4. We tuck the pill
+    // at bottom-20 (5rem above the corner) so the two don't overlap when
+    // the error badge is showing in dev mode. The Ask/Runner/Map tab
+    // strip sits to the right at bottom-6 left-32 in page.tsx — three
+    // distinct cells, no collisions.
+    // The dropdown still opens UPWARD (absolute bottom-full) — it now has
+    // more room to expand and still won't clip on the top edge.
+    <div className="fixed bottom-20 left-4 z-50 select-none font-mono text-xs">
       {/* Pill */}
       <button
         type="button"

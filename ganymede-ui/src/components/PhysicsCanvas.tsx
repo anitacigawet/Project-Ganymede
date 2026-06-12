@@ -57,10 +57,12 @@ export function PhysicsCanvas({ scanTrigger, gssConfig }: PhysicsCanvasProps) {
         <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/10 animate-[scan_4s_linear_infinite]" />
       </div>
 
-      {/* Header: System Readout. pr-44 reserves clearance on the right so the
+      {/* Header: System Readout. pr-56 reserves clearance on the right so the
           GRID STATUS / SENSOR DENSITY readouts don't slide under the floating
-          PREDICTIONS chip pinned at top-right of the page. */}
-      <div className="absolute top-0 left-0 right-0 z-30 flex justify-between items-center p-5 pr-44 bg-slate-950/60 backdrop-blur-xl border-b border-white/5">
+          PREDICTIONS chip pinned at top-right of the page. (pr-44 was the
+          first attempt; left only ~4px clearance and clipped the leading "S"
+          in "SENSOR DENSITY". pr-56 = 224px leaves ~44px breathing room.) */}
+      <div className="absolute top-0 left-0 right-0 z-30 flex justify-between items-center p-5 pr-56 bg-slate-950/60 backdrop-blur-xl border-b border-white/5">
         <div className="flex items-center gap-3">
           <Radio className="w-5 h-5 text-indigo-400" style={{ color: baseColor }} />
           <h2 className="text-slate-100 text-sm tracking-[0.2em] font-bold uppercase">GSS Strategic Engine</h2>

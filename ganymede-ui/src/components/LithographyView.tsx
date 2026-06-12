@@ -1620,8 +1620,10 @@ function LithographyStyles() {
         padding: 14px 22px;
         /* Reserve clearance on the right so the OPTICS BOX STAGE label
            ("Etched — Resolution Ready" etc.) doesn't slide under the
-           floating PREDICTIONS chip pinned at top-right of the page. */
-        padding-right: 160px;
+           floating PREDICTIONS chip pinned at top-right of the page.
+           (160px was the first attempt and clipped the label; 224px
+           matches the PhysicsCanvas pr-56 with ~44px breathing room.) */
+        padding-right: 224px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.08);
         background: rgba(2, 6, 23, 0.6);
         backdrop-filter: blur(8px);
