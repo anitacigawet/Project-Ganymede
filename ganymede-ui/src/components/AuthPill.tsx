@@ -136,7 +136,14 @@ function dotColor(s: AuthStatus['status']): string {
   }
 }
 
-export function AuthPill() {
+export interface AuthPillProps {
+  /** When true, render without the floating `fixed bottom-20 left-4` wrapper —
+   *  the pill becomes an inline block the parent (e.g., SettingsTray) can
+   *  position itself. The dropdown still opens upward from the pill. */
+  embedded?: boolean;
+}
+
+export function AuthPill({ embedded }: AuthPillProps = {}) {
   const [status, setStatus] = useState<AuthStatus>({ status: 'unknown' });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -300,15 +307,18 @@ export function AuthPill() {
     : '—';
 
   return (
-    // Pinned bottom-left, stacked ABOVE the Next.js error overlay's "2
-    // Issues" badge which sits at fixed bottom-4 left-4. We tuck the pill
-    // at bottom-20 (5rem above the corner) so the two don't overlap when
-    // the error badge is showing in dev mode. The Ask/Runner/Map tab
-    // strip sits to the right at bottom-6 left-32 in page.tsx — three
-    // distinct cells, no collisions.
-    // The dropdown still opens UPWARD (absolute bottom-full) — it now has
-    // more room to expand and still won't clip on the top edge.
-    <div className="fixed bottom-20 left-4 z-50 select-none font-mono text-xs">
+    // Two render modes:
+    //  - Standalone (default): pinned bottom-left as a floating pill. Stacked
+    //    above the Next.js error overlay's "2 Issues" badge so they don't
+    //    collide. Used on pages where SettingsTray isn't mounted.
+    //  - Embedded (embedded=true): drops the `fixed` positioning so the
+    //    parent (SettingsTray) can place the pill inside its popup. The
+    //    dropdown still opens upward via `absolute bottom-full`.
+    <div className={
+      embedded
+        ? 'relative z-50 select-none font-mono text-xs'
+        : 'fixed bottom-20 left-4 z-50 select-none font-mono text-xs'
+    }>
       {/* Pill */}
       <button
         type="button"

@@ -1,16 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { Sparkles } from 'lucide-react';
 import { RunnerPanel, type RunnerSnapshot } from '@/components/RunnerPanel';
 import { DispatcherPanel } from '@/components/DispatcherPanel';
 import { PhysicsCanvas } from '@/components/PhysicsCanvas';
 import { LithographyView } from '@/components/LithographyView';
 import { OrchestratorMindMap } from '@/components/OrchestratorMindMap';
 import { DevOverlay } from '@/components/DevOverlay';
+import { SettingsTray } from '@/components/SettingsTray';
 import { GSSState } from '@/types/ganymede';
-import { PREDICTIONS } from '@/data/predictions';
 
 type RightPanelMode = 'canvas' | 'optics';
 // 'dispatcher' is the natural-language entry mode (single text box -> LLM
@@ -129,22 +127,10 @@ export default function Home() {
       {/* Dynamic Background Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-[#030712] to-[#030712] pointer-events-none" />
 
-      {/* Predictions board link — top-right corner. Shows the pending-prediction
-          count as a small chip so the operator sees at a glance whether there's
-          something to validate. */}
-      <Link
-        href="/predictions"
-        className="absolute top-4 right-4 z-40 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 text-[10px] uppercase tracking-widest font-mono text-slate-400 hover:text-amber-300 hover:border-amber-700/60 transition-colors"
-        title="Pre-registered predictions ledger"
-      >
-        <Sparkles className="w-3 h-3" />
-        Predictions
-        {PREDICTIONS.filter((p) => p.status === 'pending').length > 0 && (
-          <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-700/60 text-amber-300">
-            {PREDICTIONS.filter((p) => p.status === 'pending').length}
-          </span>
-        )}
-      </Link>
+      {/* Predictions link, AuthPill, and the Cortex Clipboard trigger have all
+          moved into the SettingsTray at the bottom-right corner. The tray
+          consolidates the floating chrome into a single gear button + popup
+          so the operator surface stays clean. See SettingsTray.tsx. */}
 
       {/* Left Panel: Dispatcher / Runner / Mind Map (40%).
           Dispatcher and Runner stay mounted under the hood (display:none
@@ -276,12 +262,21 @@ export default function Home() {
       </div>
 
       {/* Cortex Clipboard — paste-back point for GSS JSON when Gemini gives
-          you something the gravity well can render. */}
+          you something the gravity well can render. The legacy floating
+          Terminal button at bottom-right is suppressed; the SettingsTray now
+          owns that corner and triggers `setClipboardOpen(true)` from its
+          Console slot. */}
       <DevOverlay
         onApplyGSS={handleApplyGSS}
         isOpen={clipboardOpen}
         onOpenChange={setClipboardOpen}
+        hideFloatingTrigger
       />
+
+      {/* Settings tray — bottom-right gear button + popup hosting the
+          Console, Predictions, and Auth slots. Consolidates the floating
+          chrome elements James flagged as "clumped" and "overlapping". */}
+      <SettingsTray onConsoleClick={() => setClipboardOpen(true)} />
     </main>
   );
 }

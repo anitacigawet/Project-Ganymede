@@ -1618,15 +1618,13 @@ function LithographyStyles() {
         align-items: center;
         justify-content: space-between;
         padding: 14px 22px;
-        /* Reserve clearance on the right so the OPTICS BOX STAGE label
-           ("Etched — Resolution Ready" etc.) doesn't slide under the
-           floating PREDICTIONS chip pinned at top-right of the page.
-           (160px was the first attempt and clipped the label; 224px
-           matches the PhysicsCanvas pr-56 with ~44px breathing room.) */
-        padding-right: 224px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.08);
         background: rgba(2, 6, 23, 0.6);
         backdrop-filter: blur(8px);
+        /* Earlier padding-right:224px was a workaround for the floating
+           PREDICTIONS chip at top-right; that chip is now consolidated into
+           the SettingsTray popup at bottom-right, so the header gets its
+           full width back. */
       }
       .lv-header-left  { display: flex; align-items: center; gap: 12px; }
       .lv-header-right { display: flex; align-items: center; gap: 18px; }

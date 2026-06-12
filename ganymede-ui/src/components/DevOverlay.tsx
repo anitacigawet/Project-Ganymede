@@ -51,9 +51,14 @@ interface DevOverlayProps {
   onOpenChange: (open: boolean) => void;
   /** Controlled prompt block — Runner fills this when it has an Engine resolution. */
   promptBlock?: string;
+  /** When true, skip rendering the standalone floating Terminal button at
+   *  bottom-right. The SettingsTray now owns that corner and triggers
+   *  ``onOpenChange(true)`` itself, so the legacy floating trigger would
+   *  duplicate the button. */
+  hideFloatingTrigger?: boolean;
 }
 
-export function DevOverlay({ onApplyGSS, isOpen, onOpenChange, promptBlock }: DevOverlayProps) {
+export function DevOverlay({ onApplyGSS, isOpen, onOpenChange, promptBlock, hideFloatingTrigger }: DevOverlayProps) {
   const [jsonInput, setJsonInput] = useState('');
 
   const displayedPromptBlock = promptBlock && promptBlock.length > 0 ? promptBlock : DEFAULT_PROMPT_BLOCK;
@@ -76,6 +81,7 @@ export function DevOverlay({ onApplyGSS, isOpen, onOpenChange, promptBlock }: De
   };
 
   if (!isOpen) {
+    if (hideFloatingTrigger) return null;
     return (
       <button
         onClick={() => onOpenChange(true)}
