@@ -300,10 +300,13 @@ export function AuthPill() {
     : '—';
 
   return (
-    // Pinned bottom-left so it sits next to the Next.js dev-mode "N" badge.
+    // Pinned bottom-left. Sits in the bottom-left chrome stack alongside the
+    // Ask/Runner/Map tab strip (above us, see page.tsx). The Next.js dev-mode
+    // "N" badge is hidden via next.config.ts devIndicators:false so we get
+    // the corner to ourselves.
     // The dropdown opens UPWARD (absolute bottom-full) because the pill is
     // near the bottom edge — a default downward-opening dropdown would clip.
-    <div className="fixed bottom-4 left-14 z-50 select-none font-mono text-xs">
+    <div className="fixed bottom-4 left-4 z-50 select-none font-mono text-xs">
       {/* Pill */}
       <button
         type="button"

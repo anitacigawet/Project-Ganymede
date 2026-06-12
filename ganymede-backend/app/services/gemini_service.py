@@ -41,9 +41,13 @@ _DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
 # dispatch call.
 if _DEEPSEEK_API_KEY.startswith("PASTE_") or _DEEPSEEK_API_KEY in {"YOUR_KEY", "REPLACE_ME"}:
     _DEEPSEEK_API_KEY = ""
-_DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat").strip()
+# DeepSeek API update 2026-06: deepseek-chat / deepseek-reasoner deprecate
+# 2026-07-24; deepseek-v4-flash is the new fast tier (right fit for
+# dispatcher intent classification). Base URL is now /chat/completions, no
+# /v1 prefix (verified 2026-06-11 against api-docs.deepseek.com).
+_DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
 _DEEPSEEK_BASE_URL = os.environ.get(
-    "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"
+    "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
 ).strip().rstrip("/")
 _GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
 
@@ -56,7 +60,10 @@ async def _dispatch_via_deepseek(prompt: str) -> str:
 
     Pattern mirrored from DRAINO Clean-Room (``server/_core/llm.ts``
     ``openAICompatibleInvoke``) — DeepSeek and OpenAI speak the same
-    dialect at ``/v1/chat/completions``.
+    dialect at ``/chat/completions``. JSON mode requires the prompt to
+    contain the word "json" + a format example (DISPATCHER_PROMPT
+    satisfies both); ``max_tokens`` is set explicitly per DeepSeek's
+    JSON-mode guidance to prevent mid-stream truncation.
     """
     if not _DEEPSEEK_API_KEY:
         raise RuntimeError("DEEPSEEK_API_KEY is not set")
@@ -66,6 +73,7 @@ async def _dispatch_via_deepseek(prompt: str) -> str:
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
         "temperature": 0.0,
+        "max_tokens": 1024,
     }
     headers = {
         "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",

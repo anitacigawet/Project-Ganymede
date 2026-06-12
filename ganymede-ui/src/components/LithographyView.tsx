@@ -1618,6 +1618,10 @@ function LithographyStyles() {
         align-items: center;
         justify-content: space-between;
         padding: 14px 22px;
+        /* Reserve clearance on the right so the OPTICS BOX STAGE label
+           ("Etched — Resolution Ready" etc.) doesn't slide under the
+           floating PREDICTIONS chip pinned at top-right of the page. */
+        padding-right: 160px;
         border-bottom: 1px solid rgba(148, 163, 184, 0.08);
         background: rgba(2, 6, 23, 0.6);
         backdrop-filter: blur(8px);

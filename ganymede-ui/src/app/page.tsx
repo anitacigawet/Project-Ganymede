@@ -178,8 +178,12 @@ export default function Home() {
 
         {/* Floating toggle — always visible so the operator can find the
             advanced (Runner) mode from the dispatcher entry. Map button
-            only appears once a Runner run has something to visualise. */}
-        <div className="absolute bottom-6 left-6 z-40 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
+            only appears once a Runner run has something to visualise.
+            Shifted to `left-32` so it sits clear of the Next.js error
+            badge (bottom-left, dev-only) and the AuthPill (bottom-4 left-4)
+            — three distinct chrome elements stacked horizontally at the
+            bottom edge instead of overlapping. */}
+        <div className="absolute bottom-6 left-32 z-40 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
           <button
             type="button"
             onClick={() => setLeftPanelMode('dispatcher')}

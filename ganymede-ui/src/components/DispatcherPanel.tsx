@@ -18,7 +18,7 @@
  * page.tsx; the parent chooses one at a time (advanced vs. natural-language).
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RunnerSnapshot } from './RunnerPanel';
 import {
   Send,
@@ -260,7 +260,34 @@ export function DispatcherPanel({
   const useUniversalLoop =
     !!dispatch && dispatch.needs_external_knowledge && !forceQuickPath;
 
-  // Mirror dispatcher state up to the parent's runnerSnapshot so the
+  // Memoized snapshot. Without useMemo, every render recreated the
+  // object (and `Object.values(oracles)` returned a fresh array), forcing
+  // the parent to re-render on every keystroke — which combined with the
+  // parent's auto-flip useEffect floods the console with "Maximum update
+  // depth exceeded" React warnings. Memoizing makes the snapshot identity
+  // stable when its contents don't change.
+  const snapshot = useMemo<RunnerSnapshot>(() => {
+    const summary = text.trim() || Object.values(editedScenario)
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .join(' · ');
+    return {
+      pathway: (dispatch?.pathway ?? 'cleanroom') as Pathway as RunnerSnapshot['pathway'],
+      runMode: (useUniversalLoop ? 'full_loop' : 'synthesis') as RunnerSnapshot['runMode'],
+      scenarioSummary: summary,
+      blueprint,
+      oracles: Object.values(oracles) as unknown as RunnerSnapshot['oracles'],
+      strokes: strokes as unknown as RunnerSnapshot['strokes'],
+      finalText,
+      running: phase === 'running',
+      hasError: phase === 'error',
+      recentEvents: [],
+    };
+  }, [
+    phase, text, editedScenario, dispatch, useUniversalLoop,
+    blueprint, oracles, strokes, finalText,
+  ]);
+
+  // Mirror the memoized snapshot up to the parent's runnerSnapshot so the
   // mind-map view can render live progress while the run is in flight.
   // Shape matches what RunnerPanel emits — page.tsx wires both panels into
   // the same setRunnerSnapshot. The visualizer's bicameral mode detection
@@ -269,27 +296,8 @@ export function DispatcherPanel({
   // spawn graph instead.
   useEffect(() => {
     if (!onSnapshotChange) return;
-    const summary = text.trim() || Object.values(editedScenario)
-      .filter((v): v is string => typeof v === 'string' && v.length > 0)
-      .join(' · ');
-    const oraclesList = Object.values(oracles);
-    const snapshot: RunnerSnapshot = {
-      pathway: (dispatch?.pathway ?? 'cleanroom') as Pathway as RunnerSnapshot['pathway'],
-      runMode: (useUniversalLoop ? 'full_loop' : 'synthesis') as RunnerSnapshot['runMode'],
-      scenarioSummary: summary,
-      blueprint,
-      oracles: oraclesList as unknown as RunnerSnapshot['oracles'],
-      strokes: strokes as unknown as RunnerSnapshot['strokes'],
-      finalText,
-      running: phase === 'running',
-      hasError: phase === 'error',
-      recentEvents: [],
-    };
     onSnapshotChange(snapshot);
-  }, [
-    onSnapshotChange, phase, text, editedScenario, dispatch,
-    useUniversalLoop, blueprint, oracles, strokes, finalText,
-  ]);
+  }, [onSnapshotChange, snapshot]);
 
   const reset = useCallback(() => {
     // Close any in-flight WS before zeroing state so we don't leak
