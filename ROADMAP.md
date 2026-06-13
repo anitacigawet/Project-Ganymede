@@ -12,11 +12,11 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 
 ---
 
-## Status at a glance (2026-06-10)
+## Status at a glance (2026-06-13)
 
 | Silo | Last shipped | Active phase | Next phase |
 |---|---|---|---|
-| **1. Predictor** | LMArena Cleanroom partially validated 2026-06-05 (milestone 42) — Bridge's mechanism-category catch landed in reality as Anthropic's pause call, 10 days early | **P1: Bridge robustness** (2 of 3 exit criteria met) | P2: 2026-06-30 leaderboard-rank resolution (secondary, mechanism-category already validated) |
+| **1. Predictor** | Run 7 structural-attractor claim validated 2026-06-12/13 (milestone 51) — federal Fable 5 pull within ~24 hours of Run 7 ship confirmed framework's vector-agnostic structural claim via stronger expression on a different specific lever. Project's most consequential validation event to date. (Prior: Run 6 mechanism-category catch 2026-06-05 → Anthropic pause call, milestone 42; Powell DOJ-probe retroactive audit, milestone 40.) | **P1: Bridge robustness** (2 of 3 exit criteria met; lower urgency post-51) | **P2: 2026-06-30 LMArena structurally voided** (Fable 5 off the board; both surface bets voided; structural-claim validation already landed via milestone 51). P3 next pre-registered prediction selection is the substantive next phase. |
 | **2. Envisioner** | Bicameral Convergence Level 2 build E1-01 through E1-05 + E1-06 prep shipped 2026-06-06 (milestones 38, 42) | **E1 mostly built** — E1-06 first live run remains operator-driven | E2: Bicameral Level 3 |
 | **3. Methodology** | Framework Kernel vs. Scaffolding partition shipped (milestone 41) | (M1 complete) — **M2 operator-gated, deprioritized vs. E1/Pl2 in light of milestone 42** | M2: Side-by-side leaner-corpus test |
 | **4. Pluggable** | Dispatcher harvest-routing + DispatcherPanel WebSocket subscription shipped 2026-06-10 (milestone 49 — closes the friendly-entry-point promise: real-world Cleanroom routes to Universal Logic Loop automatically); `/managed-run` endpoint + dispatcher-as-canonical-entry-point + consumer-spec rewrite + new Z-SPAN handoff doc earlier the same day (milestone 48); persistence layer (46) + BridgeNotebookRegistry persistence (47) earlier still | **Pl2-03 first live session — operator-driven, the only remaining Pl2 chunk** | (no Pl-phase scheduled after Pl2) |

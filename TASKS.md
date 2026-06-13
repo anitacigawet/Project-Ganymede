@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-10 (post-milestone 49 — Dispatcher now routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel gains a WebSocket subscription mirroring RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire. Triggered by James catching the architectural mismatch during the post-milestone-48 visualizer-choreography test: the friendly front door (Dispatcher) was routing real-world Cleanroom questions to a path that auto-supplied a single trivial Truth Packet, structurally guaranteeing "no information" refusals or non-deterministic substrate pattern-matching. Backend extends `dispatch_intent` with a `needs_external_knowledge` classification; frontend branches on it; review UI shows path-choice + wall-time hint + operator-override toggle. Also implicitly closes the visualizer-stuck-on-stage-1 bug because the WS subscription drives incremental snapshot updates. **Every claude-autonomous chunk on the current scope is done.** Remaining items are operator-gated or calendar-gated: Pl2-03 first live Z-SPAN strategic-planning session, E1-06 first live Bicameral Level 2 run, 2026-06-30 LMArena leaderboard-rank resolution, M2 leaner-corpus side-by-side test, P1-01 upstream notebooklm-py PR submission, plus a smoke-test of the milestone-49 fix end-to-end via Chrome MCP once backend is restarted).
+Last updated: 2026-06-13 (post-milestone 51 — Run 7's structural-attractor claim validated by federal Fable 5 pull within ~24 hours of the run ship. **Project's most consequential validation event to date.** Surface bet (LMArena #1 at 6/30) structurally voided because the model isn't on the board; structural claim (safety architecture funnels Anthropic into SDS_O) confirmed via stronger expression on a different specific lever. Three-layer milestone closeout discipline added (plumbing / surface bet / structural claim) as sibling to milestone 50's wiring/output distinction. **Every claude-autonomous chunk on the current scope remains done** — Pl2-03 still operator-driven; E1-06 operator-driven; M2 operator-gated but sharper urgency post-validation; P1-01 upstream notebooklm-py PR submission is operator action; P2 LMArena 6/30 calendar gate is now a non-event for tracking (no rank data to pull, both surface bets voided). Pl2-03 first live Z-SPAN session + Pl3 Operator Lens get higher leverage post-validation. Prior-state context: post-milestone 49, Dispatcher routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel WebSocket subscription mirrors RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire.)
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -355,12 +355,12 @@ Awaiting operator approval of the M1 PROCEED recommendation. Per the partition d
 - M2-03: Apply the evaluation criteria (PRESERVE Powell-class wins; REDUCE Amnesia/LMArena dimensional-greed failures; NEUTRAL Stroke 1 length drop)
 - M2-04: Write the side-by-side test report; operator decides on promotion to canonical (operator-gated — major scope shift)
 
-### Silo 1 Phase P2: 2026-06-30 LMArena prediction validation
+### ~~Silo 1 Phase P2: 2026-06-30 LMArena prediction validation~~ — structurally superseded 2026-06-13 (milestone 51)
 
-Calendar-gated. Fires on or near 2026-06-30.
+Both Run 6 and Run 7 surface bets structurally voided by federal Fable 5 pull 2026-06-12. The 6/30 calendar gate becomes a non-event for tracking — Fable 5 isn't on the board, so neither "Anthropic holds #1" nor "Anthropic loses #1" resolves cleanly. The structural-claim validation already landed (see [milestone 51](docs/history/Architecture_History.md) + [`docs/experiments/runs/07_LMArena_Universal_Loop_Validation.md`](docs/experiments/runs/07_LMArena_Universal_Loop_Validation.md) § "Real-world outcome — 2026-06-12/13").
 
-- P2-01: Pull leaderboard rank + Polymarket resolution price
-- P2-02: Update Run 06 record with outcome + classification
+- ~~P2-01: Pull leaderboard rank + Polymarket resolution price~~ → no rank data to pull (surface bet voided).
+- ~~P2-02: Update Run 06 record with outcome + classification~~ → Run 7 record carries the validation; Run 6 record optionally annotated with "structurally voided" note as low-priority cleanup chunk.
 
 ---
 

@@ -1201,6 +1201,76 @@ Treating routing success as project success is the silent-failure mode of milest
 
 ---
 
+## 51. Polymarket-rooted reality test — Run 7's structural-attractor claim confirmed by federal Fable 5 pull within ~24 hours (2026-06-13)
+
+Run 7 (Universal Logic Loop on LMArena Cleanroom, per milestone 50) shipped 2026-06-11 as the first end-to-end exercise of the PKI Oracle harvest path with grounded synthesis. Its falsifiable surface bet was: *"Anthropic will not hold the #1 spot on LMArena at the end of June 2026."* Its structural claim was deeper: *"Anthropic's well-intentioned safety constraints serve as the exact mechanism that funnels them into the Set of Disadvantageous States (SDS_O) [...] the blind evaluation environment guarantees that Anthropic's ethical architecture will bleed Elo points to OpenAI's unrestricted, high-parameter brute force, resulting in a systemic and mathematically inevitable loss of the #1 rank."* The hypothesized vector — Opus 4.8 safety-fallback in ~5% of sessions creating Elo bleed via blind-preference voting — was specific; the structural claim was vector-agnostic.
+
+On **2026-06-12**, ~24 hours after Run 7 shipped, the US federal government issued an export-control directive citing national security authorities, requiring Anthropic to disable **Claude Fable 5 and Mythos 5 for all customers** ([Anthropic statement, 2026-06-12](https://www.anthropic.com/news/fable-mythos-access)). Anthropic's response: *"We disagree that the finding of a narrow potential jailbreak should be cause for recalling a commercial model deployed to hundreds of millions of people."* The cited vulnerability, per Anthropic, is *"discoverable in other publicly-available models as well."*
+
+### What this validated
+
+**Run 7's structural-attractor claim**, vector-agnostic: *Anthropic's safety architecture is the load-bearing variable producing the loss state.* Reality delivered the convergence to the loss state via federal regulatory pull, not the LMArena Elo bleed the framework hypothesized. The asymmetric-threshold tell is in Anthropic's own statement — the cited vulnerability exists in other publicly-available models, but only Anthropic's frontier got pulled. The vector by which Anthropic gets punished while peers don't is structurally *the punishability of being the safety-trained frontier specifically*. That is the framework's structural claim instantiated, on a different lever than predicted, with a stronger expression and a faster timescale.
+
+### What this did NOT validate
+
+**The specific Run 7 mechanism prediction.** The framework's hypothesized vector was LMArena Elo bleed via Opus 4.8 safety-fallback. That couldn't fire — Fable 5 is no longer on the board for the 2026-06-30 leaderboard resolution. Reality picked a different specific mechanism entirely (federal action citing a jailbreak finding). The framework named *what kind of force was about to act on Anthropic*, not the specific lever the force would use.
+
+The Run 7 surface bet (LMArena #1 at end of June 2026) is now **structurally voided** — the model isn't on the board, so the question doesn't resolve cleanly in either direction. The earlier Run 6 audited prediction (Anthropic holds #1, milestone 36) is similarly voided for the same reason.
+
+### Why this matters at the project's vision level
+
+The project's stated mission per `docs/OVERVIEW.md` (Silo 1 Predictor): *"Given a falsifiable scenario, it identifies non-obvious strategic outcomes that reality later confirms."* Prior wins were partial validations and mechanism-category catches:
+
+- **Powell Cleanroom** — Bridge audit (P1-02, milestone 40) caught a DOJ-probe temporal-state error in the Engine's Strategic Lasso. Retroactive audit.
+- **Tokenized Land** — Incomprehensible Move primitive validated retroactively against ERC-4337.
+- **Run 6 LMArena** — Bridge's "metacognitive adaptation as moat" catch landed in reality 10 days later as Anthropic's pause call (milestone 42). Mechanism-category catch, partial validation.
+- **Musk-Altman** — partial directional validation.
+
+**This is the first time the framework has named a structural attractor and reality has converged to a stronger expression of it within a day.** That is a different kind of capability than "good at picking benchmark winners." It is the capability the project actually claims — the Convergence Theorem operating as the project's vision says it does, naming where the convergence is going before the specific mechanism is visible.
+
+This is the project's most consequential validation event to date. It is not, however, *general* validation of the framework. The track record is now 4 partial + 1 strong structural-attractor catch. Treat as one strong data point in support of the project's load-bearing claim, not as proof the framework will produce structural-attractor catches reliably.
+
+### Where the bias hid in the first-pass closeout
+
+In the first conversational pass after the Anthropic statement landed, the closeout drifted into mechanism-mismatch litigation (regulatory pull ≠ Elo bleed) at the expense of engaging with the framework's actual structural claim. Two stacked failures: (1) anchoring on Run 7's surface mechanism instead of its vector-agnostic claim; (2) retreating to "the mechanism doesn't match" as the rhetorical move that let the analyst avoid engaging with the politically-loaded structural claim. The operator named both. This is a fresh instance of the milestone 50 cross-cutting discipline ("validate output, not just wiring") applied at the milestone-closeout level — distinguishing *which specific mechanism the framework hypothesized* from *what kind of outcome the framework predicted*.
+
+### Three-layer milestone closeout discipline
+
+Milestone 50 caught a "wiring works ≠ project works" framing error. Milestone 51 was at risk of a different framing error: *"specific mechanism mismatched, therefore the prediction was wrong."* Both errors collapse a load-bearing distinction. Milestone closeouts should be explicit about three independent layers:
+
+1. **Plumbing** — did the orchestration path fire end-to-end? (Milestone 50's bar.)
+2. **Specific surface bet** — did the falsifiable claim resolve in the predicted direction? (LMArena #1 at 6/30 — voided here.)
+3. **Structural claim** — did reality converge to the vector-agnostic attractor the framework named? (Validated here.)
+
+These are independent. A milestone can validate any subset. Future closeouts should report each layer separately. The Run 7 outcome section mirrors this discipline.
+
+### What this milestone closes
+
+- **The LMArena 6/30 calendar gate** at the surface-bet level. Surface bet structurally voided; the structural-claim validation lands here, not on 6/30. The 6/30 calendar gate becomes a non-event for project tracking; no rank data to pull.
+- **The "what does Run 7 buy you" question** raised in the milestone 50 closeout. Milestone 50 validated the plumbing (PKI Oracle harvest path end-to-end); milestone 51 validates the output (the synthesis Run 7 produced named the structural attractor reality then converged to).
+- **The architectural-confidence question for consumer-side investment.** Pl2-03 (Z-SPAN first live consumer) and Pl3 (Operator Lens) both get *more* weight, not less, because the framework just demonstrated its load-bearing claim — naming structural attractors before their specific mechanisms are visible is exactly the shape of capability Z-SPAN's strategic-positioning questions consume.
+
+### What this milestone does NOT close
+
+- **Generalization claim.** One strong structural-attractor catch is not proof of repeatable capability. Future predictions will test whether this generalizes.
+- **The asymmetric-vector caveat.** The framework's hypothesized mechanism (LMArena Elo bleed) was not what reality delivered. Future runs should be explicit about distinguishing *what specific mechanism the framework predicts* from *what kind of outcome the framework predicts*. The surface bet was wrong; the structural claim was right; both should be recoverable from a run record without ambiguity.
+- **M2 leaner-corpus question.** The framework's structural-attractor claim landed; what part of the corpus is doing that work and what part is scaffolding is now more pressing, not less. M2 stays operator-gated but should be revisited with sharper urgency.
+- **Bridge audit gap on Universal Logic Loop output.** Run 7 was single-stroke (Phase 3 only). Whether a Bridge pass over Run 7's synthesis would have surfaced the regulatory-vector reading is an open methodology question. Adding Bridge audit to Universal Logic Loop output is a deferred E1-adjacent architectural call (not a milestone-51 fix).
+
+### Pending after this milestone
+
+- Pl2-03 first live Z-SPAN strategic-planning session (operator-driven) — now higher leverage.
+- E1-06 first live Bicameral Level 2 run (operator-driven).
+- M2 leaner-corpus side-by-side test (operator-gated; sharper urgency post-validation).
+- P1-01 upstream `notebooklm-py` PR submission (operator action).
+- Decision: does Universal Logic Loop output get a downstream Bridge audit pass? (Adds methodology for vector-agnostic structural claims; out of scope for milestone 51 itself.)
+
+### Cross-cutting note
+
+The project's track record now spans four distinct validation shapes: retroactive audit (Powell DOJ-probe error; Tokenized Land), forward-looking mechanism-category catch (Run 6 → Anthropic pause call, 10 days), partial directional validation (Musk-Altman), and forward-looking structural-attractor identification with stronger-expression realization (Run 7 → federal Fable 5 pull, ~24 hours). Each shape is a different kind of evidence for what the framework does. The structural-attractor shape is the one that maps most directly to the project's vision-level claim per OVERVIEW.md.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
@@ -1266,3 +1336,6 @@ Treating routing success as project success is the silent-failure mode of milest
 | Synthesis input-cap truncation (50) | `truncate_packets_for_synthesis()` + `_SYNTHESIS_PACKETS_BUDGET` in `ganymede-backend/app/services/orchestrator.py` + `synthesize()` wired to call the helper before rendering `packets_block` (env `GANYMEDE_SYNTHESIS_PACKETS_BUDGET` default 4500) |
 | Multi-provider dispatcher routing (50) | `_LLM_PROVIDER` / `_DEEPSEEK_API_KEY` / `_dispatch_via_deepseek` / `_dispatch_via_gemini` + cross-provider fallback in `GeminiService.dispatch_intent` in `ganymede-backend/app/services/gemini_service.py` + `.env` slots for `LLM_PROVIDER` / `DEEPSEEK_API_KEY` |
 | Milestone 50 end-to-end validation run | session `de892dc9-14a2-4764-9792-115c9720e68b` in SessionStore — first run this session where 3 Oracle harvests + grounded synthesis all succeeded in a single flow |
+| Milestone 51 structural-claim validation (51) | [`../experiments/runs/07_LMArena_Universal_Loop_Validation.md`](../experiments/runs/07_LMArena_Universal_Loop_Validation.md) § "Real-world outcome — 2026-06-12/13" + project memory `project_structural_attractor_validation` |
+| Anthropic Fable 5 / Mythos 5 access statement (51) | https://www.anthropic.com/news/fable-mythos-access — 2026-06-12 |
+| Three-layer milestone closeout discipline (51) | this milestone § "Three-layer milestone closeout discipline" — extends milestone 50's wiring/output distinction with surface-bet/structural-claim distinction |

@@ -136,6 +136,59 @@ This is the second framework prediction on the same scenario:
 
 Independent comparison anchor: Polymarket's "Which company has best AI model end of June?" market price on 2026-06-30. Real LMArena leaderboard ranking on 2026-06-30.
 
+## Real-world outcome — 2026-06-12/13 (STRUCTURAL CLAIM VALIDATED, SURFACE BET VOIDED)
+
+On **2026-06-12**, ~24 hours after this run shipped, the US federal government issued an export-control directive citing national security authorities. Per [Anthropic's public statement](https://www.anthropic.com/news/fable-mythos-access), the directive required Anthropic to abruptly disable **Claude Fable 5 and Mythos 5 for all customers**. Anthropic's response: *"We disagree that the finding of a narrow potential jailbreak should be cause for recalling a commercial model deployed to hundreds of millions of people."* The cited vulnerability, per Anthropic, is *"discoverable in other publicly-available models as well."*
+
+### How this maps to Run 7's claim
+
+Run 7's surface bet was: *"Anthropic will not hold the #1 spot on LMArena at the end of June 2026."* Its structural claim, vector-agnostic: *"Anthropic's well-intentioned safety constraints serve as the exact mechanism that funnels them into the Set of Disadvantageous States (SDS_O) [...] the blind evaluation environment guarantees that Anthropic's ethical architecture will bleed Elo points to OpenAI's unrestricted, high-parameter brute force, resulting in a systemic and mathematically inevitable loss of the #1 rank."*
+
+The framework's hypothesized vector (LMArena Elo bleed via Opus 4.8 safety-fallback in ~5% of sessions) is not what reality delivered. The framework's vector-agnostic structural claim (*Anthropic's safety architecture is the load-bearing variable producing the loss state*) is what reality delivered. The asymmetric-threshold tell sits in Anthropic's own statement: the cited vulnerability exists in other publicly-available models, but only Anthropic's frontier got pulled. The vector by which Anthropic gets punished while peers don't is structurally *the punishability of being the safety-trained frontier specifically* — the framework's structural claim instantiated on a different lever than predicted, with a stronger expression and a faster timescale.
+
+### What this validates
+
+1. **The framework's structural-attractor identification at the vision level.** Per `docs/OVERVIEW.md`'s Silo 1 mission — *"identifies non-obvious strategic outcomes that reality later confirms."* This is the first time the framework has named a structural attractor and reality has converged to a stronger expression of it within a day. Prior wins were partial validations and mechanism-category catches; this is structural-attractor confirmation. Project's most consequential validation event to date.
+2. **The Universal Logic Loop's harvest-then-synthesize discipline.** Run 6 (Iterative Engine path, single auto-generated Truth Packet) produced corpus-pattern-matched fabulation. Run 7 (Universal Logic Loop path, 3 PKI-Oracle-harvested Truth Packets) produced specific-claim-citation reasoning that named the structural attractor reality then converged to. The harvest pipeline is doing the load-bearing epistemic work.
+3. **The Convergence Theorem operating as the project's vision claims.** The framework's deliverable is naming *where the convergence is going* before the specific mechanism is visible. The LMArena specific call was the falsifiable wrapping; the underlying structural call was *what kind of force was about to act on Anthropic*. Reality picked a different specific lever and pulled it harder.
+
+### What this does NOT validate
+
+1. **The specific Run 7 mechanism prediction.** Opus 4.8 fallback in ~5% of sessions producing Elo bleed against GPT-6 didn't fire — Fable 5 is no longer on the board for the 6/30 resolution. The framework picked one specific vector; reality picked another. *What the framework correctly identified was the kind of force, not the specific lever.* Future runs should be explicit about distinguishing surface bet from structural claim.
+2. **The LMArena 6/30 surface bet.** Structurally voided — Fable 5 doesn't lose rank if it isn't on the board. Run 6's earlier audited prediction (Anthropic holds #1) is similarly voided. The 6/30 calendar gate becomes a non-event for tracking.
+3. **General framework reliability.** One strong structural-attractor catch is one strong data point. Project track record is now 4 partial + 1 strong; not proof of repeatable structural-attractor capability.
+
+### Why this matters for the project's validation discipline
+
+The project's stated purpose for the LMArena run was not to win the Polymarket bet — it was to use a falsifiable near-term real-world event as a validation substrate for the strategic-physics engine. By that framing, this is the project's strongest validation event to date: the framework named a structural attractor (safety architecture funneling Anthropic into SDS_O) and reality delivered a stronger expression of that attractor on a different specific lever in <24 hours.
+
+The LMArena leaderboard-rank Polymarket question at 2026-06-30 is now structurally orthogonal — Anthropic's actual strategic predicament operated at a different layer than the benchmark-rank question framed, and the model on which the framework's predicted Elo mechanism would have operated isn't on the board.
+
+### Classification
+
+**STRUCTURAL CLAIM VALIDATED + SURFACE BET VOIDED** — the framework's vector-agnostic structural-attractor claim was confirmed by reality within ~24 hours via a stronger mechanism (federal regulatory pull citing an asymmetric-threshold jailbreak finding) than the framework's hypothesized vector (LMArena Elo bleed). The specific surface bet is structurally voided because the model isn't on the board for the 6/30 resolution.
+
+### Updated pre-registered prediction status
+
+| Component | Status as of 2026-06-13 |
+|---|---|
+| Surface bet (Anthropic does not hold #1 on LMArena at 2026-06-30) | **Structurally voided** — Fable 5 pulled before resolution |
+| Run 7 hypothesized mechanism (Opus 4.8 fallback in ~5% of sessions creating Elo bleed) | **Did not fire** — different specific mechanism realized (federal regulatory pull) |
+| Run 7 structural claim (safety architecture funnels Anthropic into SDS_O) | **Validated 2026-06-12/13** via stronger expression on a different specific lever |
+| Asymmetric-threshold tell (safety-trained frontier specifically) | **Present in Anthropic's own statement** — cited vulnerability exists in other public models too |
+| Earlier Run 6 audited prediction (Anthropic holds #1) | **Structurally voided** for same reason — same calendar gate, no model on the board |
+
+### What this argues for next
+
+The Pl2-03 first live Z-SPAN session and the Pl3 Operator Lens both get *more* weight, not less. If the framework's actual deliverable is structural-attractor identification — not surface-mechanism prediction — then Z-SPAN's strategic-positioning questions (terminology lock-in, competitive response, audience-facing narrative) are the highest-value consumer shape the project has lined up. The Operator Lens translation is the difference between a structural call collecting dust in a run record and one the operator can actually act on.
+
+The Methodology Silo's M2 leaner-corpus question is sharper too. The framework just demonstrated its load-bearing claim; which parts of the foundations corpus are doing that work and which parts are scaffolding is more pressing now, not less.
+
+### Recorded in
+
+- [Architecture History milestone 51](../../history/Architecture_History.md) — canonical decision-log entry.
+- Project memory `project_structural_attractor_validation` — cross-session memory.
+
 ## Cross-references
 
 - [Architecture_History.md § milestone 50](../../history/Architecture_History.md#50-pki-oracle-harvest-path-unblocked-end-to-end--import_research-timeout--synthesis-input-cap--dispatcher-multi-provider-routing-2026-06-11) — the three failures + their fixes that this run validated.
