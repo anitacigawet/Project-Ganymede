@@ -464,6 +464,18 @@ This **strengthens** the audited Stroke 3 prediction (market 77% is approximatel
 - Rotate the GOOGLE_API_KEY in Google AI Studio (operator action — flagged in handoff because the key was pasted into chat during the Dispatcher build session).
 - ~~Commit all session work to git~~ ✓ Will commit at session end including this fourth/fifth-run verification + the four code changes shipped this session.
 
+## Real-world outcome — 2026-06-12/13 (surface bet structurally voided; validation deepened via Run 7)
+
+On **2026-06-12**, the US federal government issued an export-control directive requiring Anthropic to disable Claude Fable 5 and Mythos 5 for all customers, citing a vulnerability Anthropic's own statement says is *"discoverable in other publicly-available models as well"* ([Anthropic statement](https://www.anthropic.com/news/fable-mythos-access)).
+
+**Impact on Run 6's pre-registered prediction:** the audited Stroke 3 prediction (Anthropic *holds* #1 at end of June 2026) is **structurally voided** for the same reason Run 7's contrasting prediction is — Fable 5 isn't on the board for the 2026-06-30 leaderboard resolution. The 6/30 calendar gate becomes a non-event for tracking.
+
+**The validation that Run 6 contributed to** — the Bridge's mechanism-category catch ("metacognitive adaptation as moat") landing as Anthropic's 2026-06-05 pause call — is unchanged by this voiding. That partial validation remains the canonical entry for Run 6's framework value. What Run 6 cannot now resolve is the *leaderboard-rank* surface bet; what it already validated stands.
+
+**See also:** the structural-attractor validation that lands in the same calendar window, recorded against Run 7: [`07_LMArena_Universal_Loop_Validation.md`](07_LMArena_Universal_Loop_Validation.md) § "Real-world outcome — 2026-06-12/13", [Architecture History milestone 51](../../history/Architecture_History.md). Run 6 and Run 7 are both moot at the rank-prediction level; Run 7's structural claim is what the framework actually demonstrated.
+
+---
+
 ## Real-world outcome — 2026-06-05 (PARTIAL VALIDATION at mechanism-category level)
 
 On **2026-06-05**, ten days after Run 7's Bridge audit, Anthropic publicly called for a **global pause on frontier AI development** ([Yahoo News](https://www.yahoo.com/news/science/articles/anthropic-calls-pause-global-ai-223531016.html)). Specific framing per the article:

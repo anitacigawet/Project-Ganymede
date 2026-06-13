@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-13 (post-milestone 51 — Run 7's structural-attractor claim validated by federal Fable 5 pull within ~24 hours of the run ship. **Project's most consequential validation event to date.** Surface bet (LMArena #1 at 6/30) structurally voided because the model isn't on the board; structural claim (safety architecture funnels Anthropic into SDS_O) confirmed via stronger expression on a different specific lever. Three-layer milestone closeout discipline added (plumbing / surface bet / structural claim) as sibling to milestone 50's wiring/output distinction. **Every claude-autonomous chunk on the current scope remains done** — Pl2-03 still operator-driven; E1-06 operator-driven; M2 operator-gated but sharper urgency post-validation; P1-01 upstream notebooklm-py PR submission is operator action; P2 LMArena 6/30 calendar gate is now a non-event for tracking (no rank data to pull, both surface bets voided). Pl2-03 first live Z-SPAN session + Pl3 Operator Lens get higher leverage post-validation. Prior-state context: post-milestone 49, Dispatcher routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel WebSocket subscription mirrors RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire.)
+Last updated: 2026-06-13 (post-milestone 51 + operator pause-experiments decision — Run 7's structural-attractor claim validated by federal Fable 5 pull within ~24 hours of the run ship. **Project's most consequential validation event to date.** Operator decision 2026-06-13: pause investing time in experimental architecture variants (M2 leaner-corpus side-by-side test; E1-06 first live Bicameral Level 2 run; proposed Bridge audit on Universal Logic Loop output) since the current validated path is producing structural-attractor-grade output. Pause-not-delete: builds/specs/partition docs all stay intact. See PAUSED section below. Pl2-03 first live Z-SPAN session remains the only substantive operator-driven work and is paused while Z-SPAN's own development cycle is busy. P2 LMArena 6/30 calendar gate is structurally voided (both Run 6 + Run 7 surface bets moot because Fable 5 isn't on the board). P1-01 upstream notebooklm-py PR remains operator action. Cleanup landed 2026-06-13: Run 6 record "structurally voided" annotation; DispatcherPanel iterative/bridge toggle clarifying note (paths apply to quick concept-analysis only). Prior-state context: post-milestone 49, Dispatcher routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel WebSocket subscription mirrors RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire.)
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -161,7 +161,7 @@ Smoke-test status: `npx tsc --noEmit` against the project's tsconfig passes clea
 
 **DispatcherPanel deferred**: DispatcherPanel doesn't use WebSocket (it's fetch-based, blocking until /iterate returns). Wiring bicameral live-progress there requires adding a WS subscription during the /iterate call — separate work, lower priority. The RunnerPanel is the canonical operator-driven surface; Z-SPAN as Pl2 first consumer will use the v2 API directly, not the DispatcherPanel UI.
 
-### E1-06 · First live run on a documented test scenario (operator-driven)
+### E1-06 · First live run on a documented test scenario (operator-driven; **PAUSED 2026-06-13** — see PAUSED section)
 
 Run the new loop end-to-end on a scenario the operator approves; write up the run record.
 
@@ -346,7 +346,7 @@ surfaces. Architectural spec already locked in
 
 **Operator-gated next step.** Promoting M2 to ACTIVE depends on operator sign-off on the partition doc's PROCEED recommendation. The leaner-corpus build is a major scope shift (the canonical Engine's grounding moves), so this isn't autonomous-territory.
 
-### Silo 3 Phase M2: Leaner-corpus side-by-side test (NEXT — operator-gated)
+### Silo 3 Phase M2: Leaner-corpus side-by-side test (NEXT — operator-gated; **PAUSED 2026-06-13** — see PAUSED section)
 
 Awaiting operator approval of the M1 PROCEED recommendation. Per the partition doc's "Proposed M2 design":
 
@@ -354,6 +354,23 @@ Awaiting operator approval of the M1 PROCEED recommendation. Per the partition d
 - M2-02: Run Powell, Tokenized Land, 60-Second Amnesia, Genie Giant-Slayer, and LMArena scenarios against BOTH the canonical Engine and the leaner sibling
 - M2-03: Apply the evaluation criteria (PRESERVE Powell-class wins; REDUCE Amnesia/LMArena dimensional-greed failures; NEUTRAL Stroke 1 length drop)
 - M2-04: Write the side-by-side test report; operator decides on promotion to canonical (operator-gated — major scope shift)
+
+### PAUSED — experimental architecture tracks (2026-06-13 operator decision, post-milestone 51)
+
+Per operator decision 2026-06-13 after the structural-attractor validation event: pause investing time in experimental architecture variants. The current validated path (Universal Logic Loop with closed-RAG harvest → grounded synthesis → Operator Lens translation) is producing structural-attractor-grade output. Don't add experimentation cost while the current path is working.
+
+**Pause-not-delete:** all existing specs, builds, and partition docs stay intact and shipped. Revisit only if the current path starts producing failures the validated discipline doesn't catch.
+
+#### M2 — Leaner-corpus side-by-side test — PAUSED
+Per Methodology Silo phase M2 ([`docs/concepts/Framework_Kernel_vs_Scaffolding_Partition.md`](docs/concepts/Framework_Kernel_vs_Scaffolding_Partition.md) § "Recommendation: PROCEED to M2"). Milestone 51 reduced the empirical motivation — kernel-mode reasoning was what landed in reality; scaffolding labels were decorative in the validation event. Partition doc retained as analysis artifact.
+
+#### E1-06 — First live Bicameral Level 2 run — PAUSED
+Build complete (E1-01 through E1-05 + endpoint prep, milestone 38/42). Only the live exercise remained; was operator-driven. Milestone 51 demonstrated single-stroke Universal Logic Loop is sufficient for structural-attractor catches; the multi-stroke convergence loop's empirical motivation is reduced. Build artifacts retained at `app/services/orchestrator.py:run_bicameral_loop`, `POST /api/v2/sessions/{id}/bicameral-loop`, and the BicameralProgressIndicator component.
+
+#### Bridge audit on Universal Logic Loop output — PAUSED (not yet built)
+Open architectural enhancement flagged in milestone 51 § "What this milestone does NOT close" — would adding a Bridge audit pass over Universal Logic Loop synthesis surface vector-mismatches (like Run 7's Elo-bleed hypothesis vs realized regulatory pull) before the run ships? Not built. Lighter-lift enhancement on the validated path (composes rather than replaces). Revisit if structural-attractor-claim runs start producing vector-mismatched outputs that operator-side review can't catch.
+
+---
 
 ### ~~Silo 1 Phase P2: 2026-06-30 LMArena prediction validation~~ — structurally superseded 2026-06-13 (milestone 51)
 

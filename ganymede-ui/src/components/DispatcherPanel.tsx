@@ -659,6 +659,9 @@ export function DispatcherPanel({
                 />
                 + Connection Bridge audit (Bicameral)
               </label>
+              <p className="text-[10px] text-slate-500 italic mt-0.5">
+                These apply to the quick concept-analysis path. Knowledge-harvest runs ignore them.
+              </p>
             </div>
             <button
               onClick={submitDispatch}
