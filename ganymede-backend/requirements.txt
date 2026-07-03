@@ -1,0 +1,26 @@
+# Ganymede backend — direct dependencies.
+#
+# Pins mirror the last known-good environment (the venv_312 snapshot that ran
+# milestones 46-51 on the pre-handoff Windows machine; see
+# docs/concepts/Substrate_Migration.md § SM-0). Authored 2026-07-02 during the
+# Mac bring-up — this file is the canonical manifest; the committed venv_312
+# directory is a legacy artifact scheduled for removal in SM-6.
+#
+# notebooklm-py: BASE package only, deliberately. The [browser] extra pulls
+# playwright (login flows). Under the substrate migration NotebookLM is
+# dormant — client.py's top-level imports need the package present, but no
+# login ever runs on this machine. If NotebookLM is ever reactivated:
+#   pip install 'notebooklm-py[browser]==0.3.4' && notebooklm login
+
+fastapi==0.136.1
+uvicorn==0.46.0
+pydantic==2.13.3
+httpx==0.28.1
+google-genai==1.74.0
+notebooklm-py==0.3.4
+
+# Runtime deps invisible to import-grep (audit-#2 reviewer catch):
+# uvicorn's WebSocket protocol for the /api/v2 event stream, and .env
+# loading which main.py skips silently when the package is absent.
+websockets==16.0
+python-dotenv==1.2.2

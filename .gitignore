@@ -41,3 +41,6 @@ ganymede-backend/scratch/*.tmp
 
 # Pl2-01 session persistence — local SQLite DB; per-environment state, not source
 ganymede-backend/data/
+
+# Mac-side venv (SM-0); venv_312 is the legacy committed Windows venv, removed in SM-6
+ganymede-backend/venv_mac/
