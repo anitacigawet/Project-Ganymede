@@ -116,11 +116,21 @@ class EngineSubstrate(Protocol):
 - Personas: reuse the constants in `notebooklm/client.py:85-166` verbatim,
   plus a **sphere-discipline block** (§ 5) appended for the Sonnet side only.
 - Output-format conformance: Sonnet strokes MUST keep satisfying the parsing
-  the orchestrator already does — `_count_bridges_in_audit` (regex on
-  `Bridge N (STRUCTURAL|IMPLIED)`), `_parse_audit_findings` (numbered fault
-  categories), `_extract_final_resolution_section` (FINAL RESOLUTION header),
-  `_strip_trailing_cta`. SM-1 ships regex-conformance tests that fire real
-  strokes and assert the parsers extract non-empty structure.
+  the orchestrator already does — **five load-bearing parsers**:
+  `_count_bridges_in_audit` (regex on `Bridge N (STRUCTURAL|IMPLIED)`),
+  `_parse_audit_findings` (numbered fault categories),
+  `_extract_final_resolution_section` (FINAL RESOLUTION header),
+  `_strip_trailing_cta`, and `parse_triage_hit_list` (orchestrator.py:2042 —
+  the `<HIT_LIST_JSON>` marker contract at :145-149; a triage that misses the
+  marker shape silently degrades `run_universal_loop` to blueprint-only
+  synthesis at :1898-1914, so this one is REQUIRED in conformance tests).
+  Soft dependents (benign failure = extra paid bicameral iterations, noted
+  not tested): `_is_audit_substantive`, `_resolution_stable`. SM-1 ships
+  conformance tests that fire real strokes and assert all five parsers
+  extract non-empty structure.
+- `SubstrateResult` fields persisted per stroke: `cost_usd`, `substrate`,
+  and `model_id` (three additive `StrokeResult` fields — model_id makes R3
+  silent-routing observable per stroke, not just per config).
 
 ## 4. Cost model (evidence: Z-SPAN D-119 + D-121, live-metered 2026-06-17)
 
@@ -189,12 +199,23 @@ SM-3's diff report grades both substrates on sphere behavior explicitly.
 
 **SM-0 · Mac environment bring-up** *(no NotebookLM needed)*
 Backend has never run on this machine (venv_312 is a committed Windows venv).
-Create `ganymede-backend/venv_mac` on python3.11; derive + check in
-`requirements.txt` (fastapi, uvicorn, pydantic, httpx, notebooklm(-py),
-google-genai — verified against imports); backend boots headless with
-NotebookLM init degraded (main.py already degrades per milestone 46);
-`GET /api/health` green; TestClient smoke for sessions endpoints.
-**Done:** health + sessions endpoints respond on :8000 without NotebookLM auth.
+Create `ganymede-backend/venv_mac` on **python3.12** (parity with the
+known-good venv_312; 3.11 fallback with a justification note if the brew
+install fights back); author + check in `requirements.txt` pinned from
+venv_312's dist-info — fastapi 0.136.1, uvicorn 0.46.0, pydantic 2.13.3,
+httpx 0.28.1, google-genai 1.74.0, `notebooklm-py==0.3.4` **base extra only**
+(playwright is `[browser]`-extra, login-flow-only — a dormant backend never
+installs it), **plus the two invisible-to-import-grep runtime deps the
+reviewer caught: `websockets` (uvicorn WS protocol for the v2 event stream)
+and `python-dotenv` (main.py silently skips `.env` without it)**. Ship a
+checked-in `.env.example` documenting dormant mode: `GANYMEDE_AUTO_RELOGIN=0`
+(reviewer finding: default-ON auto-relogin spawns a `notebooklm login`
+attempt on every boot — auth_check.py:555-563 — which is not-dormant),
+substrate default, cost-warn threshold. Backend boots with NotebookLM init
+degraded-and-quiet; `GET /api/health` green; sessions endpoints + WS route
+import clean.
+**Done:** health + sessions endpoints respond on :8000 with zero NotebookLM
+auth AND zero login-spawn attempts in the boot log.
 
 **SM-1 · SonnetSubstrate service** *(no NotebookLM needed)*
 `substrate.py` (protocol + both implementations + claude-p wrapper +
@@ -210,10 +231,17 @@ extracting structure; conformance tests green.
 **SM-2 · Orchestrator seam + corpus assembler + PDF extraction**
 Thread `EngineSubstrate` through `run_synthesis_stroke`, `run_audit_stroke`,
 `audit_with_bridge`, `run_translation`, `run_iterative_engine`,
-`run_bicameral_loop`, `synthesize`, `triage` (triage stays Engine-persona —
-same substrate seam). Sonnet path skips: bridge-notebook provisioning
-(stateless Bridge), injection budgets + truncation (full-fidelity injection),
-cooldown gate. NotebookLM path untouched. PDF→md extraction lands.
+`run_bicameral_loop`, `synthesize`, `triage`, **and `run_universal_loop`'s
+Phase-1 triage, which calls `svc.query_chess_engine` INLINE at
+orchestrator.py:1886 rather than via `triage()` (reviewer catch — missing it
+would leave a live NotebookLM call inside the "migrated" loop)**. Gate
+`main.py` startup NotebookLM init on substrate (dormant ⇒ skip init +
+auto-relogin entirely rather than try-and-degrade). Mark the legacy
+`/api/orchestrate` surface (main.py:425 direct `query_notebook`) and
+`resolution_check` as notebooklm-only dormant endpoints. Sonnet path skips:
+bridge-notebook provisioning (stateless Bridge), injection budgets +
+truncation (full-fidelity injection), cooldown gate. NotebookLM path
+otherwise untouched. PDF→md extraction lands.
 **Done:** `GANYMEDE_SUBSTRATE=sonnet` runs the full iterative loop end-to-end
 on a toy scenario with zero NotebookLM calls; `=notebooklm` still compiles the
 old path (execution untested until SM-3's auth).
@@ -254,10 +282,13 @@ rewrite (#1-#3 marked dormant-with-the-substrate, reactivation conditions
 documented; new: corpus-in-git integrity, persona constants as canon,
 explicit model pinning, node-token handling), `docs/concepts/Closed_RAG_Sphere.md`
 written (F9 — physics→policy + the dangling Run-7 link fixed),
-CLAUDE.md/ROADMAP/TASKS sweep, UI provenance labels, Architecture_History
-**milestone 52**. Known gap until SM-7: the Dispatcher UI's auto-harvest
-path (real-world Cleanroom via Universal Logic Loop) has no live harvester —
-consumer-supplied packets (`/managed-run`, Z-SPAN shape) are unaffected.
+CLAUDE.md/ROADMAP/TASKS sweep, UI provenance labels **including the AuthPill
+(reviewer: it polls `/auth/status` cleanly under dormancy but would show red
+forever — becomes a "Substrate: Sonnet" state or hides when dormant)**,
+Architecture_History **milestone 52**. Known gap until SM-7: the Dispatcher
+UI's auto-harvest path (real-world Cleanroom via Universal Logic Loop) has no
+live harvester — consumer-supplied packets (`/managed-run`, Z-SPAN shape) are
+unaffected.
 **Done:** fresh clone + SM-0 steps + `sonnet` default = working analytical
 engine with no Google auth at all.
 
@@ -365,6 +396,35 @@ integrated into the plan above:**
    committed Windows venv's dist-info BEFORE SM-6 purges it** — the venv is
    currently the only record of the known-good dependency set.
 
-**Fresh-context adversarial reviewer:** first launch was killed by a session
-interrupt before reporting; relaunched against this revised plan. Verdict
-recorded below when it lands; execution of SM-0 starts only after that.
+**Fresh-context adversarial reviewer (2026-07-02, second launch — first was
+killed by a session interrupt):** verdict **EXECUTE-WITH-REVISIONS**, no
+BLOCK-level finding. Rollback story, cost arithmetic (33¢/stroke, $1.32/run
+re-derived ✓), Powell replay basis (`Powell_Cleanroom/03_Truth_Packets.md`,
+4 verbatim fenced packets, 13,176 chars + the null-test parser at
+`scripts/powell_bridge_null_test.py:40-70`), and SM-7 viability all HELD
+under attack. Revisions required and applied in this revision (-c):
+
+1. REFUTED (narrow): `parse_triage_hit_list` is a **fifth** load-bearing
+   parser (silent blueprint-only degradation on marker miss) → § 3 + SM-1
+   conformance tests.
+2. Startup is not dormant as drafted — `main.py:181-225` initialize() +
+   default-ON `auto_relogin` (auth_check.py:555-563) spawns a login attempt
+   per boot → SM-0 `.env.example` (`GANYMEDE_AUTO_RELOGIN=0`) + SM-2
+   substrate-gated startup.
+3. SM-2 seam list missed the inline `query_chess_engine` at
+   orchestrator.py:1886 (run_universal_loop Phase 1) → added; legacy
+   `/api/orchestrate` (main.py:425) marked dormant.
+4. SM-0 requirements were missing `websockets` (WS event stream dies
+   silently under plain uvicorn) + `python-dotenv` (.env silently skipped)
+   → added; python3.12 for venv_312 parity (3.11 fallback documented).
+5. Minor: `StrokeResult` gains three fields not one (cost_usd, substrate,
+   model_id — R3 observability); AuthPill dormant-state label (SM-4);
+   reference-file nit (Z-SPAN's text-mode synthesizer vs stream-json
+   metering wrapper are two files — plan knowingly merges both patterns).
+
+Reviewer also **resolved the corpus-parity residual affirmatively**:
+`docs/foundations/README.md:43,51` documents the canonical Engine notebook
+as grounded-in-this-corpus and reconstructable-from-these-files. The
+residual shrinks to post-import operator drift only.
+
+**Verdict recorded: EXECUTE. SM-0 begins.**
