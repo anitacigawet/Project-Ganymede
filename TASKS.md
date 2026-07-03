@@ -2,7 +2,7 @@
 
 The next thing Claude ships is the top item of ACTIVE.
 
-Last updated: 2026-06-13 (post-milestone 51 + operator pause-experiments decision — Run 7's structural-attractor claim validated by federal Fable 5 pull within ~24 hours of the run ship. **Project's most consequential validation event to date.** Operator decision 2026-06-13: pause investing time in experimental architecture variants (M2 leaner-corpus side-by-side test; E1-06 first live Bicameral Level 2 run; proposed Bridge audit on Universal Logic Loop output) since the current validated path is producing structural-attractor-grade output. Pause-not-delete: builds/specs/partition docs all stay intact. See PAUSED section below. Pl2-03 first live Z-SPAN session remains the only substantive operator-driven work and is paused while Z-SPAN's own development cycle is busy. P2 LMArena 6/30 calendar gate is structurally voided (both Run 6 + Run 7 surface bets moot because Fable 5 isn't on the board). P1-01 upstream notebooklm-py PR remains operator action. Cleanup landed 2026-06-13: Run 6 record "structurally voided" annotation; DispatcherPanel iterative/bridge toggle clarifying note (paths apply to quick concept-analysis only). Prior-state context: post-milestone 49, Dispatcher routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel WebSocket subscription mirrors RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire.)
+Last updated: 2026-07-02 (substrate-migration arc opened — see ACTIVE § SM below; prior 2026-06-13 (post-milestone 51 + operator pause-experiments decision — Run 7's structural-attractor claim validated by federal Fable 5 pull within ~24 hours of the run ship. **Project's most consequential validation event to date.** Operator decision 2026-06-13: pause investing time in experimental architecture variants (M2 leaner-corpus side-by-side test; E1-06 first live Bicameral Level 2 run; proposed Bridge audit on Universal Logic Loop output) since the current validated path is producing structural-attractor-grade output. Pause-not-delete: builds/specs/partition docs all stay intact. See PAUSED section below. Pl2-03 first live Z-SPAN session remains the only substantive operator-driven work and is paused while Z-SPAN's own development cycle is busy. P2 LMArena 6/30 calendar gate is structurally voided (both Run 6 + Run 7 surface bets moot because Fable 5 isn't on the board). P1-01 upstream notebooklm-py PR remains operator action. Cleanup landed 2026-06-13: Run 6 record "structurally voided" annotation; DispatcherPanel iterative/bridge toggle clarifying note (paths apply to quick concept-analysis only). Prior-state context: post-milestone 49, Dispatcher routes Cleanroom/Genie/Offensive on real-world entities to the Universal Logic Loop harvest path; DispatcherPanel WebSocket subscription mirrors RunnerPanel so the visualizer animates as Blueprint / Oracle / Stroke events fire.)
 
 > **How this file works** — see
 > [`CLAUDE.md`](CLAUDE.md) § "The Atomic Chunk Loop" and the
@@ -13,7 +13,32 @@ Last updated: 2026-06-13 (post-milestone 51 + operator pause-experiments decisio
 
 ---
 
-## ACTIVE — Silo 4 Phase Pl2: Z-SPAN as first module consumer
+## ACTIVE — Substrate Migration (SM): NotebookLM → Sonnet + Qdrant hybrid
+
+**Operator-authorized 2026-07-02** (Fable 5 session; resumed on the Mac after
+the complete-handoff clone). This is the Silo-3 M3 "framework decision" firing
+as a hybrid: analytical strokes (Engine / Auditor / Bridge / Lens) move to
+Sonnet via headless `claude -p` with the full foundations corpus in-context;
+NotebookLM survives **only** as the PKI Oracle Deep Research harvester; a
+Surface Pro Qdrant node (Z-SPAN `surfacepro_rag_node` architecture, separate
+service + collections) becomes the Truth-Packet library + session search.
+
+**Canonical plan: [`docs/concepts/Substrate_Migration.md`](docs/concepts/Substrate_Migration.md)**
+— phases, cost model (Z-SPAN D-119/D-121-grounded), closed-sphere enforcement
+design, risk register, rollback. Gated on audit #2 (§ 10 of the plan) before
+execution.
+
+- ⬜ **SM-0 · Mac environment bring-up** — venv_mac (py3.11), requirements.txt authored, backend boots degraded, health + sessions green. No NotebookLM.
+- ⬜ **SM-1 · SonnetSubstrate service** — `substrate.py` protocol + claude-p wrapper + cost capture + sphere-notice check + parser-conformance tests + model-ID live pin.
+- ⬜ **SM-2 · Orchestrator seam** — substrate threading through all stroke methods; Sonnet path skips provisioning/budgets/cooldown; PDF→md corpus extraction.
+- ⬜ **SM-3 · Side-by-side validation** — ⛔ operator gate: `notebooklm login` on this Mac. Recorded-packet replays (Powell + Run 7) on both substrates → diff report → cutover go/no-go.
+- ⬜ **SM-4 · Cutover + constitution rewrite** — sonnet default; guardrails #1-#3 harvest-scoped; `Closed_RAG_Sphere.md` written; milestone 52.
+- ⬜ **SM-5 · Surface Pro ganymede-rag-node** — ⛔ operator gate: install via courier handoff. Collections + Mac client + wire-ins + handoff doc. Parallel-eligible after SM-1.
+- ⬜ **SM-6 · Retirement + hygiene** — committed-Windows-venv purge, memory updates, docs closeout.
+
+---
+
+## PAUSED-BEHIND-SM — Silo 4 Phase Pl2: Z-SPAN as first module consumer
 
 Z-SPAN is the named first Pl2 consumer per milestone 43. Per the operator-locked sequence (P1-03b → P1-04 → Pl3 → Pl2 final), this is the last claude-autonomous phase before the project shifts to operator-driven validation events (E1-06 live run, 2026-06-30 LMArena resolution, M2 leaner-corpus test if approved).
 

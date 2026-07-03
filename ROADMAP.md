@@ -12,7 +12,18 @@ by the four silos defined in [`docs/OVERVIEW.md`](docs/OVERVIEW.md#the-four-silo
 
 ---
 
-## Status at a glance (2026-06-13)
+## Status at a glance (2026-07-02)
+
+> **📌 Substrate Migration arc ACTIVE (2026-07-02)** — the Silo-3 M3
+> "framework decision" resolved as a hybrid: analytical strokes move to
+> Sonnet + full-corpus-in-context via headless `claude -p`; NotebookLM
+> retained for PKI Oracle Deep Research only; Surface Pro Qdrant node added
+> as Truth-Packet library. Canonical plan + phases:
+> [`docs/concepts/Substrate_Migration.md`](docs/concepts/Substrate_Migration.md);
+> chunks in [`TASKS.md`](TASKS.md) § ACTIVE. The table below reflects the
+> 2026-06-13 pre-migration state and gets its rewrite at SM-4 cutover.
+
+### Pre-migration status (2026-06-13)
 
 | Silo | Last shipped | Active phase | Next phase |
 |---|---|---|---|
