@@ -8,16 +8,20 @@ color_id: "6"
 
 # Substrate Migration — NotebookLM → Sonnet + Qdrant (Hybrid)
 
-> **Status:** Plan drafted 2026-07-02 (Fable 5 session, post-audit-#1). Pending
-> audit #2 (adversarial plan review) before execution. Operator authorization:
-> James 2026-07-02 — hybrid substrate, Sonnet generator, "take the wheel."
+> **Status:** Plan drafted 2026-07-02 (Fable 5 session, post-audit-#1);
+> **scope-revised 2026-07-02-b** (operator: *"i dont want to run anymore
+> notebookLM stuff honestly, just want to migrate"* — NotebookLM goes fully
+> dormant, no re-auth ever; SM-3 redesigned loginless; SM-7 harvest
+> replacement added). Pending audit #2 (adversarial plan review) before
+> execution. Operator authorization: James 2026-07-02 — "take the wheel."
 >
 > **One-sentence shape:** the analytical strokes (Engine / Mirror Auditor /
 > Connection Bridge / Operator Lens) move from NotebookLM notebooks to
 > Sonnet via headless `claude -p` with the full 9D foundations corpus carried
-> in-context; NotebookLM survives **only** as the PKI Oracle Deep Research
-> harvester; a Qdrant node on the operator's Surface Pro (same architecture as
-> Z-SPAN's `surfacepro_rag_node`, separate service + collections) becomes the
+> in-context; the PKI Oracle harvest moves to a WebSearch-grounded `claude -p`
+> oracle (SM-7) with the NotebookLM path retained dormant-not-deleted; a
+> Qdrant node on the operator's Surface Pro (same architecture as Z-SPAN's
+> `surfacepro_rag_node`, separate service + collections) becomes the
 > accumulating Truth-Packet library and session-history search layer.
 
 ## 1. Decision provenance
@@ -25,6 +29,7 @@ color_id: "6"
 | Decision | By | When |
 |---|---|---|
 | Remove NotebookLM from analytical strokes; keep for Oracle harvest only (hybrid) | James | 2026-07-02 |
+| **Scope revision (-b): no further NotebookLM runtime at all** — no re-auth on this machine, no live side-by-side calls; hybrid → full dormancy; harvest replacement (SM-7) promoted from parked F12 idea to a real phase; old-machine `sessions.db` backup offered for exact-packet replay | James (*"i dont want to run anymore notebookLM stuff honestly, just want to migrate"*) | 2026-07-02 |
 | Sonnet as the replacement generator ("included in my subscription" — corrected to "included non-interactive compute cap," see § 4) | James, verified against Z-SPAN D-119/D-121 | 2026-07-02 |
 | Two Fable 5 audits: #1 pre-migration architecture (done), #2 this plan (pending) | James | 2026-07-02 |
 | Surface Pro Qdrant node, same architecture as Z-SPAN's, NOT shared infrastructure | James | 2026-07-02 |
@@ -54,9 +59,12 @@ irreplaceable capability (Deep Research) retained.
                         │     │    persona + FULL foundations corpus        │
                         │     │    + scenario + Truth Packets + priors      │
                         │     │    (Engine / Auditor / Bridge / Lens)       │
-                        │     └─ NotebookLM service (harvest-scoped):       │
-                        │          PKI Oracle create → Deep Research →      │
-                        │          import → hash-cited Truth Packet         │
+                        │     ├─ WebSearch PKI Oracle (SM-7):               │
+                        │     │    claude -p + WebSearch, PKI persona,      │
+                        │     │    hash-cites URLs → Truth Packet           │
+                        │     └─ NotebookLM service: DORMANT               │
+                        │          (code retained, never invoked; no auth   │
+                        │          on this machine — rollback artifact)     │
                         │   SessionStore (SQLite — unchanged)               │
                         └────────────┬──────────────────────────────────────┘
                                      │ LAN HTTP, bearer token
@@ -210,28 +218,46 @@ cooldown gate. NotebookLM path untouched. PDF→md extraction lands.
 on a toy scenario with zero NotebookLM calls; `=notebooklm` still compiles the
 old path (execution untested until SM-3's auth).
 
-**SM-3 · Side-by-side validation window (F3) — the one-time experiment**
-⛔ *Operator gate: `notebooklm login` on this Mac (first time on this
-machine); NotebookLM quota spend (~8-12 Engine/Auditor/Bridge calls total,
-explicitly authorized by this plan).*
-Replay with **recorded packets** (no new harvests): Powell (P1-02 record) and
-LMArena Run 7 (session `de892dc9…` / run record) — identical packets → both
-substrates → structured diff: FINAL RESOLUTION agreement, dimensional
-coverage, sphere behavior (notice presence, out-of-sphere claims), jargon
-register, output-shape parser compatibility, length, wall time, cost.
+**SM-3 · Recorded-baseline validation (F3, loginless — scope-revision -b)**
+*No NotebookLM runtime anywhere in this phase.* The comparison runs Sonnet
+against the **recorded** NotebookLM outputs already in the repo:
+- **Powell replay:** the canonical run record carries full Truth Packet text
+  (the P1-02 null-test driver parses packets from the markdown — same
+  extraction reused). Identical packets → Sonnet → structured diff against
+  the recorded Powell Engine Resolution.
+- **Run 7 replay (upgrade, gated on the old-machine backup):** operator
+  offered the pre-handoff `ganymede-backend/data/sessions.db` from the old
+  computer. When copied over (one file, non-blocking), session `de892dc9…`'s
+  exact truncated packets replay into Sonnet against Run 7's recorded
+  synthesis. Until then, Powell alone is the go/no-go basis.
+- **Canonical-notebook corpus parity** (self-pass finding): unverifiable
+  without auth, and auth is now never happening — the residual is accepted
+  and documented: parity evidence = provision_bridge_notebook's docstring
+  intent (orchestrator.py:954) + foundations README's 13-doc claim. Noted
+  in the diff report as a caveat, not a blocker.
+Diff dimensions: FINAL RESOLUTION agreement, dimensional coverage, sphere
+behavior (notice presence, out-of-sphere claims), jargon register,
+output-shape parser compatibility, length, cost. Caveat logged in the
+report: recorded-vs-fresh is temporally asymmetric (base models + prompts
+drifted since the recordings) — weaker than same-day side-by-side, which
+the operator declined deliberately to avoid NotebookLM runtime.
 Product: `docs/experiments/runs/Substrate_SideBySide.md` + a
 methodology_questions Q2 (locus-of-intelligence) update — first
 same-corpus-different-base-model data the project has ever had.
 **Done:** diff report exists; go/no-go call on cutover recorded in it.
 
 **SM-4 · Cutover + constitution rewrite**
-Default `GANYMEDE_SUBSTRATE=sonnet`. NotebookLM analytical path stays
-code-present (pause-not-delete; rollback = flip the env). Docs:
-OVERVIEW hard-guardrails rewrite (#1-#3 harvest-scoped; new: corpus-in-git
-integrity, persona constants as canon, explicit model pinning, node-token
-handling), `docs/concepts/Closed_RAG_Sphere.md` written (F9 — physics→policy
-+ the dangling Run-7 link fixed), CLAUDE.md/ROADMAP/TASKS sweep, UI
-provenance labels, Architecture_History **milestone 52**.
+Default `GANYMEDE_SUBSTRATE=sonnet`. The entire NotebookLM path (analytical
+AND harvest) stays code-present but dormant (pause-not-delete; rollback =
+flip the env + re-auth, operator-owned). Docs: OVERVIEW hard-guardrails
+rewrite (#1-#3 marked dormant-with-the-substrate, reactivation conditions
+documented; new: corpus-in-git integrity, persona constants as canon,
+explicit model pinning, node-token handling), `docs/concepts/Closed_RAG_Sphere.md`
+written (F9 — physics→policy + the dangling Run-7 link fixed),
+CLAUDE.md/ROADMAP/TASKS sweep, UI provenance labels, Architecture_History
+**milestone 52**. Known gap until SM-7: the Dispatcher UI's auto-harvest
+path (real-world Cleanroom via Universal Logic Loop) has no live harvester —
+consumer-supplied packets (`/managed-run`, Z-SPAN shape) are unaffected.
 **Done:** fresh clone + SM-0 steps + `sonnet` default = working analytical
 engine with no Google auth at all.
 
@@ -261,8 +287,32 @@ here so the big diff is expected); memory updates
 closeout; milestone 52 addendum if anything surprised.
 **Done:** contract docs + memory agree with the code again.
 
-Sequencing: SM-0 → SM-1 → SM-2 → SM-3 → SM-4 → SM-5 → SM-6, with SM-5
-parallel-eligible after SM-1 (its Mac-side client doesn't depend on cutover).
+**SM-7 · WebSearch PKI Oracle — the harvest replacement (scope-revision -b)**
+Replaces NotebookLM Deep Research as the Universal Logic Loop's Phase-2
+harvester. `WebSearchOracle` in the substrate module: `claude -p` with
+WebSearch enabled (`--allowedTools` per headless docs — exact flag verified
+live), `PKI_ORACLE_PERSONA` ported with the hash-citation format re-anchored
+to URLs (`[SRC-{domain-slug}:{hash}]`), one invocation per subject taking the
+surgical prompt verbatim (Hard Guardrail #5's jargon-strip already upstream
+in triage). Quality bar before it becomes the default harvester, validated
+on one real subject: ≥15 distinct sources cited OR an explicit shortfall
+marker in the packet (honesty-over-fabulation, per the PKI persona's
+DATA NOT FOUND discipline); packet shape must satisfy the existing
+zero-degradation synthesis path unchanged. Cost note: headless WebSearch
+pricing against the included cap is UNVERIFIED — SM-7's metering answers it
+before any default flips; if per-search pricing lands cash-side, surface to
+operator before adopting (per the no-unexpected-recurring-cost rule).
+`run_universal_loop` Phase 2 branches on substrate; ORACLE_* session events
+keep firing (payload gains `oracle_kind: websearch|notebooklm`) so the
+visualizer needs no rework.
+**Done:** one real-world Cleanroom question drives triage → WebSearch
+oracles → grounded synthesis end-to-end with zero NotebookLM calls, and the
+packet quality bar is met + recorded in a short run note.
+
+Sequencing: SM-0 → SM-1 → SM-2 → SM-3 → SM-4 → SM-7 → SM-5 → SM-6, with
+SM-5 parallel-eligible after SM-1 (its Mac-side client doesn't depend on
+cutover) and SM-7 buildable any time after SM-1 (it reuses the claude-p
+wrapper + metering).
 
 ## 8. Risk register
 
@@ -285,10 +335,36 @@ Nothing NotebookLM-side is deleted anywhere in this plan.
 
 No UI redesign; no M2 unpause (the flag exists, the experiment stays parked);
 no E1-06 unpause; no Bicameral redesign; no public-release moves; no
-Deep-Research replacement (F12's `claude -p`+WebSearch idea stays parked); no
-multi-tenant/auth work on the node beyond bearer token.
+multi-tenant/auth work on the node beyond bearer token; no deletion of any
+NotebookLM code anywhere (dormancy, not removal — rollback stays real).
 
 ## 10. Audit #2 log
 
-*(Filled after the adversarial plan review; execution does not start until
-this section records the verdict.)*
+**Self-refutation pass (Fable session, 2026-07-02) — five findings, all
+integrated into the plan above:**
+
+1. ❌→fixed **SM-3's Run 7 replay was impossible as drafted** — `data/` is
+   gitignored; session `de892dc9…`'s SQLite row did not survive the clone.
+   Redesign: Powell recorded-packet replay (packets verbatim in the repo
+   record) + Run 7 exact-packet replay gated on the operator's old-machine
+   `sessions.db` backup. (Superseded the interim fresh-harvest idea, which
+   died with scope-revision -b's no-NotebookLM-runtime rule.)
+2. ⚠️→fixed **`resolution_check` is chat-stateful** (relies on Engine-notebook
+   conversational memory; sends no scenario/synthesis content). Not called by
+   any session-aware loop — marked notebooklm-only legacy in SM-2. The
+   iterative + bicameral loops are stateless-safe by inheritance: the
+   input-cap era forced explicit re-injection of all prior content, which
+   accidentally made every loop prompt self-contained.
+3. ⚠️→SM-1 item **the ~18¢ base invocation cost likely includes loading the
+   operator's full interactive config (MCP servers etc.)** — SM-1 verifies an
+   isolated/slim configuration for subprocess calls and re-measures.
+4. ⚠️→SM-3 caveat **canonical-notebook corpus parity is unverifiable without
+   auth** (and auth is never happening per -b). Accepted residual, evidence
+   documented (orchestrator.py:954 docstring intent + foundations README).
+5. ⚠️→SM-0 item **pin `notebooklm-py`'s exact working version from the
+   committed Windows venv's dist-info BEFORE SM-6 purges it** — the venv is
+   currently the only record of the known-good dependency set.
+
+**Fresh-context adversarial reviewer:** first launch was killed by a session
+interrupt before reporting; relaunched against this revised plan. Verdict
+recorded below when it lands; execution of SM-0 starts only after that.

@@ -16,12 +16,17 @@ Last updated: 2026-07-02 (substrate-migration arc opened — see ACTIVE § SM be
 ## ACTIVE — Substrate Migration (SM): NotebookLM → Sonnet + Qdrant hybrid
 
 **Operator-authorized 2026-07-02** (Fable 5 session; resumed on the Mac after
-the complete-handoff clone). This is the Silo-3 M3 "framework decision" firing
-as a hybrid: analytical strokes (Engine / Auditor / Bridge / Lens) move to
-Sonnet via headless `claude -p` with the full foundations corpus in-context;
-NotebookLM survives **only** as the PKI Oracle Deep Research harvester; a
-Surface Pro Qdrant node (Z-SPAN `surfacepro_rag_node` architecture, separate
-service + collections) becomes the Truth-Packet library + session search.
+the complete-handoff clone). **Scope-revised same day (-b): NotebookLM goes
+fully dormant — no re-auth, no further runtime ever** (operator verbatim: *"i
+dont want to run anymore notebookLM stuff honestly, just want to migrate"*).
+This is the Silo-3 M3 "framework decision" firing: analytical strokes
+(Engine / Auditor / Bridge / Lens) move to Sonnet via headless `claude -p`
+with the full foundations corpus in-context; the PKI Oracle harvest moves to
+a WebSearch-grounded claude-p oracle (SM-7); NotebookLM code is retained
+dormant as the rollback artifact; a Surface Pro Qdrant node (Z-SPAN
+`surfacepro_rag_node` architecture, separate service + collections) becomes
+the Truth-Packet library + session search. Operator offered the old-machine
+`sessions.db` backup — one file, non-blocking, upgrades SM-3's Run 7 replay.
 
 **Canonical plan: [`docs/concepts/Substrate_Migration.md`](docs/concepts/Substrate_Migration.md)**
 — phases, cost model (Z-SPAN D-119/D-121-grounded), closed-sphere enforcement
@@ -31,10 +36,11 @@ execution.
 - ⬜ **SM-0 · Mac environment bring-up** — venv_mac (py3.11), requirements.txt authored, backend boots degraded, health + sessions green. No NotebookLM.
 - ⬜ **SM-1 · SonnetSubstrate service** — `substrate.py` protocol + claude-p wrapper + cost capture + sphere-notice check + parser-conformance tests + model-ID live pin.
 - ⬜ **SM-2 · Orchestrator seam** — substrate threading through all stroke methods; Sonnet path skips provisioning/budgets/cooldown; PDF→md corpus extraction.
-- ⬜ **SM-3 · Side-by-side validation** — ⛔ operator gate: `notebooklm login` on this Mac. Recorded-packet replays (Powell + Run 7) on both substrates → diff report → cutover go/no-go.
-- ⬜ **SM-4 · Cutover + constitution rewrite** — sonnet default; guardrails #1-#3 harvest-scoped; `Closed_RAG_Sphere.md` written; milestone 52.
+- ⬜ **SM-3 · Recorded-baseline validation (loginless)** — NO NotebookLM runtime. Powell recorded-packet replay → Sonnet vs recorded resolution diff; Run 7 exact-packet replay when the old-machine sessions.db backup arrives (non-blocking).
+- ⬜ **SM-4 · Cutover + constitution rewrite** — sonnet default; guardrails #1-#3 dormant-with-substrate; `Closed_RAG_Sphere.md` written; milestone 52.
+- ⬜ **SM-7 · WebSearch PKI Oracle (harvest replacement)** — claude-p + WebSearch + PKI persona, URL hash-citations, quality bar ≥15 sources or explicit shortfall; Universal Loop Phase 2 branches on substrate. Buildable after SM-1.
 - ⬜ **SM-5 · Surface Pro ganymede-rag-node** — ⛔ operator gate: install via courier handoff. Collections + Mac client + wire-ins + handoff doc. Parallel-eligible after SM-1.
-- ⬜ **SM-6 · Retirement + hygiene** — committed-Windows-venv purge, memory updates, docs closeout.
+- ⬜ **SM-6 · Retirement + hygiene** — committed-Windows-venv purge (after SM-0 pins notebooklm-py's version from its dist-info), memory updates, docs closeout.
 
 ---
 
