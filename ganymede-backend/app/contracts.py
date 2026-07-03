@@ -237,6 +237,23 @@ class StrokeResult(BaseModel):
     over time. None when no CTA was found. When set, it's the verbatim
     paragraph that was sliced from the trailing end of ``raw_response``."""
 
+    # Substrate provenance (SM-1, docs/concepts/Substrate_Migration.md § 3).
+    # All three optional: strokes persisted before the migration have none,
+    # and the NotebookLM path reports no per-call cost.
+    substrate: Optional[str] = None
+    """Which substrate produced this stroke: "sonnet" | "notebooklm".
+    None on pre-migration persisted strokes."""
+
+    model_id: Optional[str] = None
+    """Resolved model that actually served the stroke (from the stream-json
+    assistant event) — makes silent model routing observable per stroke,
+    not just per config (plan risk R3)."""
+
+    cost_usd: Optional[float] = None
+    """Per-stroke cost parsed from the claude -p result event. Bills the
+    Max plan's included non-interactive compute cap, not cash — recorded so
+    cap draw is visible in session state (plan § 4). None on NotebookLM."""
+
     # Metadata
     started_at: datetime
     completed_at: datetime

@@ -1,0 +1,43 @@
+{
+  "passed": 7,
+  "total": 7,
+  "total_cost_usd": 1.7244,
+  "model_pin": "claude-sonnet-5",
+  "checks": [
+    {
+      "name": "parse_triage_hit_list",
+      "ok": true,
+      "detail": "2 subjects parsed, model=claude-sonnet-5"
+    },
+    {
+      "name": "_extract_final_resolution_section",
+      "ok": true,
+      "detail": "1858 chars extracted"
+    },
+    {
+      "name": "sphere_notice_present",
+      "ok": true,
+      "detail": "Notice: prefix found"
+    },
+    {
+      "name": "_strip_trailing_cta (no-CTA persona rule)",
+      "ok": true,
+      "detail": "no trailing CTA"
+    },
+    {
+      "name": "_parse_audit_findings",
+      "ok": true,
+      "detail": "4 findings parsed"
+    },
+    {
+      "name": "_count_bridges_in_audit",
+      "ok": true,
+      "detail": "3 STRUCTURAL/IMPLIED bridges counted"
+    },
+    {
+      "name": "cache_hit_on_repeat",
+      "ok": true,
+      "detail": "read=62591 create=0 cost=$0.076 vs first=$0.437 (57s)"
+    }
+  ]
+}
