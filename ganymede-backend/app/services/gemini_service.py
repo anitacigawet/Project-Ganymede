@@ -30,26 +30,24 @@ DISPATCHER_PATHWAYS = ("cleanroom", "genie", "offensive", "mirror_audit")
 # Bridge / translation) per the milestone 45 closed-RAG-sphere principle.
 # ---------------------------------------------------------------------------
 
-_LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "deepseek").lower().strip()
-"""Primary dispatcher LLM. ``deepseek`` (default) or ``gemini``. If the
-primary fails, the other is tried before falling back to the cleanroom
-default response."""
+# Helper functions for dynamic env var reading (avoids caching empty keys at import time)
+def _get_llm_provider() -> str:
+    return os.environ.get("LLM_PROVIDER", "deepseek").lower().strip()
 
-_DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-# Treat the .env placeholder as unset so a half-configured deployment routes
-# cleanly to Gemini instead of burning a 401 round-trip to DeepSeek every
-# dispatch call.
-if _DEEPSEEK_API_KEY.startswith("PASTE_") or _DEEPSEEK_API_KEY in {"YOUR_KEY", "REPLACE_ME"}:
-    _DEEPSEEK_API_KEY = ""
-# DeepSeek API update 2026-06: deepseek-chat / deepseek-reasoner deprecate
-# 2026-07-24; deepseek-v4-flash is the new fast tier (right fit for
-# dispatcher intent classification). Base URL is now /chat/completions, no
-# /v1 prefix (verified 2026-06-11 against api-docs.deepseek.com).
-_DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
-_DEEPSEEK_BASE_URL = os.environ.get(
-    "DEEPSEEK_BASE_URL", "https://api.deepseek.com"
-).strip().rstrip("/")
-_GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
+def _get_deepseek_api_key() -> str:
+    key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
+    if key.startswith("PASTE_") or key in {"YOUR_KEY", "REPLACE_ME"}:
+        return ""
+    return key
+
+def _get_google_api_key() -> str:
+    return os.environ.get("GOOGLE_API_KEY", "").strip()
+
+def _get_deepseek_model() -> str:
+    return os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip()
+
+def _get_deepseek_base_url() -> str:
+    return os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip().rstrip("/")
 
 
 async def _dispatch_via_deepseek(prompt: str) -> str:
@@ -65,18 +63,19 @@ async def _dispatch_via_deepseek(prompt: str) -> str:
     satisfies both); ``max_tokens`` is set explicitly per DeepSeek's
     JSON-mode guidance to prevent mid-stream truncation.
     """
-    if not _DEEPSEEK_API_KEY:
+    key = _get_deepseek_api_key()
+    if not key:
         raise RuntimeError("DEEPSEEK_API_KEY is not set")
-    url = f"{_DEEPSEEK_BASE_URL}/chat/completions"
+    url = f"{_get_deepseek_base_url()}/chat/completions"
     payload = {
-        "model": _DEEPSEEK_MODEL,
+        "model": _get_deepseek_model(),
         "messages": [{"role": "user", "content": prompt}],
         "response_format": {"type": "json_object"},
         "temperature": 0.0,
         "max_tokens": 1024,
     }
     headers = {
-        "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
     async with httpx.AsyncClient(timeout=60.0) as http:
@@ -89,11 +88,13 @@ async def _dispatch_via_deepseek(prompt: str) -> str:
     return data["choices"][0]["message"]["content"]
 
 
-def _dispatch_via_gemini(prompt: str, client: genai.Client) -> str:
+def _dispatch_via_gemini(prompt: str, client: genai.Client | None) -> str:
     """Call Gemini Flash with the dispatcher prompt. Returns raw assistant
     text. Raises on any error so the caller can fall back."""
-    if not _GOOGLE_API_KEY:
+    if not _get_google_api_key():
         raise RuntimeError("GOOGLE_API_KEY is not set")
+    if client is None:
+        client = genai.Client()
     response = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
@@ -257,10 +258,10 @@ class GeminiService:
         # Lazy Gemini-client init: a deployment that only sets DEEPSEEK_API_KEY
         # should not fail at startup just because google-genai cannot find a
         # Google key. The client is only constructed when a Gemini fallback is
-        # actually needed. ``_dispatch_via_gemini`` checks _GOOGLE_API_KEY
+        # actually needed. ``_dispatch_via_gemini`` checks _get_google_api_key()
         # before calling, so this attribute is only touched on the Gemini
         # path.
-        if _GOOGLE_API_KEY:
+        if _get_google_api_key():
             self.client = genai.Client()
         else:
             self.client = None
@@ -379,12 +380,13 @@ class GeminiService:
         # Decide order: primary first, then fall back. Skip providers whose
         # API key is missing so a half-configured deployment routes cleanly
         # to whatever has credentials.
-        ordering = [_LLM_PROVIDER]
-        other = "gemini" if _LLM_PROVIDER == "deepseek" else "deepseek"
+        provider_primary = _get_llm_provider()
+        ordering = [provider_primary]
+        other = "gemini" if provider_primary == "deepseek" else "deepseek"
         ordering.append(other)
         ordering = [
             p for p in ordering
-            if (p == "deepseek" and _DEEPSEEK_API_KEY) or (p == "gemini" and _GOOGLE_API_KEY)
+            if (p == "deepseek" and _get_deepseek_api_key()) or (p == "gemini" and _get_google_api_key())
         ]
 
         last_exc: Exception | None = None
@@ -407,14 +409,12 @@ class GeminiService:
                     "No more providers to try; using defensive fallback.",
                 )
 
-        if not text:
-            # Both providers failed (or none configured). Return defensive
-            # fallback below in the except block by raising the last exc.
-            if last_exc is not None:
-                raise last_exc
-            raise RuntimeError("No dispatcher LLM provider configured")
-
         try:
+            if not text:
+                if last_exc is not None:
+                    raise last_exc
+                raise RuntimeError("No dispatcher LLM provider configured")
+
             text = text.strip()
             # Strip optional code fences.
             if text.startswith("```json"):
