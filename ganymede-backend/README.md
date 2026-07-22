@@ -46,9 +46,20 @@ OpenAPI docs: <http://localhost:8000/docs>
 ## Required environment
 
 - **`GOOGLE_API_KEY`** — for `GeminiService` (currently invoked only via `test_compiler.py`; `main.py` doesn't call Gemini directly).
-- **NotebookLM session** — at `~/.notebooklm/storage_state.json`. If the session is expired, refresh it with:
+- **NotebookLM session** — **dormant by decision** (Substrate Migration,
+  TASKS § SM, 2026-07-02: no re-auth, no further NotebookLM runtime; the
+  NotebookLM code path is retained as the rollback artifact). Everything
+  below is rollback-artifact procedure, not routine operation.
+  Ganymede uses a **dedicated** NotebookLM home at
+  `%USERPROFILE%\.notebooklm-ganymede` (set via `NOTEBOOKLM_HOME` in `.env` and
+  `run_dev.bat`; added 2026-07-22 after a shared-profile relogin captured
+  Z-SPAN's worker account and Ganymede lost access to its own notebooks —
+  LIST_NOTEBOOKS empty + PERMISSION_DENIED on the Engine). Never point this
+  at Z-SPAN's `~/.notebooklm`. If the session is expired or the profile is
+  fresh, sign in with the Google account that owns the Engine notebook:
   ```powershell
-  .\venv_312\Scripts\notebooklm.exe login
+  $env:NOTEBOOKLM_HOME = "$env:USERPROFILE\.notebooklm-ganymede"
+  .\venv_312\Scripts\python.exe -m notebooklm login
   ```
 
 ## Hard guardrails (enforced in code)

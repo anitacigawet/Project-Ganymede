@@ -35,6 +35,13 @@ set "VENV_PY=%CD%\venv_312\Scripts\python.exe"
 set "PYTHONPATH=."
 set "PYTHONUNBUFFERED=1"
 
+REM  Ganymede-dedicated NotebookLM profile (2026-07-22).  Ganymede and
+REM  Z-SPAN used to share ~/.notebooklm; a relogin then captured Z-SPAN's
+REM  worker account and Ganymede lost sight of its notebooks (LIST empty,
+REM  GET_NOTEBOOK PERMISSION_DENIED).  Keep the two projects isolated.
+REM  Mirrors the NOTEBOOKLM_HOME line in ganymede-backend\.env.
+set "NOTEBOOKLM_HOME=%USERPROFILE%\.notebooklm-ganymede"
+
 REM -- Port discovery --------------------------------------------
 REM  IMPORTANT: variable named BACKEND_PORT, not PORT.  Next.js dev
 REM  reads PORT from env and would bind the frontend to whatever the

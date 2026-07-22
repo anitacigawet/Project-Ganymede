@@ -1271,6 +1271,40 @@ The project's track record now spans four distinct validation shapes: retroactiv
 
 ---
 
+## 52. Post-storage resurrection repair — Gemini-3.5 wire migration patch + NotebookLM account isolation (2026-07-22)
+
+First session after the 2026-06-13 complete-handoff. The operator resurrected the local folder (new path `Desktop\Claude\Project-Ganymede`) and found the NotebookLM path dead: every `query_chess_engine` call failed with `RPC rLM1Ne returned null result data` (first observed 2026-07-20; backend killed mid-repair that day, leaving an uncommitted `gemini_service.py` fix in the tree).
+
+### Root causes — there were two, stacked
+
+1. **Google's Gemini-3.5 wire migration (upstream notebooklm-py #1546).** During a gradual server-side rollout (~mid-June through July 2026), migrated backends began rejecting the old degenerate request tails on `CREATE_NOTEBOOK` (`[2], [1]`), `ADD_SOURCE` (`[2], None, None`), `ADD_SOURCE_FILE` (`[2], [1,...,[1]]`), and the `GET_NOTEBOOK` read path (bare `[2]`), all replaced by a shared nested request-options wrapper `[2, None, None, [1, None×9, [1]]]`. The vendored `notebooklm` 0.3.4 in `venv_312` predates the migration. Ported the wrapper into the vendored SDK (`rpc/types.py:build_template_block()` + six call sites across `_core.py`, `_notebooks.py`, `_sources.py`); upstream live-verified the nested shape is accepted by un-migrated accounts too, so it is safe across cohorts. Chat streamed-query, `chat.configure`, research (start/poll/import), LIST/DELETE notebook shapes verified unchanged against upstream main. Drive-add intentionally left on the old tail (upstream has no migrated capture yet).
+
+2. **Wrong Google account in the shared NotebookLM profile.** Ganymede and Z-SPAN shared `~/.notebooklm` (a consequence of the milestone-40 auto_relogin port). At some point the Playwright profile's Google session became **zspan.worker@gmail.com only** — so every auto-relogin (including this session's) captured cookies for an account that owns zero Ganymede notebooks. Diagnostic evidence: `LIST_NOTEBOOKS` succeeds but returns 0 notebooks; `GET_NOTEBOOK` on the Engine returns status **7 (PERMISSION_DENIED)** under both old and new wire shapes. This — not the wire shape — was the live blocker; the wire-shape patch remains necessary for when the correct (possibly migrated) account returns.
+
+### The architectural fix — per-project NotebookLM homes
+
+`NOTEBOOKLM_HOME=%USERPROFILE%\.notebooklm-ganymede` wired into `ganymede-backend/.env` (gitignored, live) and `run_dev.bat` (committed). Ganymede now authenticates from its own browser profile + cookie store; Z-SPAN's `~/.notebooklm` is untouched and can never again be clobbered by (or clobber) Ganymede relogins. The 0.3.4 SDK honors `NOTEBOOKLM_HOME` natively (`paths.get_home_dir`), so this is env-only — no SDK change.
+
+**Sign-in status — voided by the Substrate Migration.** As originally diagnosed, one interactive `notebooklm login` under the new home (with the Google account owning Engine `0a7d2672-...` / Auditor `756e3683-...`) would restore the NotebookLM path. But the same-day rebase surfaced the **Substrate Migration arc (operator-authorized 2026-07-02 on the Mac; TASKS § SM): NotebookLM goes fully dormant — no re-auth, no further runtime ever.** So no login is required or wanted; the backend's degraded-but-honest boot (`client_initialized=false`, AuthPill shows re-login needed) is the *correct standing state* for the dormant substrate on Windows. The re-auth procedure stays documented in the backend README strictly as rollback-artifact operating knowledge. This session's wire-shape patch keeps that rollback artifact actually runnable — a dormant fallback that silently rotted would be rollback theater.
+
+### Also landed
+
+- **`gemini_service.py` dynamic env reads** — carried forward the uncommitted 2026-07-20 fix (module-level env caching → per-call `_get_*()` getters, lazy Gemini client, and the both-providers-failed path now correctly reaches the defensive-fallback `except` instead of propagating). Live-verified this session: `POST /api/v2/dispatch` classified a genie-pathway scenario via DeepSeek.
+- **Diagnostics kept in-repo**: `scripts/diagnose_notebooklm_rpc.py` (raw batchexecute probe: LIST + GET_NOTEBOOK under both wire shapes, prints `wrb.fr` frames + status slots) and `scripts/diagnose_notebooklm_account.py` (zero-RPC probe: which Google account the saved cookies belong to). Both were decisive here and will be again next time Google rotates something.
+- **Verified working end-to-end this session:** backend boot + graceful degraded startup, health, auth status, dispatcher (DeepSeek), session-store rehydration, frontend on :3000 (Intent Router, Live Runner, SettingsTray, AuthPill ↔ backend connectivity). NotebookLM engine queries remain blocked on the operator sign-in above.
+
+### Relationship to the Substrate Migration arc
+
+This repair was executed on the Windows clone before fetching, and the rebase then surfaced 5 remote commits (2026-07-02, Mac): the SM arc plan + SM-0 + SM-1, with SM-2 next. The two lines are complementary, not conflicting: the SM arc replaces NotebookLM at the substrate seam; this milestone (a) root-causes exactly the breakage class that made NotebookLM operationally painful — Google-side gradual wire migrations and shared-profile account capture — which now doubles as evidence in the migration's favor, (b) keeps the dormant NotebookLMSubstrate rollback path genuinely runnable, and (c) lands the same shared-credential isolation on Windows that SM-0's boot-surprise note demanded ("Z-SPAN-era NotebookLM credentials exist at ~/.notebooklm — SM-2's substrate-gated startup is a demonstrated requirement, not hygiene"). SM-4's planned milestone number shifts 52 → 53; TASKS § SM carries the note.
+
+### Operational lessons worth keeping
+
+- **Shared `~/.notebooklm` between projects is a standing foot-gun** — auto_relogin captures whatever account the shared profile's Google session defaults to, silently. Per-project `NOTEBOOKLM_HOME` is now the Ganymede convention; recommend the same isolation for any future project consuming notebooklm-py.
+- **"Auth valid" ≠ "right account."** The auth check verifies cookies authenticate, not that the session sees the project's notebooks. The wrong-account failure mode presents as PERMISSION_DENIED nulls on known-good notebook IDs with a green AuthPill. `diagnose_notebooklm_account.py` is the discriminator.
+- **Pinned vendored SDK + gradual Google rollouts = time-bomb.** The June-validated stack broke with zero local changes when the rollout reached this cohort. When NotebookLM breaks with nulls after a quiet period, diff the vendored wire shapes against upstream main before suspecting auth or code.
+
+---
+
 ## Cross-references at a glance
 
 | Concept | Now lives in |
