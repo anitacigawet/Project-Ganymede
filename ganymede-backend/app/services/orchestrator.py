@@ -243,6 +243,19 @@ _SYNTHESIS_PACKETS_BUDGET = int(
     os.environ.get("GANYMEDE_SYNTHESIS_PACKETS_BUDGET", "4500")
 )
 
+# The Operator Lens (Pl3 translation) routes the stroke source text through the
+# canonical Engine, so its rendered prompt (register template + source) hits the
+# same ~5,100-6,000 char silent-rejection cap that bites synthesis. A 9D
+# synthesis of ~3,900 chars + the ~2,000-char plain_english register template
+# lands at ~5,900 and NotebookLM returns empty. Budget is the TOTAL prompt-char
+# ceiling; run_translation head-truncates the source (mirroring
+# truncate_packets_for_synthesis) so template + source stays under it. Default
+# 4,800 leaves margin under the observed ~5,900 failure point. The full-fidelity
+# fix (no cap at all) is the Substrate Migration's Lens-on-Sonnet path.
+_TRANSLATION_PROMPT_BUDGET = int(
+    os.environ.get("GANYMEDE_TRANSLATION_PROMPT_BUDGET", "4800")
+)
+
 
 def truncate_packets_for_synthesis(
     truth_packets: dict[str, str],
@@ -1157,13 +1170,39 @@ class GanymedeOrchestrator:
                 f"response — nothing to translate"
             )
 
+        # Guard the NotebookLM input cap (~5,100-6,000 chars). The rendered
+        # prompt = register template + source; a long 9D synthesis pushes it
+        # past the cap and the Engine silently returns empty. Head-truncate the
+        # source so template_overhead + source stays under the budget, mirroring
+        # truncate_packets_for_synthesis. Full-fidelity (no truncation) is the
+        # Substrate Migration's Lens-on-Sonnet path.
+        template = TRANSLATION_PROMPT_TEMPLATES[register]
+        template_overhead = len(template) - len("{source_text}")
+        source_budget = max(500, _TRANSLATION_PROMPT_BUDGET - template_overhead)
+        if len(source) > source_budget:
+            marker = (
+                f"\n\n[TRUNCATED: original {len(source)} chars → {source_budget} "
+                f"to fit the Engine's input cap; later dimensions omitted from "
+                f"this translation. Full-fidelity translation is the "
+                f"Lens-on-Sonnet migration.]"
+            )
+            kept = source[: max(200, source_budget - len(marker))].rstrip()
+            logger.warning(
+                "Session %s: translation source for stroke %d register %r "
+                "truncated %d → %d chars (template overhead %d, budget %d) to "
+                "clear the NotebookLM input cap",
+                session.id, stroke_number, register, len(source),
+                len(kept) + len(marker), template_overhead,
+                _TRANSLATION_PROMPT_BUDGET,
+            )
+            source = kept + marker
+
         # Build the register-specific prompt with the source text injected.
         # Escape literal { } in the source so the .replace() below stays
         # safe even if the Engine's prior output contains framework jargon
         # like "{DAI}" / "{ROEM}" literally (P1-03b's pattern from
         # run_iterative_engine — defensive copy of the same escape).
         source_escaped = source.replace("{", "{{").replace("}", "}}")
-        template = TRANSLATION_PROMPT_TEMPLATES[register]
         prompt = template.replace("{source_text}", source_escaped)
 
         logger.info(
