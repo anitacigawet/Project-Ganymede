@@ -99,8 +99,19 @@ function tintFor(i: number): OracleHue { return ORACLE_HUES[i % ORACLE_HUES.leng
 // Stage derivation
 // =============================================================================
 
+// The lithography bench visualizes the Universal Logic Loop pipeline
+// (scenario → triage/plasma → blueprint → PKI-oracle optics → synthesis →
+// resolution wafer). That pipeline is identical across the three
+// oracle-harvest pathways, so the bench renders for all of them — not just
+// cleanroom (the original gate was too strict and blanked genie/offensive
+// runs to the DESIGN PENDING placeholder). mirror_audit is deliberately
+// excluded: it has no blueprint or oracle harvest, and its audit stroke
+// would otherwise falsely light the synthesis/wafer stages — so it keeps
+// the placeholder.
+const OPTICS_PATHWAYS = new Set(['cleanroom', 'genie', 'offensive']);
+
 function deriveStages(snap: RunnerSnapshot): Stages | null {
-  if (snap.pathway !== 'cleanroom') return null;
+  if (!OPTICS_PATHWAYS.has(snap.pathway)) return null;
   const running = snap.running;
   const blueprintReady = !!snap.blueprint;
   const oracles = snap.oracles || [];
@@ -275,13 +286,21 @@ function Header({
   );
 }
 
-function PathwayPlaceholder({ pathway: _pathway }: { pathway: string }) {
+function PathwayPlaceholder({ pathway }: { pathway: string }) {
+  // Only mirror_audit reaches here now that the bench renders for every
+  // oracle-harvest pathway (cleanroom / genie / offensive). Mirror Audit
+  // runs a single audit pass over a supplied prior resolution — there is no
+  // triage → oracle harvest → synthesis pipeline to render on the bench.
+  const isMirrorAudit = pathway === 'mirror_audit';
   return (
     <div className="lv-pathway-pending">
-      <div className="lv-pp-title">DESIGN PENDING</div>
+      <div className="lv-pp-title">
+        {isMirrorAudit ? 'NO BENCH FOR THIS PATHWAY' : 'DESIGN PENDING'}
+      </div>
       <div className="lv-pp-sub">
-        Cleanroom optics are live. The other pathways will follow once their
-        geometry is locked.
+        {isMirrorAudit
+          ? 'Mirror Audit reviews a prior resolution in a single pass — there is no oracle-harvest pipeline to visualise. Watch the audit stroke in the runner panel instead.'
+          : 'The optics bench renders for the oracle-harvest pathways (Predict / Pathfind / Architect). This pathway has no bench geometry yet.'}
       </div>
     </div>
   );
