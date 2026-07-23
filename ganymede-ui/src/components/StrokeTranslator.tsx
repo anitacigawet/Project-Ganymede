@@ -21,6 +21,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { Languages, RefreshCw, AlertTriangle } from 'lucide-react';
+import { fetchWithAuthRetry } from '@/lib/authRetry';
 
 const DEFAULT_BACKEND =
   process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
@@ -88,6 +89,9 @@ export function StrokeTranslator({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True while an expired-cookie retry is re-authenticating in the background,
+  // so the UI can show "re-authenticating…" instead of a raw error.
+  const [reauthing, setReauthing] = useState(false);
 
   const currentTranslation = cache[selectedRegister];
 
@@ -100,16 +104,22 @@ export function StrokeTranslator({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(
-          `${DEFAULT_BACKEND}/api/v2/sessions/${sessionId}/translate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              stroke_number: strokeNumber,
-              register,
+        // Route through fetchWithAuthRetry: if the call 500s because the
+        // NotebookLM cookies expired mid-session (the rLM1Ne null-result
+        // signature), it fires /auth/auto-relogin once and retries — so a
+        // routine ~2-5h cookie expiry self-heals instead of surfacing a 500.
+        const res = await fetchWithAuthRetry(
+          DEFAULT_BACKEND,
+          () =>
+            fetch(`${DEFAULT_BACKEND}/api/v2/sessions/${sessionId}/translate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                stroke_number: strokeNumber,
+                register,
+              }),
             }),
-          },
+          setReauthing,
         );
         if (!res.ok) {
           const body = await res.text();
@@ -126,6 +136,7 @@ export function StrokeTranslator({
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
+        setReauthing(false);
       }
     },
     [sessionId, strokeNumber],
@@ -207,7 +218,16 @@ export function StrokeTranslator({
         </div>
       )}
 
-      {loading && !currentTranslation && (
+      {reauthing && (
+        <div className="mt-2 flex items-start gap-2 rounded border border-amber-700/40 bg-amber-950/30 p-2 text-amber-200">
+          <RefreshCw className="h-3 w-3 shrink-0 mt-0.5 animate-spin" />
+          <span className="text-[10px]">
+            NotebookLM session expired — re-authenticating and retrying…
+          </span>
+        </div>
+      )}
+
+      {loading && !reauthing && !currentTranslation && (
         <div className="mt-2 text-slate-500 italic">
           Translating into{' '}
           {REGISTERS.find((r) => r.value === selectedRegister)?.label}…
