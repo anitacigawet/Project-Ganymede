@@ -1,11 +1,23 @@
 import type { NextConfig } from 'next';
 
+// Force-disable the Next.js 16 dev-tools indicator (the floating Next-logo
+// button in the bottom-left that spins during Fast Refresh compiles).
+//
+// In Next 16.2.4, `devIndicators: false` (below) only governs the LEGACY
+// static-route / build badge — it does NOT hide the new dev-tools indicator,
+// which is a separate component rendered inside the <nextjs-portal> shadow
+// root (id `#devtools-indicator`). That component gates its own visibility on
+// `process.env.__NEXT_DEV_INDICATOR?.toString() === 'false'` (verified in
+// node_modules/next/dist/compiled/next-devtools/index.js). Setting the env
+// var here — next.config.ts runs in-process before Next inlines client env —
+// is the native, cross-platform kill switch (no launcher/env-file/dep needed;
+// works for `npm run dev`, run_dev.bat, and the Mac stack alike). Errors still
+// surface via the full-screen error overlay + terminal.
+process.env.__NEXT_DEV_INDICATOR = 'false';
+
 const nextConfig: NextConfig = {
-  // Hide the Next.js dev-mode floating indicator. It was clumping with the
-  // AuthPill + Ask/Runner/Map tab strip in the bottom-left corner, making
-  // the overlay area read as a pile of disconnected chrome. Build/runtime
-  // errors still surface in the terminal + browser overlay; we just don't
-  // want the persistent floating chip.
+  // Legacy static-route / build-activity badge. Harmless to keep; the new
+  // dev-tools indicator is handled by the env var above.
   devIndicators: false,
 };
 
