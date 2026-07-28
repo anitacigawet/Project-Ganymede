@@ -10,6 +10,12 @@ import { DevOverlay } from '@/components/DevOverlay';
 import { SettingsTray } from '@/components/SettingsTray';
 import { GSSState } from '@/types/ganymede';
 
+// Shared style for the bottom nav buttons. Roomier on touch screens (~40px
+// tall, near the 44px touch-target guideline) and back to the compact
+// desktop chrome size at `lg`, where the pointer is a mouse.
+const NAV_BTN =
+  'px-3 py-3 lg:py-1.5 rounded text-xs lg:text-[10px] uppercase tracking-widest transition-colors';
+
 type RightPanelMode = 'canvas' | 'optics';
 // 'dispatcher' is the natural-language entry mode (single text box -> LLM
 // classifies into pathway + scenario, then runs locally). 'runner' is the
@@ -41,6 +47,13 @@ export default function Home() {
   // entry. Auto-flip logic does not move out of dispatcher (the dispatcher
   // has its own internal run state).
   const [leftPanelMode, setLeftPanelMode] = useState<LeftPanelMode>('dispatcher');
+
+  // Which of the two panels is on screen when the viewport is too narrow to
+  // show them side by side (below `lg`). The desktop layout ignores this
+  // entirely — both panels are always visible there. Only ever changed by an
+  // explicit tap on the bottom nav, never by the auto-flip effects below, so
+  // a run starting can't yank the surface out from under the operator.
+  const [mobileSurface, setMobileSurface] = useState<'left' | 'right'>('left');
   const prevSnapshotRef = useRef<RunnerSnapshot | null>(null);
   // Remember where we flipped from so we can flip back. Updated only on
   // the run-started transition, so the run-ended transition routes back
@@ -123,7 +136,11 @@ export default function Home() {
       runnerSnapshot.strokes.length > 0);
 
   return (
-    <main className="flex h-screen w-full bg-[#030712] p-4 gap-4 overflow-hidden relative">
+    // Side-by-side once there's room (lg+), stacked one-at-a-time below it.
+    // `100dvh` rather than `h-screen`/100vh: on mobile browsers the address
+    // bar grows and shrinks, and vh doesn't account for it — the bottom nav
+    // would sit off-screen behind the chrome. dvh tracks the real viewport.
+    <main className="flex flex-col lg:flex-row h-[100dvh] w-full bg-[#030712] p-4 gap-4 overflow-hidden relative">
       {/* Dynamic Background Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-[#030712] to-[#030712] pointer-events-none" />
 
@@ -137,7 +154,13 @@ export default function Home() {
           when inactive) so neither's state is lost when the operator
           toggles. The mind-map is layered on top via absolute positioning
           when active. */}
-      <div className="w-[40%] h-full flex-shrink-0 z-10 relative">
+      <div
+        className={[
+          mobileSurface === 'left' ? 'flex flex-col' : 'hidden',
+          'lg:block w-full lg:w-[40%] flex-1 min-h-0 lg:flex-none lg:h-full',
+          'z-10 relative',
+        ].join(' ')}
+      >
         <div
           style={{ display: leftPanelMode === 'dispatcher' ? 'block' : 'none' }}
           className="h-full"
@@ -166,7 +189,13 @@ export default function Home() {
 
       {/* Right Panel: choose between the 3D GSS canvas (museum/render mode)
           and the LithographyView (live run "inside the machine" mode). */}
-      <div className="w-[60%] h-full flex-shrink-0 z-10 relative">
+      <div
+        className={[
+          mobileSurface === 'right' ? 'flex flex-col' : 'hidden',
+          'lg:block w-full lg:w-[60%] flex-1 min-h-0 lg:flex-none lg:h-full',
+          'z-10 relative',
+        ].join(' ')}
+      >
         {rightPanelMode === 'optics' && runnerSnapshot ? (
           <LithographyView
             snapshot={runnerSnapshot}
@@ -185,7 +214,7 @@ export default function Home() {
             flip between the optics-box and the GSS render without losing
             either piece of state. */}
         {opticsAvailable && canvasAvailable && (
-          <div className="absolute bottom-6 right-6 z-40 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
+          <div className="hidden lg:flex absolute bottom-6 right-6 z-40 gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
             <button
               type="button"
               onClick={() => setRightPanelMode('optics')}
@@ -227,13 +256,16 @@ export default function Home() {
           over them and swallowed the clicks (a child's z-index can't escape
           its parent's stacking context). Rendering it last, anchored to the
           page, keeps every button hit-testable at any width. */}
-      <div className="absolute bottom-6 left-6 z-50 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
+      <div className="relative z-50 shrink-0 flex flex-wrap items-center gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 pr-16 font-mono lg:absolute lg:bottom-6 lg:left-6 lg:flex-nowrap lg:pr-1">
         <button
           type="button"
-          onClick={() => setLeftPanelMode('dispatcher')}
+          onClick={() => {
+            setLeftPanelMode('dispatcher');
+            setMobileSurface('left');
+          }}
           className={[
-            'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-            leftPanelMode === 'dispatcher'
+            NAV_BTN,
+            leftPanelMode === 'dispatcher' && mobileSurface === 'left'
               ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50'
               : 'text-slate-400 hover:text-slate-200',
           ].join(' ')}
@@ -242,10 +274,13 @@ export default function Home() {
         </button>
         <button
           type="button"
-          onClick={() => setLeftPanelMode('runner')}
+          onClick={() => {
+            setLeftPanelMode('runner');
+            setMobileSurface('left');
+          }}
           className={[
-            'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-            leftPanelMode === 'runner'
+            NAV_BTN,
+            leftPanelMode === 'runner' && mobileSurface === 'left'
               ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50'
               : 'text-slate-400 hover:text-slate-200',
           ].join(' ')}
@@ -255,10 +290,13 @@ export default function Home() {
         {mapAvailable && (
           <button
             type="button"
-            onClick={() => setLeftPanelMode('mindmap')}
+            onClick={() => {
+              setLeftPanelMode('mindmap');
+              setMobileSurface('left');
+            }}
             className={[
-              'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-              leftPanelMode === 'mindmap'
+              NAV_BTN,
+              leftPanelMode === 'mindmap' && mobileSurface === 'left'
                 ? 'bg-violet-600/30 text-violet-200 border border-violet-500/50'
                 : 'text-slate-400 hover:text-slate-200',
             ].join(' ')}
@@ -266,6 +304,44 @@ export default function Home() {
             Map
           </button>
         )}
+
+        {/* Right-panel views. Only on narrow screens — on desktop both panels
+            are on screen at once and the right panel carries its own
+            Optics/Canvas toggle, so duplicating them here would be noise. */}
+        {opticsAvailable && (
+          <button
+            type="button"
+            onClick={() => {
+              setRightPanelMode('optics');
+              setMobileSurface('right');
+            }}
+            className={[
+              NAV_BTN,
+              'lg:hidden',
+              rightPanelMode === 'optics' && mobileSurface === 'right'
+                ? 'bg-violet-600/30 text-violet-200 border border-violet-500/50'
+                : 'text-slate-400 hover:text-slate-200',
+            ].join(' ')}
+          >
+            Optics
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            setRightPanelMode('canvas');
+            setMobileSurface('right');
+          }}
+          className={[
+            NAV_BTN,
+            'lg:hidden',
+            rightPanelMode === 'canvas' && mobileSurface === 'right'
+              ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50'
+              : 'text-slate-400 hover:text-slate-200',
+          ].join(' ')}
+        >
+          Canvas
+        </button>
       </div>
 
       {/* Cortex Clipboard — paste-back point for GSS JSON when Gemini gives
