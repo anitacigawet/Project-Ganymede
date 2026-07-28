@@ -65,10 +65,18 @@ if errorlevel 1 (
 if not "%BACKEND_PORT%"=="8000" (
     echo.
     echo  Default port 8000 was busy; backend using %BACKEND_PORT% instead.
-    echo  WARNING: frontend hardcodes 127.0.0.1:8000 as the backend URL.
-    echo  Close whatever is on 8000 and re-run, or AuthPill cannot reach
-    echo  the backend.
+    echo  WARNING: the frontend expects the backend on port 8000 (it derives
+    echo  the host automatically, but not the port). Close whatever is on
+    echo  8000 and re-run, or set NEXT_PUBLIC_GANYMEDE_BACKEND_PORT for the
+    echo  frontend, otherwise AuthPill cannot reach the backend.
 )
+
+REM -- LAN address (for opening the UI from a phone/laptop on the same wifi)
+set "LAN_IP="
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4 Address"') do (
+    if not defined LAN_IP set "LAN_IP=%%a"
+)
+if defined LAN_IP set "LAN_IP=%LAN_IP: =%"
 
 REM -- Frontend (separate cmd window) ----------------------------
 REM  Explicitly clear PORT in the spawned shell so Next.js binds to 3000.
@@ -90,6 +98,13 @@ if "%FRONTEND_LAUNCHED%"=="1" (
     echo   Frontend      NOT launched - run "npm install" in ganymede-ui
 )
 echo   Health check  http://127.0.0.1:%BACKEND_PORT%/api/v2/health
+if defined LAN_IP (
+    echo.
+    echo   From another device on this wifi:
+    echo     Frontend    http://%LAN_IP%:3000
+    echo     Backend     http://%LAN_IP%:%BACKEND_PORT%
+    echo   ^(Windows Firewall must allow inbound 3000 + %BACKEND_PORT%.^)
+)
 echo.
 echo   Close THIS window to stop the backend.
 if "%FRONTEND_LAUNCHED%"=="1" echo   Close the OTHER window to stop the frontend.
@@ -105,6 +120,12 @@ echo  ====^> then sits idle waiting for requests.  Not a hang.  Open
 echo  ====^> http://localhost:3000 once frontend shows "Ready in Xs".
 echo.
 
-"%VENV_PY%" log_runner.py app.main:app --reload --reload-dir app --host 127.0.0.1 --port %BACKEND_PORT% --no-use-colors
+REM  Bind 0.0.0.0 (not 127.0.0.1) so the UI works when opened from another
+REM  device on the LAN: the frontend derives the backend host from the page's
+REM  own origin, so a phone hitting http://<lan-ip>:3000 calls the backend at
+REM  http://<lan-ip>:8000 — which only resolves if uvicorn listens on all
+REM  interfaces. This exposes the UNAUTHENTICATED API to the local network;
+REM  keep it to trusted networks (see docs note in ganymede-backend/README.md).
+"%VENV_PY%" log_runner.py app.main:app --reload --reload-dir app --host 0.0.0.0 --port %BACKEND_PORT% --no-use-colors
 
 endlocal

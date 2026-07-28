@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getBackendBaseUrl } from '@/lib/backend';
 import type { RunnerSnapshot } from './RunnerPanel';
 import {
   Send,
@@ -119,9 +120,6 @@ interface SessionEvent {
   emitted_at: string;
 }
 
-const DEFAULT_BACKEND =
-  process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
-
 const PATHWAY_META: Record<
   Pathway,
   {
@@ -195,7 +193,7 @@ interface DispatcherPanelProps {
 type PanelPhase = 'input' | 'dispatching' | 'review' | 'running' | 'done' | 'error';
 
 export function DispatcherPanel({
-  backendUrl = DEFAULT_BACKEND,
+  backendUrl = getBackendBaseUrl(),
   onConfirm,
   onSnapshotChange,
 }: DispatcherPanelProps) {

@@ -23,6 +23,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Loader2, Zap, BrainCircuit, ShieldQuestion, Crosshair, Terminal, AlertTriangle, Sparkles, Copy, Check } from 'lucide-react';
+import { getBackendBaseUrl } from '@/lib/backend';
 
 import { EXAMPLES_BY_PATHWAY, type RunnerExample } from '@/data/examples';
 import type { GSSState } from '@/types/ganymede';
@@ -66,7 +67,9 @@ export interface RunnerSnapshot {
 }
 
 interface RunnerPanelProps {
-  /** Backend HTTP base, defaults to env or 127.0.0.1:8000. */
+  /** Backend HTTP base. Defaults to `getBackendBaseUrl()` — the explicit
+   *  NEXT_PUBLIC_GANYMEDE_BASE_URL override if set, else derived from the
+   *  page's own host so localhost and LAN both work unconfigured. */
   backendUrl?: string;
   /** Called when the user clicks an example chip — loads the museum-style
    *  GSS preset into PhysicsCanvas immediately, before the user runs anything. */
@@ -121,9 +124,6 @@ interface SessionEvent {
   payload: Record<string, unknown>;
   emitted_at: string;
 }
-
-const DEFAULT_BACKEND =
-  process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
 
 const PATHWAY_META: Record<
   Pathway,
@@ -212,7 +212,7 @@ function composeEngineOutputForCopy(strokes: StrokeResult[]): string {
 }
 
 export function RunnerPanel({
-  backendUrl = DEFAULT_BACKEND,
+  backendUrl = getBackendBaseUrl(),
   onLoadExampleGss,
   onRunnerStateChange,
 }: RunnerPanelProps) {
@@ -334,8 +334,7 @@ export function RunnerPanel({
   // — safe to fire even if the loop just finished on its own.
   const handleCancel = useCallback(async () => {
     if (!sessionId) return;
-    const backendUrl =
-      process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? DEFAULT_BACKEND;
+    const backendUrl = getBackendBaseUrl();
     try {
       const res = await fetch(
         `${backendUrl}/api/v2/sessions/${sessionId}/cancel`,

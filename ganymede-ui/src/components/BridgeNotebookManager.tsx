@@ -26,9 +26,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, RefreshCw, Trash2, X } from 'lucide-react';
-
-const DEFAULT_BACKEND =
-  process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
+import { getBackendBaseUrl } from '@/lib/backend';
 
 interface BridgeNotebookRow {
   notebook_id: string;
@@ -110,7 +108,7 @@ export function BridgeNotebookManager() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${DEFAULT_BACKEND}/api/v2/bridge/notebooks`);
+      const res = await fetch(`${getBackendBaseUrl()}/api/v2/bridge/notebooks`);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       }
@@ -144,7 +142,7 @@ export function BridgeNotebookManager() {
       setDeletingIds((prev) => new Set(prev).add(notebookId));
       try {
         const res = await fetch(
-          `${DEFAULT_BACKEND}/api/v2/notebooks/${notebookId}`,
+          `${getBackendBaseUrl()}/api/v2/notebooks/${notebookId}`,
           { method: 'DELETE' },
         );
         if (!res.ok) {

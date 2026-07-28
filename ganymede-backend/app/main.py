@@ -98,9 +98,27 @@ _cors_origins = [
     for o in os.getenv("GANYMEDE_CORS_ORIGINS", _DEFAULT_CORS).split(",")
     if o.strip()
 ]
+
+# LAN access (2026-07-23): when the UI is opened from another device on the
+# same network, the browser's Origin is that host's LAN address (e.g.
+# http://192.168.0.151:3000), which the localhost-only allow-list above would
+# reject. This regex additionally permits any RFC-1918 private address on any
+# port — home/office LAN only; it does NOT match public origins. Responses
+# carry no credentials (allow_credentials=False), so this widens reachability,
+# not authority. Set GANYMEDE_CORS_ORIGIN_REGEX to override (empty string
+# disables the LAN allowance and restores localhost-only behaviour).
+_DEFAULT_CORS_REGEX = (
+    r"http://(localhost|127\.0\.0\.1"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?"
+)
+_cors_origin_regex = os.getenv("GANYMEDE_CORS_ORIGIN_REGEX", _DEFAULT_CORS_REGEX) or None
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

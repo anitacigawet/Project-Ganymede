@@ -24,6 +24,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ShieldCheck, ShieldAlert, ShieldQuestion, Loader2, X } from 'lucide-react';
+import { getBackendBaseUrl } from '@/lib/backend';
 
 type AuthStatus = {
   status: 'valid' | 'expired' | 'missing' | 'unknown';
@@ -59,13 +60,10 @@ type ReloginConfirm = {
   error?: string | null;
 };
 
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
-
 const POLL_INTERVAL_MS = 30_000;
 
 async function fetchStatus(force = false): Promise<AuthStatus> {
-  const url = `${BACKEND_URL}/api/v2/auth/status${force ? '?force=true' : ''}`;
+  const url = `${getBackendBaseUrl()}/api/v2/auth/status${force ? '?force=true' : ''}`;
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) {
     return { status: 'unknown', details: `HTTP ${r.status}` };
@@ -74,7 +72,7 @@ async function fetchStatus(force = false): Promise<AuthStatus> {
 }
 
 async function postRelogin(): Promise<ReloginSpawn> {
-  const r = await fetch(`${BACKEND_URL}/api/v2/auth/relogin`, {
+  const r = await fetch(`${getBackendBaseUrl()}/api/v2/auth/relogin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -82,7 +80,7 @@ async function postRelogin(): Promise<ReloginSpawn> {
 }
 
 async function postConfirmRelogin(timeoutSeconds = 30): Promise<ReloginConfirm> {
-  const r = await fetch(`${BACKEND_URL}/api/v2/auth/relogin/confirm`, {
+  const r = await fetch(`${getBackendBaseUrl()}/api/v2/auth/relogin/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ timeout_seconds: timeoutSeconds }),
@@ -91,7 +89,7 @@ async function postConfirmRelogin(timeoutSeconds = 30): Promise<ReloginConfirm> 
 }
 
 async function postReinitialize(): Promise<ReinitializeResult> {
-  const r = await fetch(`${BACKEND_URL}/api/v2/auth/reinitialize`, {
+  const r = await fetch(`${getBackendBaseUrl()}/api/v2/auth/reinitialize`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -175,7 +173,7 @@ export function AuthPill({ embedded }: AuthPillProps = {}) {
       const msg = e instanceof Error ? e.message : 'unknown error';
       setStatus({ status: 'unknown', details: `fetch failed: ${msg}` });
       setFetchError(
-        `Cannot reach backend at ${BACKEND_URL}. Is uvicorn running? (${msg})`,
+        `Cannot reach backend at ${getBackendBaseUrl()}. Is uvicorn running? (${msg})`,
       );
     } finally {
       setBusy(false);
@@ -267,7 +265,7 @@ export function AuthPill({ embedded }: AuthPillProps = {}) {
       // user saw the click do nothing.  Surface the failure inline instead.
       const msg = e instanceof Error ? e.message : 'unknown error';
       setFetchError(
-        `Sign-in request failed: ${msg}. Backend not reachable at ${BACKEND_URL}?`,
+        `Sign-in request failed: ${msg}. Backend not reachable at ${getBackendBaseUrl()}?`,
       );
     } finally {
       setBusy(false);

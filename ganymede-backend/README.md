@@ -43,6 +43,28 @@ uvicorn app.main:app --reload --port 8000
 
 OpenAPI docs: <http://localhost:8000/docs>
 
+## Using the UI from another device on the LAN
+
+`run_dev.bat` binds the backend to `0.0.0.0` and prints the LAN URLs on
+startup. Open `http://<host-lan-ip>:3000` from a phone or laptop on the same
+network — the frontend derives the backend host from the page's own origin
+(`ganymede-ui/src/lib/backend.ts`), so nothing needs configuring, and it keeps
+working when the host's DHCP address changes. Override with
+`NEXT_PUBLIC_GANYMEDE_BASE_URL` only when the backend lives on a *different*
+host than the UI.
+
+Two caveats:
+
+- **Windows Firewall** must allow inbound TCP 3000 + 8000 on the private
+  profile. Windows usually prompts the first time; if a second device can't
+  connect while `curl` works locally, this is why.
+- **The API has no authentication.** Binding to `0.0.0.0` means anyone on the
+  network can drive runs (consuming NotebookLM quota) and read past sessions.
+  Fine on a trusted home LAN; do not do it on public/shared wifi. To revert to
+  localhost-only, change `--host 0.0.0.0` back to `--host 127.0.0.1` in
+  `run_dev.bat` and set `GANYMEDE_CORS_ORIGIN_REGEX=` (empty) to drop the
+  private-range CORS allowance.
+
 ## Required environment
 
 - **`GOOGLE_API_KEY`** — for `GeminiService` (currently invoked only via `test_compiler.py`; `main.py` doesn't call Gemini directly).

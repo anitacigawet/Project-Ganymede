@@ -22,9 +22,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Languages, RefreshCw, AlertTriangle } from 'lucide-react';
 import { fetchWithAuthRetry } from '@/lib/authRetry';
-
-const DEFAULT_BACKEND =
-  process.env.NEXT_PUBLIC_GANYMEDE_BASE_URL ?? 'http://127.0.0.1:8000';
+import { getBackendBaseUrl } from '@/lib/backend';
 
 type Register = 'plain_english' | 'cube_of_space' | 'executive_brief';
 
@@ -108,10 +106,11 @@ export function StrokeTranslator({
         // NotebookLM cookies expired mid-session (the rLM1Ne null-result
         // signature), it fires /auth/auto-relogin once and retries — so a
         // routine ~2-5h cookie expiry self-heals instead of surfacing a 500.
+        const backend = getBackendBaseUrl();
         const res = await fetchWithAuthRetry(
-          DEFAULT_BACKEND,
+          backend,
           () =>
-            fetch(`${DEFAULT_BACKEND}/api/v2/sessions/${sessionId}/translate`, {
+            fetch(`${backend}/api/v2/sessions/${sessionId}/translate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
