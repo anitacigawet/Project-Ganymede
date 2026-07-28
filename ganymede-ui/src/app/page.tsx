@@ -10,11 +10,16 @@ import { DevOverlay } from '@/components/DevOverlay';
 import { SettingsTray } from '@/components/SettingsTray';
 import { GSSState } from '@/types/ganymede';
 
-// Shared style for the bottom nav buttons. Roomier on touch screens (~40px
-// tall, near the 44px touch-target guideline) and back to the compact
-// desktop chrome size at `lg`, where the pointer is a mouse.
+// Shared style for the bottom nav buttons. Roomier on touch screens (44px
+// tall, meeting Apple/Google's touch-target guideline; iOS refuses to
+// register some taps below 44px reliably) and back to the compact desktop
+// chrome size at `lg`, where the pointer is a mouse. `touch-action:
+// manipulation` disables iOS Safari's double-tap-to-zoom delay so the FIRST
+// tap fires immediately instead of feeling dead. `select-none` prevents
+// accidental text-selection on long-press. `min-h-[44px]` guarantees the
+// hit area even if the font metrics shrink the padding.
 const NAV_BTN =
-  'px-3 py-3 lg:py-1.5 rounded text-xs lg:text-[10px] uppercase tracking-widest transition-colors';
+  'shrink-0 px-3 py-3 min-h-[44px] lg:min-h-0 lg:py-1.5 rounded text-xs lg:text-[10px] uppercase tracking-widest transition-colors select-none [touch-action:manipulation]';
 
 type RightPanelMode = 'canvas' | 'optics';
 // 'dispatcher' is the natural-language entry mode (single text box -> LLM
@@ -272,10 +277,16 @@ export default function Home() {
           over them and swallowed the clicks (a child's z-index can't escape
           its parent's stacking context). Rendering it last, anchored to the
           page, keeps every button hit-testable at any width. */}
+      {/* Bottom nav on mobile / floating chrome on desktop. Horizontal-scroll
+          on overflow instead of wrapping (a wrapped second row would push the
+          nav into the panel area, and iOS can drop taps on wrapped flex items
+          that end up in ambiguous rows). No right-padding dead zone: the
+          Settings gear moves to the top-right on mobile so nothing competes
+          for the bottom-right tap area. */}
       <div
         className={[
-          'z-50 shrink-0 flex flex-wrap items-center gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 pr-16 font-mono',
-          forceMobile ? 'relative' : 'relative lg:absolute lg:bottom-6 lg:left-6 lg:flex-nowrap lg:pr-1',
+          'z-50 shrink-0 flex items-center gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono overflow-x-auto',
+          forceMobile ? 'relative' : 'relative lg:absolute lg:bottom-6 lg:left-6',
         ].join(' ')}
       >
         <button
@@ -355,7 +366,7 @@ export default function Home() {
           }}
           className={[
             NAV_BTN,
-            'lg:hidden',
+            forceMobile ? '' : 'lg:hidden',
             rightPanelMode === 'canvas' && mobileSurface === 'right'
               ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50'
               : 'text-slate-400 hover:text-slate-200',
@@ -380,7 +391,7 @@ export default function Home() {
       {/* Settings tray — bottom-right gear button + popup hosting the
           Console, Predictions, and Auth slots. Consolidates the floating
           chrome elements James flagged as "clumped" and "overlapping". */}
-      <SettingsTray onConsoleClick={() => setClipboardOpen(true)} />
+      <SettingsTray onConsoleClick={() => setClipboardOpen(true)} forceMobile={forceMobile} />
     </main>
   );
 }

@@ -31,9 +31,13 @@ export interface SettingsTrayProps {
   /** Called when the Console slot is clicked. Parent should set its
    *  DevOverlay isOpen state to true. */
   onConsoleClick: () => void;
+  /** Force the mobile positioning (top-right + downward popup) even at
+   *  desktop widths. Set from page.tsx via the `?mobile=1` URL param so
+   *  the whole mobile layout can be QA'd in a desktop Chrome. */
+  forceMobile?: boolean;
 }
 
-export function SettingsTray({ onConsoleClick }: SettingsTrayProps) {
+export function SettingsTray({ onConsoleClick, forceMobile = false }: SettingsTrayProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,13 +57,26 @@ export function SettingsTray({ onConsoleClick }: SettingsTrayProps) {
   const pendingPredictions = PREDICTIONS.filter((p) => p.status === 'pending').length;
 
   return (
+    // Gear position: top-right on narrow screens (avoids overlapping the bottom
+    // nav — an overlap where the gear covered the right side of the CANVAS/OPTICS
+    // buttons and swallowed their taps), bottom-right on desktop where the nav
+    // is a small floating chip on the LEFT and doesn't compete. The popup flips
+    // direction to match (opens down from the top position, up from bottom).
     <div
       ref={rootRef}
-      className="absolute bottom-6 right-6 z-50 font-mono text-xs"
+      className={[
+        'absolute right-6 z-50 font-mono text-xs',
+        forceMobile ? 'top-6' : 'top-6 lg:top-auto lg:bottom-6',
+      ].join(' ')}
     >
-      {/* Popup — opens upward from the gear button. */}
+      {/* Popup — opens down on mobile (gear is at top), upward on desktop. */}
       {open && (
-        <div className="absolute bottom-full right-0 mb-3 w-72 rounded-xl border border-slate-700/60 bg-slate-950/95 backdrop-blur-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] p-3">
+        <div
+          className={[
+            'absolute right-0 w-72 rounded-xl border border-slate-700/60 bg-slate-950/95 backdrop-blur-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] p-3',
+            forceMobile ? 'top-full mt-3' : 'top-full mt-3 lg:top-auto lg:mt-0 lg:bottom-full lg:mb-3',
+          ].join(' ')}
+        >
           {/* Header */}
           <div className="flex items-center justify-between mb-3 px-1">
             <span className="text-[10px] uppercase tracking-widest text-slate-500">
