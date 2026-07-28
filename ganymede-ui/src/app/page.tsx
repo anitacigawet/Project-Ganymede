@@ -162,53 +162,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Floating toggle — always visible so the operator can find the
-            advanced (Runner) mode from the dispatcher entry. Map button
-            only appears once a Runner run has something to visualise.
-            Shifted to `left-32` so it sits clear of the Next.js error
-            badge (bottom-left, dev-only) and the AuthPill (bottom-4 left-4)
-            — three distinct chrome elements stacked horizontally at the
-            bottom edge instead of overlapping. */}
-        <div className="absolute bottom-6 left-32 z-40 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
-          <button
-            type="button"
-            onClick={() => setLeftPanelMode('dispatcher')}
-            className={[
-              'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-              leftPanelMode === 'dispatcher'
-                ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50'
-                : 'text-slate-400 hover:text-slate-200',
-            ].join(' ')}
-          >
-            Ask
-          </button>
-          <button
-            type="button"
-            onClick={() => setLeftPanelMode('runner')}
-            className={[
-              'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-              leftPanelMode === 'runner'
-                ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50'
-                : 'text-slate-400 hover:text-slate-200',
-            ].join(' ')}
-          >
-            Runner
-          </button>
-          {mapAvailable && (
-            <button
-              type="button"
-              onClick={() => setLeftPanelMode('mindmap')}
-              className={[
-                'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
-                leftPanelMode === 'mindmap'
-                  ? 'bg-violet-600/30 text-violet-200 border border-violet-500/50'
-                  : 'text-slate-400 hover:text-slate-200',
-              ].join(' ')}
-            >
-              Map
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Right Panel: choose between the 3D GSS canvas (museum/render mode)
@@ -258,6 +211,60 @@ export default function Home() {
               Canvas
             </button>
           </div>
+        )}
+      </div>
+
+      {/* Panel toggle (Ask / Runner / Map) — always visible so the operator
+          can reach the advanced Runner mode from the dispatcher entry.
+          Map appears once a run has something to visualise.
+
+          Deliberately a TOP-LEVEL sibling of both panels rather than a child
+          of the left one. As a child it was clipped and un-clickable on
+          narrow screens: it sat at a fixed `left-32` offset sized for a
+          desktop-width left panel, so on a ~375-770px viewport the Runner /
+          Map buttons overflowed past the 40%-wide panel's edge — and since
+          the right panel is a later sibling with the same `z-10`, it painted
+          over them and swallowed the clicks (a child's z-index can't escape
+          its parent's stacking context). Rendering it last, anchored to the
+          page, keeps every button hit-testable at any width. */}
+      <div className="absolute bottom-6 left-6 z-50 flex gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
+        <button
+          type="button"
+          onClick={() => setLeftPanelMode('dispatcher')}
+          className={[
+            'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
+            leftPanelMode === 'dispatcher'
+              ? 'bg-indigo-600/30 text-indigo-200 border border-indigo-500/50'
+              : 'text-slate-400 hover:text-slate-200',
+          ].join(' ')}
+        >
+          Ask
+        </button>
+        <button
+          type="button"
+          onClick={() => setLeftPanelMode('runner')}
+          className={[
+            'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
+            leftPanelMode === 'runner'
+              ? 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/50'
+              : 'text-slate-400 hover:text-slate-200',
+          ].join(' ')}
+        >
+          Runner
+        </button>
+        {mapAvailable && (
+          <button
+            type="button"
+            onClick={() => setLeftPanelMode('mindmap')}
+            className={[
+              'px-3 py-1.5 rounded text-[10px] uppercase tracking-widest transition-colors',
+              leftPanelMode === 'mindmap'
+                ? 'bg-violet-600/30 text-violet-200 border border-violet-500/50'
+                : 'text-slate-400 hover:text-slate-200',
+            ].join(' ')}
+          >
+            Map
+          </button>
         )}
       </div>
 
