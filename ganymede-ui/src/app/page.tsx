@@ -28,6 +28,17 @@ export default function Home() {
   const [gssConfig, setGssConfig] = useState<GSSState | null>(null);
   const [clipboardOpen, setClipboardOpen] = useState(false);
 
+  // Dev/debug: append `?mobile=1` to the URL to force the mobile stacked
+  // layout at ANY viewport width. Lets a desktop browser reproduce exactly
+  // what a phone user sees, so the mobile layout can actually be QA'd
+  // without needing to physically shrink the window. No effect at SSR
+  // (window guard); read once at mount and never re-checked.
+  const [forceMobile, setForceMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setForceMobile(new URLSearchParams(window.location.search).has('mobile'));
+  }, []);
+
   // Runner state mirror — lifted up so the right panel can render the
   // optics-box visualisation driven by the same events.
   const [runnerSnapshot, setRunnerSnapshot] = useState<RunnerSnapshot | null>(null);
@@ -140,7 +151,12 @@ export default function Home() {
     // `100dvh` rather than `h-screen`/100vh: on mobile browsers the address
     // bar grows and shrinks, and vh doesn't account for it — the bottom nav
     // would sit off-screen behind the chrome. dvh tracks the real viewport.
-    <main className="flex flex-col lg:flex-row h-[100dvh] w-full bg-[#030712] p-4 gap-4 overflow-hidden relative">
+    <main
+      className={[
+        'flex h-[100dvh] w-full bg-[#030712] p-4 gap-4 overflow-hidden relative',
+        forceMobile ? 'flex-col' : 'flex-col lg:flex-row',
+      ].join(' ')}
+    >
       {/* Dynamic Background Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-[#030712] to-[#030712] pointer-events-none" />
 
@@ -157,7 +173,7 @@ export default function Home() {
       <div
         className={[
           mobileSurface === 'left' ? 'flex flex-col' : 'hidden',
-          'lg:block w-full lg:w-[40%] flex-1 min-h-0 lg:flex-none lg:h-full',
+          forceMobile ? 'w-full flex-1 min-h-0' : 'lg:block w-full lg:w-[40%] flex-1 min-h-0 lg:flex-none lg:h-full',
           'z-10 relative',
         ].join(' ')}
       >
@@ -192,7 +208,7 @@ export default function Home() {
       <div
         className={[
           mobileSurface === 'right' ? 'flex flex-col' : 'hidden',
-          'lg:block w-full lg:w-[60%] flex-1 min-h-0 lg:flex-none lg:h-full',
+          forceMobile ? 'w-full flex-1 min-h-0' : 'lg:block w-full lg:w-[60%] flex-1 min-h-0 lg:flex-none lg:h-full',
           'z-10 relative',
         ].join(' ')}
       >
@@ -213,7 +229,7 @@ export default function Home() {
             shows when both views have content to display. Lets the user
             flip between the optics-box and the GSS render without losing
             either piece of state. */}
-        {opticsAvailable && canvasAvailable && (
+        {opticsAvailable && canvasAvailable && !forceMobile && (
           <div className="hidden lg:flex absolute bottom-6 right-6 z-40 gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 font-mono">
             <button
               type="button"
@@ -256,7 +272,12 @@ export default function Home() {
           over them and swallowed the clicks (a child's z-index can't escape
           its parent's stacking context). Rendering it last, anchored to the
           page, keeps every button hit-testable at any width. */}
-      <div className="relative z-50 shrink-0 flex flex-wrap items-center gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 pr-16 font-mono lg:absolute lg:bottom-6 lg:left-6 lg:flex-nowrap lg:pr-1">
+      <div
+        className={[
+          'z-50 shrink-0 flex flex-wrap items-center gap-1 bg-slate-900/80 backdrop-blur-xl border border-slate-700/60 rounded-md p-1 pr-16 font-mono',
+          forceMobile ? 'relative' : 'relative lg:absolute lg:bottom-6 lg:left-6 lg:flex-nowrap lg:pr-1',
+        ].join(' ')}
+      >
         <button
           type="button"
           onClick={() => {
@@ -317,7 +338,7 @@ export default function Home() {
             }}
             className={[
               NAV_BTN,
-              'lg:hidden',
+              forceMobile ? '' : 'lg:hidden',
               rightPanelMode === 'optics' && mobileSurface === 'right'
                 ? 'bg-violet-600/30 text-violet-200 border border-violet-500/50'
                 : 'text-slate-400 hover:text-slate-200',
