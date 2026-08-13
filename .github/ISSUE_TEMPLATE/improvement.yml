@@ -1,0 +1,22 @@
+name: Improvement
+description: Suggest a clearer explanation, interaction, or noncommercial demonstration.
+title: "Idea: "
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: What would become clearer or more useful?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What change do you have in mind?
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Source and license check
+      options:
+        - label: Any example material I am proposing can be redistributed under this repository's license.
+          required: true
+
