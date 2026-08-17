@@ -26,6 +26,7 @@ import Link from 'next/link';
 import { Settings, Terminal, X, Sparkles } from 'lucide-react';
 import { AuthPill } from './AuthPill';
 import { PREDICTIONS } from '@/data/predictions';
+import { GANYMEDE_DEMO_MODE } from '@/data/demoMode';
 
 export interface SettingsTrayProps {
   /** Called when the Console slot is clicked. Parent should set its
@@ -135,12 +136,19 @@ export function SettingsTray({ onConsoleClick, forceMobile = false }: SettingsTr
           </Link>
 
           {/* Auth slot — AuthPill embedded inline; its dropdown opens upward. */}
-          <div className="px-1 pt-1">
-            <span className="text-[9.5px] text-slate-500 uppercase tracking-widest mb-1.5 block">
-              NotebookLM Auth
-            </span>
-            <AuthPill embedded />
-          </div>
+          {GANYMEDE_DEMO_MODE ? (
+            <div className="rounded-lg border border-cyan-900/60 bg-cyan-950/20 px-3 py-2.5 text-[10px] leading-relaxed text-cyan-100/80">
+              Showroom mode uses fixed fictional data. External accounts and
+              model services are disconnected.
+            </div>
+          ) : (
+            <div className="px-1 pt-1">
+              <span className="text-[9.5px] text-slate-500 uppercase tracking-widest mb-1.5 block">
+                NotebookLM Auth
+              </span>
+              <AuthPill embedded />
+            </div>
+          )}
         </div>
       )}
 

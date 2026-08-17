@@ -9,6 +9,7 @@ import { OrchestratorMindMap } from '@/components/OrchestratorMindMap';
 import { DevOverlay } from '@/components/DevOverlay';
 import { SettingsTray } from '@/components/SettingsTray';
 import { GSSState } from '@/types/ganymede';
+import { GANYMEDE_DEMO_MODE } from '@/data/demoMode';
 
 // Shared style for the bottom nav buttons. Roomier on touch screens (44px
 // tall, meeting Apple/Google's touch-target guideline; iOS refuses to
@@ -164,6 +165,12 @@ export default function Home() {
     >
       {/* Dynamic Background Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/10 via-[#030712] to-[#030712] pointer-events-none" />
+
+      {GANYMEDE_DEMO_MODE && (
+        <div className="absolute left-1/2 top-2 z-[60] -translate-x-1/2 rounded-full border border-cyan-700/60 bg-slate-950/90 px-3 py-1 text-[10px] font-mono tracking-wide text-cyan-200 backdrop-blur-xl">
+          Showroom mode · fictional data · external services disconnected
+        </div>
+      )}
 
       {/* Predictions link, AuthPill, and the Cortex Clipboard trigger have all
           moved into the SettingsTray at the bottom-right corner. The tray

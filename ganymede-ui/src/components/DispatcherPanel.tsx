@@ -20,6 +20,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getBackendBaseUrl } from '@/lib/backend';
+import {
+  GANYMEDE_DEMO_MODE,
+  GANYMEDE_DEMO_PROMPT,
+  GANYMEDE_DEMO_STROKES,
+  classifyDemoIntent,
+  waitForDemoBeat,
+} from '@/data/demoMode';
 import type { RunnerSnapshot } from './RunnerPanel';
 import {
   Send,
@@ -198,7 +205,9 @@ export function DispatcherPanel({
   onSnapshotChange,
 }: DispatcherPanelProps) {
   const [phase, setPhase] = useState<PanelPhase>('input');
-  const [text, setText] = useState('');
+  const [text, setText] = useState(
+    GANYMEDE_DEMO_MODE ? GANYMEDE_DEMO_PROMPT : '',
+  );
   const [dispatch, setDispatch] = useState<DispatchResponse | null>(null);
   const [editedScenario, setEditedScenario] = useState<DispatchScenario>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -390,6 +399,15 @@ export function DispatcherPanel({
     setErrorMessage(null);
 
     try {
+      if (GANYMEDE_DEMO_MODE) {
+        await waitForDemoBeat(650);
+        const data = classifyDemoIntent(trimmed) as DispatchResponse;
+        setDispatch(data);
+        setEditedScenario({ ...data.scenario });
+        setPhase('review');
+        return;
+      }
+
       const res = await fetch(`${backendUrl}/api/v2/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -438,6 +456,23 @@ export function DispatcherPanel({
     setOracles({});
 
     try {
+      if (GANYMEDE_DEMO_MODE) {
+        const demoSessionId = 'showroom-ganymede-001';
+        setSessionId(demoSessionId);
+
+        const staged: StrokeResult[] = [];
+        for (const stroke of GANYMEDE_DEMO_STROKES) {
+          await waitForDemoBeat(stroke.stroke_number === 1 ? 1000 : 1250);
+          staged.push(stroke as StrokeResult);
+          setStrokes([...staged]);
+        }
+
+        setFinalText(GANYMEDE_DEMO_STROKES.at(-1)?.raw_response ?? null);
+        await waitForDemoBeat(500);
+        setPhase('done');
+        return;
+      }
+
       // 1. Create session. Iterative path supports the iterative + bridge
       // toggles; Universal Logic Loop ignores them (it manages its own
       // synthesis stroke at the end of the swarm).
@@ -617,6 +652,13 @@ export function DispatcherPanel({
       {/* ---------------- INPUT PHASE ---------------- */}
       {phase === 'input' && (
         <div className="flex flex-col gap-3">
+          {GANYMEDE_DEMO_MODE && (
+            <div className="rounded-lg border border-cyan-800/60 bg-cyan-950/25 px-3 py-2.5 text-xs leading-relaxed text-cyan-100">
+              This showroom build runs the real Ganymede interface against a
+              fixed fictional scenario. Edit the prompt if you like; no model,
+              account, or external service is contacted.
+            </div>
+          )}
           <textarea
             ref={textareaRef}
             value={text}
@@ -670,6 +712,15 @@ export function DispatcherPanel({
               Classify intent
             </button>
           </div>
+          {GANYMEDE_DEMO_MODE && text !== GANYMEDE_DEMO_PROMPT && (
+            <button
+              type="button"
+              onClick={() => setText(GANYMEDE_DEMO_PROMPT)}
+              className="self-start text-[11px] text-cyan-300 hover:text-cyan-200 underline underline-offset-4"
+            >
+              Restore the sample scenario
+            </button>
+          )}
         </div>
       )}
 
