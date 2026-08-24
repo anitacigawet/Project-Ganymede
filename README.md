@@ -1,108 +1,85 @@
 # Project Ganymede
 
-**An interactive demonstration of layered, self-auditing strategic reasoning.**
+**A working strategic-physics research interface that routes a scenario, develops a thesis, attacks its weak points, and shows the reasoning process as it changes.**
 
-Most difficult questions do not fail because nobody produced an answer. They fail because the first framing quietly decides which facts count. Project Ganymede turns a question into a scene: nine perspectives examine its evidence, timing, incentives, constraints, people, systems, uncertainty, likely countermoves, and second-order effects. A separate audit then challenges the working answer before the conclusion is revised.
+Project Ganymede is a private analysis sandbox built around the 9D Chess framework. The complete workshop combines a FastAPI orchestration layer, research and audit services, and this Next.js interface. This public repository publishes the real interface in a deterministic showroom mode: the controls, state changes, orchestrator map, gravity-well canvas, and lithography view are the same surfaces used by the working project, while the scenario and outputs are fixed fictional data.
 
-![Project Ganymede's layered reasoning workspace](docs/screenshots/ganymede-overview.png)
+![Project Ganymede's real strategic-engine interface](docs/screenshots/ganymede-workspace.png)
 
-*A difficult question becomes a visible map instead of disappearing into a single prompt and answer.*
+*The actual Ganymede workspace: a plain-language intent router beside the GSS strategic-engine canvas.*
 
-## Who this is for
+## What Ganymede does
 
-- **A curious builder** exploring how AI-assisted reasoning can expose its structure instead of hiding it.
-- **A researcher or student** interested in multi-perspective analysis, uncertainty, and self-critique.
-- **A designer** thinking about how complex machine reasoning can become legible to ordinary people.
-- **A prospective collaborator or employer** evaluating the product thinking, interface design, and architecture behind the experiment.
+1. You describe a question, forecast, desired outcome, competitive situation, or analysis you want challenged.
+2. The intent router selects the appropriate research pathway and extracts the scenario into editable fields.
+3. The engine develops an initial strategic thesis.
+4. A Mirror Auditor looks for failure modes inside that reasoning.
+5. A Connection Bridge looks for relationships the first synthesis missed.
+6. A final stroke revises the resolution using both critiques.
+7. The interface exposes the run as it happens through an orchestrator map, an optics-box lithography view, and—when a GSS configuration is supplied—a 3D strategic landscape.
 
-## What it actually does
+![Ganymede reviewing the selected pathway](docs/screenshots/ganymede-route-review.png)
 
-1. Choose one of three recorded demonstrations: water planning, public-library access, or an experimental product launch.
-2. Read the question in plain language.
-3. Run the reasoning loop and watch nine perspectives light up around the central question.
-4. Follow the analysis trail from framing and evidence to a working answer.
-5. See a separate audit identify what the first answer treated too confidently.
-6. Inspect the revised conclusion and the uncertainty that remains.
-7. Select any perspective on the map to read what it contributes.
+*The router selected the pathfinding workflow and exposed the scenario fields before the run began.*
 
-![The completed reasoning trail](docs/screenshots/reasoning-trail.png)
+## The interface is part of the research
 
-*The answer remains connected to the framing, evidence, audit, and revision that produced it.*
+Ganymede does not treat the result as a single chat response. Its visual language is designed to keep the system's parts legible:
 
-## Why the audit matters
+- The **intent router** turns ordinary language into one of four research pathways: Prediction Cleanroom, Genie pathfinding, Offensive Architect, or Mirror Audit.
+- The **orchestrator map** shows the engine, research substrate, and audit side as distinct participants rather than collapsing them into one model call.
+- The **lithography view** presents each analytical stroke as another pass through the machine, making thesis, audit, bridge, and synthesis visible as separate stages.
+- The **gravity-well canvas** renders a supplied GSS model as a nine-dimensional strategic landscape.
+- The **Cortex Clipboard** is the explicit handoff point between a written resolution and its 3D configuration.
 
-The first coherent answer is not automatically the best one. It may be built around a familiar pattern, lean too heavily on one dramatic fact, or convert uncertainty into false precision. Ganymede gives the audit its own visible step so disagreement becomes part of the reasoning process rather than an invisible prompt instruction.
+![A completed Ganymede run in the optics-box view](docs/screenshots/ganymede-optics-resolution.png)
 
-![Inspecting uncertainty as one layer in the scene](docs/screenshots/layer-inspection.png)
+*The fictional showroom run has completed: the resolution remains beside the optics box that produced it.*
 
-*Each perspective can be inspected independently, including the uncertainty the conclusion still carries.*
+## Try the showroom
 
-## The idea behind Ganymede
+The hosted showcase is available at [ganymede.scootsolute.org](https://ganymede.scootsolute.org). It uses a fixed fictional scenario and does not contact a model, external account, or private corpus.
 
-The original metaphor is a layered tapestry: each lens asks a different question about the same situation. Together, those views form a box, chessboard, or wireframe scene that a reasoning system can examine.
-
-In the larger private research project, evidence-gathering services act as the system's eyes, while a separate auditor behaves more like a conscience. The two can pass a conclusion back and forth until the result better fits the available evidence. This public edition isolates the inspectable interaction and uses recorded demonstrations, so it runs without private accounts, external AI services, or hidden data.
-
-## Try it yourself
-
-This edition is intentionally simple: it is a static web application with no API keys, backend, tracking, or build step.
-
-### What you'll need
-
-- Node.js 20 or newer
-- A modern browser
-
-### Steps
+To run the same showroom locally:
 
 ```powershell
 git clone https://github.com/anitacigawet/Project-Ganymede.git
 cd Project-Ganymede
+npm install
+npm run build
 npm start
 ```
 
-Open `http://127.0.0.1:4173`.
+Open `http://127.0.0.1:4173`, then choose **Classify intent** and **Run with this**.
 
-To run the source and data checks:
+## What is public and what is not
 
-```powershell
-npm run check
-```
+This repository contains the real frontend and its fictional deterministic run. It does not contain the private orchestration backend, account-bound integrations, unpublished run records, live research material, credentials, or operator state.
 
-## What works today
+The showroom is evidence of the interface and workflow, not a claim that the underlying framework has been generally validated or that its fictional output is advice. The private research project has recorded experiments and blind validations, but those results remain bounded to their documented cases.
 
-- Three self-contained recorded demonstrations.
-- An interactive nine-perspective map.
-- A staged reasoning and audit sequence.
-- Inspectable layer explanations and calibrated confidence.
-- Responsive desktop and mobile layouts.
-- Reproducible Playwright screenshot capture.
-- No credentials, remote services, or user data.
+## Technology
 
-## What this edition does not claim
-
-Project Ganymede is an interface and research demonstration, not proof that a particular reasoning framework predicts real events. The examples are curated to show how the loop behaves. Their confidence values belong to the demonstrations and should not be treated as measured forecasting accuracy.
-
-The complete research workshop remains private because it contains account-bound integrations, unpublished experiments, and historical operational material that do not belong in a clean public release.
+- Next.js 16 and React 19
+- React Three Fiber and Three.js for the GSS visualization
+- Framer Motion for state transitions
+- Tailwind CSS 4
+- Playwright for reproducible desktop and mobile captures
 
 ## Repository guide
 
-- `index.html` — the complete accessible interface structure.
-- `src/app.js` — interaction and staged-analysis behavior.
-- `src/data.js` — the recorded scenarios and their nine perspectives.
-- `src/styles.css` — responsive visual system and animation.
-- `test/` — integrity checks for the demonstration data.
-- `scripts/` — local server and reproducible screenshot capture.
-- `docs/screenshots/` — the public images used above.
-
-## Contributing
-
-Noncommercial contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), especially if you want to improve accessibility, clarify an explanation, or add a responsibly sourced demonstration.
+- `src/app/` — the showroom routes and layout.
+- `src/components/` — the real router, runner, maps, optics box, canvas, and supporting controls.
+- `src/data/demoMode.ts` — the fixed fictional public run.
+- `src/types/` — the shared Ganymede interface types.
+- `scripts/serve.mjs` — a small local server for the static export.
+- `scripts/capture-screenshots.mjs` — reproducible captures of the actual interface.
+- `docs/screenshots/` — the images used in this README and the portfolio.
 
 ## Credits
 
-Created by James as a public, portfolio-ready distillation of the larger Project Ganymede research workshop. Its central metaphors—layered lenses, evidence as the system's eyes, an auditor as conscience, and a wireframe scene for analysis—come from the project's original design notes.
+Created by James. Project Ganymede draws on the separate [9D Chess](https://github.com/anitacigawet/9D-Chess) theoretical project, but this repository is the public showroom for Ganymede's own interface and workflow.
 
 ## License
 
 Project Ganymede is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, study, modification, and redistribution are permitted under its terms. Commercial use is not granted.
-
