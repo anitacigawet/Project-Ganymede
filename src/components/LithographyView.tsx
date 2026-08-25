@@ -364,7 +364,11 @@ function CleanroomBench({ snapshot, stages }: { snapshot: RunnerSnapshot; stages
 
   const { LASER, PLASMA, FOCUS, ILLUMINATOR, MASK, oracles, WAFER } = layout;
   const hasAnyActivity =
-    snapshot.running || !!snapshot.blueprint || (snapshot.oracles && snapshot.oracles.length > 0);
+    snapshot.running ||
+    !!snapshot.blueprint ||
+    !!snapshot.finalText ||
+    (snapshot.strokes?.length ?? 0) > 0 ||
+    (snapshot.oracles?.length ?? 0) > 0;
   const hasNudge = Object.values(dragOffsets).some(v => v !== 0);
 
   // ----- Misalignment of final beam -----------------------------------------
