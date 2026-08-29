@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/project-ganymede-banner.png" alt="Project Ganymede in molten silver above a dark lunar crater and star field" width="1000">
+</p>
+
 # Project Ganymede
 
 **A working strategic-physics research interface that routes a scenario, develops a thesis, attacks its weak points, and shows the reasoning process as it changes.**
