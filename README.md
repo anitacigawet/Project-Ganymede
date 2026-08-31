@@ -4,6 +4,8 @@
 
 # Project Ganymede
 
+## What is this?
+
 **A working strategic-physics research interface that routes a scenario, develops a thesis, attacks its weak points, and shows the reasoning process as it changes.**
 
 Project Ganymede is a private analysis sandbox built around the 9D Chess framework. The complete workshop combines a FastAPI orchestration layer, research and audit services, and this Next.js interface. This public repository publishes the real interface in a deterministic showroom mode: the controls, state changes, orchestrator map, gravity-well canvas, and lithography view are the same surfaces used by the working project, while the scenario and outputs are fixed fictional data.
@@ -12,7 +14,11 @@ Project Ganymede is a private analysis sandbox built around the 9D Chess framewo
 
 *The actual Ganymede workspace: a plain-language intent router beside the GSS strategic-engine canvas.*
 
-## What Ganymede does
+## Who is this for?
+
+<!-- Content will be added during the voice-to-text rewrite. -->
+
+## What it actually does
 
 1. You describe a question, forecast, desired outcome, competitive situation, or analysis you want challenged.
 2. The intent router selects the appropriate research pathway and extracts the scenario into editable fields.
@@ -26,7 +32,7 @@ Project Ganymede is a private analysis sandbox built around the 9D Chess framewo
 
 *The router selected the pathfinding workflow and exposed the scenario fields before the run began.*
 
-## The interface is part of the research
+### The interface is part of the research
 
 Ganymede does not treat the result as a single chat response. Its visual language is designed to keep the system's parts legible:
 
@@ -40,9 +46,11 @@ Ganymede does not treat the result as a single chat response. Its visual languag
 
 *The fictional showroom run has completed: the resolution remains beside the optics box that produced it.*
 
-## Try the showroom
+### Try the showroom
 
 The hosted showcase is available at [ganymede.scootsolute.org](https://ganymede.scootsolute.org). It uses a fixed fictional scenario and does not contact a model, external account, or private corpus.
+
+## Running it locally
 
 To run the same showroom locally:
 
@@ -56,13 +64,15 @@ npm start
 
 Open `http://127.0.0.1:4173`, then choose **Classify intent** and **Run with this**.
 
-## What is public and what is not
+## ⚙️ Extreme technicals below
+
+### What is public and what is not
 
 This repository contains the real frontend and its fictional deterministic run. It does not contain the private orchestration backend, account-bound integrations, unpublished run records, live research material, credentials, or operator state.
 
 The showroom is evidence of the interface and workflow, not a claim that the underlying framework has been generally validated or that its fictional output is advice. The private research project has recorded experiments and blind validations, but those results remain bounded to their documented cases.
 
-## Technology
+### Technology
 
 - Next.js 16 and React 19
 - React Three Fiber and Three.js for the GSS visualization
@@ -70,7 +80,7 @@ The showroom is evidence of the interface and workflow, not a claim that the und
 - Tailwind CSS 4
 - Playwright for reproducible desktop and mobile captures
 
-## Repository guide
+### How the repository is organized
 
 - `src/app/` — the showroom routes and layout.
 - `src/components/` — the real router, runner, maps, optics box, canvas, and supporting controls.
@@ -80,10 +90,10 @@ The showroom is evidence of the interface and workflow, not a claim that the und
 - `scripts/capture-screenshots.mjs` — reproducible captures of the actual interface.
 - `docs/screenshots/` — the images used in this README and the portfolio.
 
-## Credits
+### Credits
 
 Created by James. Project Ganymede draws on the separate [9D Chess](https://github.com/anitacigawet/9D-Chess) theoretical project, but this repository is the public showroom for Ganymede's own interface and workflow.
 
-## License
+### License
 
 Project Ganymede is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, study, modification, and redistribution are permitted under its terms. Commercial use is not granted.
