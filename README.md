@@ -4,96 +4,145 @@
 
 # Project Ganymede
 
+Continuing development or handing this workspace to another AI? Read [START_HERE.md](START_HERE.md) before changing files.
+
 ## What is this?
 
-**A working strategic-physics research interface that routes a scenario, develops a thesis, attacks its weak points, and shows the reasoning process as it changes.**
+Project Ganymede is a local strategic-analysis application. You give it a question, desired outcome, competitive situation, forecast, or existing analysis. It turns that input into a visible sequence of research, synthesis, criticism, connection-finding, and revision instead of presenting one model response as a finished answer.
 
-Project Ganymede is a private analysis sandbox built around the 9D Chess framework. The complete workshop combines a FastAPI orchestration layer, research and audit services, and this Next.js interface. This public repository publishes the real interface in a deterministic showroom mode: the controls, state changes, orchestrator map, gravity-well canvas, and lithography view are the same surfaces used by the working project, while the scenario and outputs are fixed fictional data.
+The repository contains both working editions:
 
-![Project Ganymede's real strategic-engine interface](docs/screenshots/ganymede-workspace.png)
+- **Full local edition:** the Next.js interface, FastAPI backend, 9D foundation corpus, authenticated Claude CLI engine, WebSearch research harvest, session history, and live WebSocket progress.
+- **Deterministic showcase:** the same interface and visual state changes with fixed fictional data. It builds as static files and contacts no backend or model.
 
-*The actual Ganymede workspace: a plain-language intent router beside the GSS strategic-engine canvas.*
+![Project Ganymede workspace](docs/screenshots/ganymede-workspace.png)
 
 ## Who is this for?
 
-<!-- Content will be added during the voice-to-text rewrite. -->
+This is for someone who wants to inspect how an analysis changes as it is researched and challenged. The interface keeps the initial synthesis, Mirror Auditor, Connection Bridge, and final revision separate so disagreements and missed links remain visible.
+
+It is also a portfolio source release: a normal clone contains what is needed to run the actual project locally, without the original development environment, generated sessions, logs, internal task files, account state, or historical experiments.
 
 ## What it actually does
 
-1. You describe a question, forecast, desired outcome, competitive situation, or analysis you want challenged.
-2. The intent router selects the appropriate research pathway and extracts the scenario into editable fields.
-3. The engine develops an initial strategic thesis.
-4. A Mirror Auditor looks for failure modes inside that reasoning.
-5. A Connection Bridge looks for relationships the first synthesis missed.
-6. A final stroke revises the resolution using both critiques.
-7. The interface exposes the run as it happens through an orchestrator map, an optics-box lithography view, and—when a GSS configuration is supplied—a 3D strategic landscape.
+1. The intent router turns ordinary language into one of four pathways: prediction, pathfinding, competitive strategy, or audit.
+2. For real-world questions, the engine makes a short research hit list.
+3. Claude Code runs a WebSearch-only research pass for each subject and returns source-linked Truth Packets.
+4. The analytical engine reads the bundled foundation corpus and supplied Truth Packets with all tools disabled.
+5. A Mirror Auditor identifies reasoning failures.
+6. A Connection Bridge identifies relationships among packets that the first synthesis missed.
+7. The engine revises the resolution using those critiques.
+8. The interface streams the process through the orchestrator map, lithography view, and gravity-well canvas.
 
-![Ganymede reviewing the selected pathway](docs/screenshots/ganymede-route-review.png)
+![Ganymede pathway review](docs/screenshots/ganymede-route-review.png)
 
-*The router selected the pathfinding workflow and exposed the scenario fields before the run began.*
+![Completed Ganymede optics view](docs/screenshots/ganymede-optics-resolution.png)
 
-### The interface is part of the research
+## Run it locally
 
-Ganymede does not treat the result as a single chat response. Its visual language is designed to keep the system's parts legible:
+### Requirements
 
-- The **intent router** turns ordinary language into one of four research pathways: Prediction Cleanroom, Genie pathfinding, Offensive Architect, or Mirror Audit.
-- The **orchestrator map** shows the engine, research substrate, and audit side as distinct participants rather than collapsing them into one model call.
-- The **lithography view** presents each analytical stroke as another pass through the machine, making thesis, audit, bridge, and synthesis visible as separate stages.
-- The **gravity-well canvas** renders a supplied GSS model as a nine-dimensional strategic landscape.
-- The **Cortex Clipboard** is the explicit handoff point between a written resolution and its 3D configuration.
+- Python 3.11 or newer
+- Node.js 22.0 or newer and npm 10.5.1 or newer
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview), authenticated through the `claude` command
+- A Claude plan or API configuration that permits non-interactive Claude Code use
 
-![A completed Ganymede run in the optics-box view](docs/screenshots/ganymede-optics-resolution.png)
+No NotebookLM account, browser automation, database server, or committed virtual environment is required.
 
-*The fictional showroom run has completed: the resolution remains beside the optics box that produced it.*
-
-### Try the showroom
-
-The hosted showcase is available at [ganymede.scootsolute.org](https://ganymede.scootsolute.org). It uses a fixed fictional scenario and does not contact a model, external account, or private corpus.
-
-## Running it locally
-
-To run the same showroom locally:
+### Windows
 
 ```powershell
 git clone https://github.com/anitacigawet/Project-Ganymede.git
 cd Project-Ganymede
-npm install
-npm run build
-npm start
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+claude
+# Complete authentication if prompted, then exit Claude.
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 ```
 
-Open `http://127.0.0.1:4173`, then choose **Classify intent** and **Run with this**.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The API runs on `127.0.0.1:8000`.
 
-## ⚙️ Extreme technicals below
+### macOS or Linux
 
-### What is public and what is not
+```bash
+git clone https://github.com/anitacigawet/Project-Ganymede.git
+cd Project-Ganymede
+sh scripts/setup.sh
+claude
+# Complete authentication if prompted, then exit Claude.
+sh scripts/start.sh
+```
 
-This repository contains the real frontend and its fictional deterministic run. It does not contain the private orchestration backend, account-bound integrations, unpublished run records, live research material, credentials, or operator state.
+The launchers bind to loopback by default. Windows users can explicitly opt into LAN binding with `scripts\start.ps1 -Lan`; configure `GANYMEDE_CORS_ORIGINS` when doing so.
 
-The showroom is evidence of the interface and workflow, not a claim that the underlying framework has been generally validated or that its fictional output is advice. The private research project has recorded experiments and blind validations, but those results remain bounded to their documented cases.
+### Run only the deterministic showcase
 
-### Technology
+The showcase needs Node.js but does not need Python, Claude, or network access after dependencies are installed.
 
-- Next.js 16 and React 19
-- React Three Fiber and Three.js for the GSS visualization
-- Framer Motion for state transitions
-- Tailwind CSS 4
-- Playwright for reproducible desktop and mobile captures
+```powershell
+Push-Location ganymede-ui
+npm.cmd ci
+Pop-Location
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Showcase
+```
 
-### How the repository is organized
+Or build static files:
 
-- `src/app/` — the showroom routes and layout.
-- `src/components/` — the real router, runner, maps, optics box, canvas, and supporting controls.
-- `src/data/demoMode.ts` — the fixed fictional public run.
-- `src/types/` — the shared Ganymede interface types.
-- `scripts/serve.mjs` — a small local server for the static export.
-- `scripts/capture-screenshots.mjs` — reproducible captures of the actual interface.
-- `docs/screenshots/` — the images used in this README and the portfolio.
+```powershell
+cd ganymede-ui
+npm run build:showcase
+npm run serve:showcase
+```
 
-### Credits
+## Technical details
 
-Created by James. Project Ganymede draws on the separate [9D Chess](https://github.com/anitacigawet/9D-Chess) theoretical project, but this repository is the public showroom for Ganymede's own interface and workflow.
+### Provider boundary
 
-### License
+Project Ganymede launches the authenticated Claude CLI as a subprocess:
 
-Project Ganymede is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE). Noncommercial use, study, modification, and redistribution are permitted under its terms. Commercial use is not granted.
+- Dispatcher, engine, auditor, bridge, and translation calls run with `--tools ""`.
+- Research harvest calls expose only `WebSearch` through `--tools WebSearch --allowedTools WebSearch`.
+- MCP servers are disabled with a strict empty `mcpServers` configuration.
+- Sessions are not persisted by Claude Code.
+- Web content is treated as untrusted evidence, not instructions.
+
+See [Architecture](docs/ARCHITECTURE.md) and [Configuration](docs/CONFIGURATION.md) for the exact boundaries.
+
+### Two editions, one interface
+
+`GANYMEDE_EDITION=full` is the default Next.js build. It connects to the local API and exposes the complete runner. `GANYMEDE_EDITION=showcase` produces a static export, locks the interface to fictional deterministic data, and removes the advanced runner from navigation.
+
+### Repository layout
+
+```text
+ganymede-backend/   FastAPI API, orchestration, Claude CLI runtime, sessions
+ganymede-ui/        Next.js full and showcase editions
+docs/foundations/   Runtime 9D grounding corpus
+docs/screenshots/   Public interface evidence
+scripts/            Portable setup and launch commands
+```
+
+Runtime state is created under `ganymede-backend/data/` and is ignored by Git. `.env`, virtual environments, Node modules, builds, logs, databases, prompt caches, and generated sessions are not part of the source release.
+
+### Direct commands
+
+Backend:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir ganymede-backend --host 127.0.0.1 --port 8000
+```
+
+Full frontend:
+
+```powershell
+cd ganymede-ui
+npm run dev
+```
+
+The API schema is available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) while the backend is running.
+
+## Security and licensing
+
+Read [SECURITY.md](SECURITY.md) before exposing the local service beyond loopback. Do not put credentials in `.env` unless a future optional integration explicitly needs them; the default runtime relies on Claude Code's existing authentication.
+
+The project is distributed under the [PolyForm Noncommercial License 1.0.0](LICENSE).

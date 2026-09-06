@@ -1,9 +1,38 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime state
+.env
+.env.*
+!.env.example
+ganymede-backend/.env
+ganymede-backend/.env.*
+!ganymede-backend/.env.example
+ganymede-backend/data/
+ganymede-backend/*.log
+*.db
+*.db-shm
+*.db-wal
+
+# Node / Next.js
 node_modules/
 .next/
 out/
 next-env.d.ts
 *.tsbuildinfo
+npm-debug.log*
+
+# Local tools
 .playwright/
 playwright-report/
 test-results/
 .DS_Store
+.idea/
+.vscode/
+
+# Local review records
+/docs/audits/

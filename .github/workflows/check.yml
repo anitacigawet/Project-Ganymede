@@ -1,4 +1,4 @@
-name: Check public edition
+name: Check source release
 
 on:
   push:
@@ -9,13 +9,30 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: ganymede-ui/package-lock.json
+      - run: pip install -r ganymede-backend/requirements.txt
+      - run: python -m compileall -q ganymede-backend/app
+      - run: python -m unittest discover -s ganymede-backend/tests -v
+      - run: python -m unittest discover -s scripts/tests -v
       - run: npm ci
-      - run: npm run check
-
+        working-directory: ganymede-ui
+      - run: npm test
+        working-directory: ganymede-ui
+      - run: npm run build
+        working-directory: ganymede-ui
+      - run: npm run build:showcase
+        working-directory: ganymede-ui
